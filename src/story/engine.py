@@ -1,17 +1,42 @@
 """Harness 核心：組 prompt、呼叫 LLM、驗證輸出、更新狀態、管理記憶。"""
 
 import json
+import random
+from pathlib import Path
 
 from google import genai
 from google.genai import types
 
-from story.models import GameState, StoryBeat, Turn
+from story.models import Condition, Epilogue, GameState, StoryArc, StoryBeat, Turn
 
 MODEL = "gemini-3.5-flash-lite"
 RECENT_WINDOW = 4  # 近期記憶保留幾回合原文
 SUMMARIZE_EVERY = 4  # 累積幾回合擠出的內容就壓縮一次摘要
+KEEP_EVENTS, KEEP_FLAGS = 6, 12  # 重大事件、已確立的事實各保留最近幾條原文，較舊的在壓縮時併入摘要
+TARGET_TURNS = 40  # 故事預定長度（回合）；超過時只提醒 AI 收尾，不強制結束
+ACT_TURNS = TARGET_TURNS // 4  # 每一幕預計幾回合，待太久就提醒 AI 推進
 MIN_TIME_LIMIT, MAX_TIME_LIMIT = 8, 60  # 限時模式的反應時間範圍（秒）
 MAX_CONDITION_LEN = 12  # 單一狀態最多幾個字，避免 LLM 寫成一整句
+
+# 身體狀況：LLM 只決定每個狀態的程度，總分與生死由程式計算
+SEVERITY_POINTS = {"輕": 1, "中": 2, "重": 4}
+DEATH_SCORE = 8  # 傷勢總分達到這個數字就死亡
+DYING_SCORE = 6  # 總分達到這個數字就是瀕死
+HEAVY_SCORE = 4  # 沒有重傷，但多處中傷累積到這個分數也算重傷
+SEVERITY_ORDER = ["輕", "中", "重"]
+
+# 遊戲內時間：AI 只挑類別，換算成分鐘由程式負責
+HOUR, DAY = 60, 24 * 60
+TIME_SPANS = {"瞬間": 1, "片刻": 10, "一陣子": HOUR, "數小時": 4 * HOUR, "一夜": 8 * HOUR, "數天": 3 * DAY}
+TIME_OF_DAY_START = {"清晨": 6, "上午": 9, "中午": 12, "下午": 15, "傍晚": 18, "夜晚": 20, "深夜": 23}  # 開場時刻（點）
+TIME_OF_DAY_RANGES = [(5, "清晨"), (7, "上午"), (11, "中午"), (13, "下午"), (17, "傍晚"), (19, "夜晚"), (23, "深夜")]
+
+# 自然恢復：在同一程度下經過多久會好轉一級。身體的重傷不會自己好，要靠劇情中的治療；精神狀態都會隨時間平復
+HEAL_TIME = {
+    "身體": {"輕": 6 * HOUR, "中": 2 * DAY},
+    "精神": {"輕": 2 * HOUR, "中": 12 * HOUR, "重": 2 * DAY},
+}
+LOG_PATH = Path("story_log.jsonl")  # 每回合的狀態變化紀錄
 TIMEOUT_ACTION = "（時間到：你遲疑太久，沒有在時限內做出反應）"
 
 # 固定不變的 system prompt，放在最前面以利 prompt caching
@@ -22,14 +47,64 @@ SYSTEM_PROMPT = """你是一個互動式文字冒險遊戲的敘事者。
 - 每回合根據玩家的行動推進劇情，行動要有合理的後果，好壞都可能。
 - 「遊戲狀態」區塊是唯一的事實來源。不要讓玩家使用不在背包裡的物品；若玩家嘗試，描述他們發現自己沒有。
 - 尊重已確立的劇情事實與重大事件，不要自相矛盾。
-- 提供 2-4 個彼此有明顯差異的選項；玩家也可能不照選項自由行動。
-- 主角沒有生命值，而是用「身體狀況」描述：受傷、疲勞、中毒、恐懼等都列成狀態，痊癒或消失時移除。狀態要影響後續劇情與行動的成敗。
-- 傷勢累積到致命、或劇情自然走到結局時，設 game_over 為 true，並寫出結局。
+- 提供 2-4 個彼此有明顯差異的選項，其中至少一個能推進「故事進度」中目前的里程碑；不要每次都只有逃跑、躲藏、戰鬥。玩家也可能不照選項自由行動。
+- 依照「故事進度」的大綱推進劇情。節奏要張弛有度：危機過後給主角喘息、整理線索、與人互動的空間，並帶出新的發展；同一類場景（追逐、躲藏、戰鬥）不要連續超過三回合。
+- 主角沒有生命值，而是用狀態描述，並標上程度（輕、中、重）與類別：身體（受傷、疲勞、中毒、疾病）或精神（恐懼、驚慌、絕望、憤怒）。
+  精神狀態不會致命，但要影響主角的判斷與表現，例如恐懼時手抖、驚慌時聽不進別人的話；危機解除後可以直接移除。痊癒或消失時移除；惡化或好轉時用相同名稱回報新的程度。
+  已有的狀態一律沿用「遊戲狀態」裡的原名，不要改名或換個說法重新新增。名稱只描述是什麼狀態（例如「右臂撕裂傷」），不要包含程度詞（輕傷、重傷、嚴重等），程度只用 severity 表示。狀態要影響後續劇情與行動的成敗。
+- 主角會不會因傷勢而死，由程式依傷勢總分判定（見「遊戲狀態」）。不要自行讓主角因傷而死；傷勢接近致命時，在敘述中呈現危險。game_over 只用於劇情自然走到結局。
+- 傷勢會隨時間自然好轉：輕微的幾小時後痊癒，中度的要休養幾天；重傷不會自己好，只有劇情中真的得到治療（包紮、縫合、就醫、用藥）時，才能用相同名稱回報降一級。
+- 每回合用 time_passed 標出這段劇情經過了多久，並讓敘述符合「遊戲狀態」裡的時間（日夜、天色）。時間流逝也會推動世界：長時間休息時，飢餓、天候、其他角色的行動都可能帶來新的發展。
 - 狀態變化要與敘述一致：敘述裡受傷就要加入對應的狀態，撿到東西就要列進 items_gained。
+- key_event 只記真正改變故事走向的大事（結盟、背叛、重要發現、失去重要的人或物），大多數回合應該留空。flags_set 只記之後還會用到的長期事實，不要重複已有的事實，也不要記當下的動作。
 - 若「模式」區塊說明是限時模式：當情勢緊迫（追逐、墜落、對峙、倒數）時設定 time_limit，越危急越短；平靜的場景設 0。非限時模式一律設 0。
 - 若玩家行動是「（時間到……）」，代表玩家沒能及時反應，要描述猶豫帶來的後果。"""
 
-SUMMARY_SYSTEM = "你負責壓縮文字冒險遊戲的劇情紀錄。用繁體中文，保留人物、地點、承諾、恩怨、伏筆等之後可能用到的資訊，捨棄修辭。"
+
+
+def clock_text(minutes: int) -> str:
+    """例如「第 2 天 傍晚（18:30）」。只放進給 AI 的提示，不顯示給玩家。"""
+    day, hour, minute = minutes // DAY + 1, minutes % DAY // HOUR, minutes % HOUR
+    period = next((name for start, name in reversed(TIME_OF_DAY_RANGES) if hour >= start), "深夜")
+    return f"第 {day} 天 {period}（{hour:02d}:{minute:02d}）"
+
+
+def body_conditions(state: GameState) -> list[Condition]:
+    return [c for c in state.conditions if c.kind == "身體"]
+
+
+def mind_conditions(state: GameState) -> list[Condition]:
+    return [c for c in state.conditions if c.kind == "精神"]
+
+
+def body_score(state: GameState) -> int:
+    """傷勢總分只算身體狀態；精神狀態影響劇情，但不會致命。"""
+    return sum(SEVERITY_POINTS[c.severity] for c in body_conditions(state))
+
+
+def body_level(state: GameState) -> str:
+    """整體狀態看最嚴重的那一項：有重傷才算重傷（或多處中傷累積），只有輕微狀態就是輕傷。"""
+    score = body_score(state)
+    worst = {c.severity for c in body_conditions(state)}
+    if score >= DEATH_SCORE:
+        return "死亡"
+    if score >= DYING_SCORE:
+        return "瀕死"
+    if "重" in worst or score >= HEAVY_SCORE:
+        return "重傷"
+    if "中" in worst:
+        return "受傷"
+    return "輕傷" if worst else "良好"
+
+
+# 讓 AI 想故事開頭時隨機指定題材，避免它每次都想出相似的故事
+PREMISE_GENRES = [
+    "奇幻冒險", "賽博龐克", "克蘇魯式恐怖", "武俠江湖", "末日求生", "蒸氣龐克", "太空探索",
+    "偵探推理", "民俗怪談", "海盜航海", "宮廷權謀", "童話黑化", "校園怪談", "西部荒野",
+]
+PREMISE_SETTINGS = ["深夜", "暴風雨中", "一場葬禮上", "逃亡途中", "剛醒來時", "一封信送達時", "節慶當天", "一切看似平靜時"]
+
+SUMMARY_SYSTEM = "你負責壓縮文字冒險遊戲的劇情紀錄。用繁體中文純文字（不要用 Markdown 或 LaTeX），保留人物、地點、承諾、恩怨、伏筆等之後可能用到的資訊，捨棄修辭。"
 
 
 class Engine:
@@ -42,46 +117,164 @@ class Engine:
     # ---------- 對外介面 ----------
 
     def start(self, state: GameState) -> None:
-        """產生開場。"""
+        """先規劃隱藏的故事大綱，再產生開場。"""
+        self.plan_arc(state)
         self._advance(state, action=None)
+
+    def plan_arc(self, state: GameState) -> None:
+        """請 AI 規劃故事大綱。舊存檔沒有大綱時，依目前的劇情補一份，並依回合數決定從哪一幕接著走。"""
+        if state.turn == 0:
+            situation = "故事還沒開始。"
+        else:
+            situation = (
+                f"故事已經進行了 {state.turn} 回合，大綱要接續目前的劇情，已經發生的事放在前面的幕裡。\n"
+                f"# 先前劇情摘要\n{state.summary or '（無）'}\n# 重大事件\n" + "\n".join(state.key_events)
+            )
+        prompt = (
+            f"為這個互動文字冒險故事規劃大綱，預定約 {TARGET_TURNS} 回合。\n# 故事前提\n{state.premise}\n{situation}\n"
+            "里程碑要具體、可以判斷是否達成。結局方向要依玩家的抉擇而不同，不要只有逃脫成功。"
+        )
+        response = self.client.models.generate_content(
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=StoryArc,
+                thinking_config=types.ThinkingConfig(thinking_level="low"),
+            ),
+        )
+        if not isinstance(response.parsed, StoryArc) or len(response.parsed.acts) < 4:
+            return  # 規劃失敗就先不用大綱，下回合再試
+        state.arc = response.parsed
+        state.arc.acts = state.arc.acts[:4]
+        # 已經進行很久的故事：依回合數推估目前在哪一幕
+        state.act, state.act_turns = min(3, state.turn // ACT_TURNS), 0
 
     def act(self, state: GameState, action: str) -> None:
         """玩家做出行動，推進一回合。"""
+        if state.arc is None:
+            self.plan_arc(state)
         state.recent.append(Turn(narration=state.current_narration, action=action))
-        self._compact_memory(state)
+        while len(state.recent) > RECENT_WINDOW:  # 擠出的回合先原文保留，等背景壓縮時再併入摘要
+            state.unsummarized.append(state.recent.pop(0))
         self._advance(state, action=action)
+
+    def suggest_premise(self, avoid: str = "") -> str:
+        """請 AI 想一個新的故事開頭。題材由程式隨機挑選，AI 負責發揮。"""
+        genre, setting = random.choice(PREMISE_GENRES), random.choice(PREMISE_SETTINGS)
+        prompt = (
+            f"為互動文字冒險遊戲想一個原創的故事前提。題材：{genre}；故事開始於：{setting}。\n"
+            "用繁體中文、第二人稱（「你」），一到兩句、80 字以內。交代主角身分、所在處境，並留下一個引人好奇的謎團或危機。"
+            "只輸出前提本身，不要標題或其他說明。"
+        )
+        if avoid:
+            prompt += f"\n不要和這個前提相似：{avoid}"
+        response = self.client.models.generate_content(
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(thinking_config=types.ThinkingConfig(thinking_level="low")),
+        )
+        text = (response.text or "").strip().strip("「」\"")
+        if not text:
+            raise RuntimeError("AI 沒有想出開頭，請再試一次。")
+        return text
+
+    def write_epilogue(self, state: GameState) -> None:
+        """故事結束後，請 AI 回顧整段旅程寫出尾聲與結局名稱。"""
+        prompt = self._build_prompt(state, action=None).rsplit("# 指示", 1)[0] + (
+            f"# 故事的最後一段\n{state.current_narration}\n\n"
+            "# 指示\n故事已經結束。寫一段尾聲，為這趟旅程收尾，並為這個結局取一個名稱。"
+            "回顧主角做過的關鍵抉擇與付出的代價；若主角死去，寫出主角留下的痕跡。不要開啟新的劇情。"
+        )
+        response = self.client.models.generate_content(
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                response_mime_type="application/json",
+                response_schema=Epilogue,
+            ),
+        )
+        if not isinstance(response.parsed, Epilogue):
+            raise RuntimeError("尾聲生成失敗。")
+        state.ending_title, state.epilogue = response.parsed.title.strip(), response.parsed.text.strip()
 
     # ---------- 生成劇情 ----------
 
     def _advance(self, state: GameState, action: str | None) -> None:
         beat = self._call_story(self._build_prompt(state, action))
+        before = [f"{c.name}({c.severity})" for c in state.conditions]
         self._apply(state, beat)
+        self._log_turn(state, action, beat, before)
+        if body_score(state) >= DEATH_SCORE and not beat.game_over:
+            self._write_death(state)
+
+    def _log_turn(self, state: GameState, action: str | None, beat: StoryBeat, before: list[str]) -> None:
+        """把 AI 這回合提議的變化和程式套用後的結果記到檔案，方便事後查「為什麼會這樣」。"""
+        record = {
+            "turn": state.turn,
+            "action": action,
+            "ai": beat.model_dump(exclude={"narration", "choices"}),
+            "conditions_before": before,
+            "conditions_after": [f"{c.name}({c.severity})" for c in state.conditions],
+            "level": body_level(state),
+            "time": clock_text(state.minutes),
+        }
+        try:
+            with LOG_PATH.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError:
+            pass  # 紀錄寫不進去不影響遊戲
+
+    def _write_death(self, state: GameState) -> None:
+        """程式判定傷重死亡，但 LLM 寫的劇情裡主角還活著：請 LLM 接著寫死亡結局。"""
+        prompt = self._build_prompt(state, action=None).rsplit("# 指示", 1)[0] + (
+            f"# 剛才發生的事\n{state.current_narration}\n\n"
+            "# 指示\n主角的傷勢已經致命。接續上面的敘述，寫出主角傷重死亡的結局，choices 留空，game_over 設為 true。"
+        )
+        ending = self._call_story(prompt)
+        state.current_narration += "\n\n" + ending.narration
+        state.current_choices = []
+        state.current_time_limit = 0
+        state.game_over = True
 
     def _build_prompt(self, state: GameState, action: str | None) -> str:
-        """把程式記得的所有東西組成本回合的輸入。每次呼叫都是無狀態的，記憶全靠這裡。"""
-        sections = [f"# 故事前提\n{state.premise}"]
+        """把程式記得的所有東西組成本回合的輸入。每次呼叫都是無狀態的，記憶全靠這裡。
 
-        status = {
-            "回合": state.turn,
-            "身體狀況": state.conditions or ["良好"],
-            "背包": state.inventory or ["（空）"],
-            "已確立的事實": state.flags or ["（無）"],
-        }
-        sections.append("# 遊戲狀態\n" + json.dumps(status, ensure_ascii=False, indent=2))
+        順序：不常變的（前提、模式、摘要）在前，每回合都變的（狀態、行動）在後，讓 Gemini 的自動快取比較容易命中。
+        """
         mode = (
             f"限時模式：緊迫時用 time_limit 給玩家 {MIN_TIME_LIMIT}-{MAX_TIME_LIMIT} 秒反應時間。"
             if state.timed_mode
             else "一般模式：time_limit 一律為 0。"
         )
-        sections.append(f"# 模式\n{mode}")
+        sections = [f"# 故事前提\n{state.premise}", f"# 模式\n{mode}"]
+        if progress := self._progress_section(state):
+            sections.append(progress)
 
         if state.summary:
             sections.append(f"# 先前劇情摘要\n{state.summary}")
         if state.key_events:
             sections.append("# 重大事件\n" + "\n".join(f"- {e}" for e in state.key_events))
-        if state.recent:
-            lines = [f"[敘述] {t.narration}\n[玩家] {t.action}" for t in state.recent]
+
+        # 還沒壓縮進摘要的回合也要放進來，否則 AI 會暫時看不到它們
+        turns = state.unsummarized + state.recent
+        if turns:
+            lines = [f"[敘述] {t.narration}\n[玩家] {t.action}" for t in turns]
+            if action is not None:  # 最後一筆的行動就是本回合行動，下面另外列出，不重複
+                lines[-1] = f"[敘述] {turns[-1].narration}"
             sections.append("# 最近幾回合\n" + "\n\n".join(lines))
+
+        status = {
+            "回合": state.turn,
+            "時間": "尚未確定" if state.minutes is None else clock_text(state.minutes),
+            "身體狀況": [f"{c.name}（{c.severity}）" for c in body_conditions(state)] or ["良好"],
+            "精神狀況": [f"{c.name}（{c.severity}）" for c in mind_conditions(state)] or ["平穩"],
+            "整體": f"{body_level(state)}（身體傷勢 {body_score(state)}/{DEATH_SCORE}，達 {DEATH_SCORE} 即死亡；輕=1 中=2 重=4）",
+            "背包": state.inventory or ["（空）"],
+            "已確立的事實": state.flags or ["（無）"],
+        }
+        sections.append("# 遊戲狀態\n" + json.dumps(status, ensure_ascii=False, separators=(",", ":")))
 
         if action is None:
             sections.append("# 指示\n這是故事的開場。介紹場景與主角處境，給出第一組選項。")
@@ -89,6 +282,26 @@ class Engine:
             sections.append(f"# 玩家本回合的行動\n{action}\n\n# 指示\n敘述這個行動的結果並推進劇情。")
 
         return "\n\n".join(sections)
+
+    def _progress_section(self, state: GameState) -> str:
+        """隱藏的故事大綱與節奏提醒。只給 AI 看。"""
+        arc = state.arc
+        if arc is None:
+            return ""
+        lines = [f"目標：{arc.goal}"]
+        for i, act in enumerate(arc.acts):
+            mark = "→ 目前" if i == state.act else ("✓ 已完成" if i < state.act else "")
+            lines.append(f"第{i + 1}幕「{act.name}」：{act.milestone} {mark}")
+        lines.append("可能的結局：" + "；".join(arc.endings))
+
+        final = state.act == len(arc.acts) - 1
+        if state.turn >= TARGET_TURNS:
+            lines.append(f"收尾提醒：故事已經超過預定的 {TARGET_TURNS} 回合。這一兩回合內就要寫出高潮與結局，達成時設 game_over 為 true。不要再開啟新的支線或危機。")
+        elif final:
+            lines.append("收尾提醒：已進入最後一幕。朝高潮與結局推進，不要再開啟新的支線；最後的里程碑達成時寫出結局並設 game_over 為 true。")
+        elif state.act_turns >= ACT_TURNS:
+            lines.append("節奏提醒：這一幕已經拖太久了。本回合就要出現轉折，明顯朝目前的里程碑推進。")
+        return "# 故事進度（玩家看不到）\n" + "\n".join(lines)
 
     def _call_story(self, prompt: str) -> StoryBeat:
         response = self.client.models.generate_content(
@@ -110,14 +323,14 @@ class Engine:
     def _apply(self, state: GameState, beat: StoryBeat) -> None:
         """LLM 只能「提議」狀態變化，由程式決定接受多少。"""
         state.turn += 1
+        is_opening_turn = state.turn == 1
+        if state.minutes is None:  # 開場或舊存檔：時間由 AI 依劇情決定，這回合不計經過的時間
+            state.minutes, elapsed = TIME_OF_DAY_START[beat.start_time_of_day] * HOUR, 0
+        else:
+            elapsed = TIME_SPANS[beat.time_passed]
+            state.minutes += elapsed
 
-        for cond in beat.conditions_removed:
-            if cond in state.conditions:  # 不能移除沒有的狀態
-                state.conditions.remove(cond)
-        for cond in beat.conditions_added:
-            cond = cond.strip()[:MAX_CONDITION_LEN]
-            if cond and cond not in state.conditions:
-                state.conditions.append(cond)
+        self._apply_conditions(state, beat, elapsed)
 
         for item in beat.items_lost:
             if item in state.inventory:  # 不能失去沒有的東西
@@ -131,40 +344,100 @@ class Engine:
         if beat.key_event.strip():
             state.key_events.append(beat.key_event.strip())
 
+        if state.arc is not None and not is_opening_turn:
+            state.act_turns += 1
+            if beat.milestone_reached and state.act < len(state.arc.acts) - 1:
+                state.act, state.act_turns = state.act + 1, 0
+
         state.current_narration = beat.narration
         state.current_choices = beat.choices[:4]
-        state.game_over = beat.game_over
+        state.game_over = beat.game_over or body_score(state) >= DEATH_SCORE
 
         # 限時與否由程式決定：非限時模式忽略 LLM 給的秒數，限時模式把秒數夾在合理範圍
         limit = beat.time_limit if state.timed_mode and not state.game_over else 0
         state.current_time_limit = 0 if limit <= 0 else max(MIN_TIME_LIMIT, min(MAX_TIME_LIMIT, limit))
 
+    def _apply_conditions(self, state: GameState, beat: StoryBeat, elapsed: int) -> None:
+        # 先讓既有狀態隨時間自然恢復，再套用 AI 回報的變化
+        remaining = []
+        for c in state.conditions:
+            c.minutes += elapsed
+            heal = HEAL_TIME[c.kind]
+            while c.severity in heal and c.minutes >= heal[c.severity]:
+                # 多出來的時間延續到下一級，例如「數天」可能讓中傷一路好到痊癒
+                c.minutes -= heal[c.severity]
+                if c.severity == "輕":
+                    break
+                c.severity = SEVERITY_ORDER[SEVERITY_ORDER.index(c.severity) - 1]
+            else:
+                remaining.append(c)  # 迴圈沒有因為輕傷痊癒而 break，代表狀態還在
+        state.conditions = remaining
+
+        # 移除：精神狀態與輕微的身體狀態可以直接移除；身體的中、重只能降一級，避免 AI 一句話讓重傷消失
+        removed = {name.strip() for name in beat.conditions_removed}
+        remaining = []
+        for c in state.conditions:
+            if c.name in removed and c.kind == "身體" and c.severity != "輕":
+                c.severity, c.minutes = SEVERITY_ORDER[SEVERITY_ORDER.index(c.severity) - 1], 0
+            elif c.name in removed:
+                continue
+            remaining.append(c)
+        state.conditions = remaining  # 不存在的名稱自然被忽略
+
+        for change in beat.conditions_changed:
+            name = change.name.strip()[:MAX_CONDITION_LEN]
+            if not name:
+                continue
+            existing = next((c for c in state.conditions if c.name == name), None)
+            if existing:
+                existing.kind = change.kind  # 舊存檔的狀態一律當成身體，AI 回報時順便更正
+                old_level = SEVERITY_ORDER.index(existing.severity)
+                new_level = SEVERITY_ORDER.index(change.severity)
+                if new_level == old_level:
+                    continue
+                # 惡化不設限；好轉一回合最多一級，避免 AI 一次把重傷變成痊癒
+                existing.severity = SEVERITY_ORDER[max(new_level, old_level - 1)]
+                existing.minutes = 0
+            else:
+                state.conditions.append(Condition(name=name, kind=change.kind, severity=change.severity))
+
     # ---------- 記憶壓縮 ----------
 
-    def _compact_memory(self, state: GameState) -> None:
-        """近期記憶超出視窗時，把最舊的回合移出；累積夠多就壓縮進長期摘要。"""
-        while len(state.recent) > RECENT_WINDOW:
-            state.unsummarized.append(state.recent.pop(0))
-
-        if len(state.unsummarized) < SUMMARIZE_EVERY:
-            return
-
-        log = "\n\n".join(f"[敘述] {t.narration}\n[玩家] {t.action}" for t in state.unsummarized)
-        prompt = (
-            f"# 目前的摘要\n{state.summary or '（尚無）'}\n\n"
-            f"# 新增的劇情紀錄\n{log}\n\n"
-            "把新增紀錄併入摘要，輸出更新後的完整摘要（400 字以內），只輸出摘要本身。"
+    def needs_compaction(self, state: GameState) -> bool:
+        return (
+            len(state.unsummarized) >= SUMMARIZE_EVERY
+            or len(state.key_events) > KEEP_EVENTS * 2
+            or len(state.flags) > KEEP_FLAGS * 2
         )
+
+    def compact_memory(self, state: GameState) -> None:
+        """把待壓縮的回合、較舊的重大事件與事實併入長期摘要。由介面在背景呼叫，玩家讀劇情時順便完成。"""
+        if not self.needs_compaction(state):
+            return
+        turns = list(state.unsummarized)
+        old_events = state.key_events[:-KEEP_EVENTS]
+        old_flags = state.flags[:-KEEP_FLAGS]
+
+        parts = [f"# 目前的摘要\n{state.summary or '（尚無）'}"]
+        if turns:
+            parts.append("# 新增的劇情紀錄\n" + "\n\n".join(f"[敘述] {t.narration}\n[玩家] {t.action}" for t in turns))
+        if old_events or old_flags:
+            parts.append("# 要併入的舊事件與事實\n" + "\n".join(f"- {x}" for x in old_events + old_flags))
+        parts.append("把以上內容併入摘要，輸出更新後的完整摘要（500 字以內），只輸出摘要本身。")
+
         response = self.client.models.generate_content(
             model=MODEL,
-            contents=prompt,
+            contents="\n\n".join(parts),
             config=types.GenerateContentConfig(
                 system_instruction=SUMMARY_SYSTEM,
                 thinking_config=types.ThinkingConfig(thinking_level="low"),
             ),
         )
         text = (response.text or "").strip()
-        if text:
-            state.summary = text
-            state.unsummarized.clear()
-        # 失敗就先保留 unsummarized，下回合再試
+        if not text:
+            return  # 失敗就先保留原樣，下次再試
+        # 只移除這次確實併入摘要的部分（壓縮期間不會有新回合，但仍以數量為準比較保險）
+        state.summary = text
+        del state.unsummarized[: len(turns)]
+        del state.key_events[: len(old_events)]
+        del state.flags[: len(old_flags)]
