@@ -101,6 +101,7 @@ async def test_timed_mode_counts_down_and_sends_timeout():
         assert app.query_one("#timer").has_class("show")
         app.time_left = 0.2  # 不用真的等 10 秒
         await wait_until(pilot, lambda: any(line.startswith("› （時間到") for line in log_lines(app)))
+        await wait_until(pilot, lambda: app.choices == ["點亮油燈", "躲起來"] and not app.typing)
 
 
 async def test_countdown_pauses_while_dialog_is_open():
@@ -246,3 +247,84 @@ async def test_narration_uses_chinese_line_breaking(monkeypatch):
         narration = app.query_one(".narration", Prose)
         lines = str(narration.render()).splitlines()
         assert lines[0].startswith("阿明轉頭看向 Bob，")
+
+
+async def test_online_party_through_a_room(isolated):
+    """線上多人：畫面沒有自己的核心，透過房間和另一位玩家（直接用連線模擬）一起玩。"""
+    import tempfile
+    from pathlib import Path
+
+    from conftest import FakePartyEngine
+    from story.core import PartyCore
+    from story.shells.room import Room, RoomConnection
+    from story.shells.textual.dialogs import NameDialog
+
+    engine = FakePartyEngine()
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=engine))
+    path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
+    await room.start(path)
+    try:
+        app = StoryApp(web=True, party=True, room=path)
+        async with app.run_test(size=(110, 32)) as pilot:
+            await wait_until(pilot, lambda: isinstance(app.screen, NameDialog) and app.screen.query("#name"))
+            app.screen.query_one("#name", Input).value = "阿明"
+            await pilot.press("enter")
+            await wait_until(pilot, lambda: "阿明（房主）" in status_text(app))
+            assert app.core is None and app.choices == []  # 只有一個人，還不能開始
+
+            guest = await RoomConnection.open(path)
+            await guest.send({"type": "join", "name": "小華"})
+            await wait_until(pilot, lambda: app.choices == ["開始遊戲"])
+            await pilot.press("1", "enter")
+            await start_game(pilot, app)
+            await wait_until(pilot, lambda: app.actor == "阿明" and not app.typing)
+            assert app.choices == ["阿明往上爬", "阿明躲起來"]
+            assert log_lines(app) == ["兩人在燈塔醒來。"]
+
+            await pilot.press("2", "enter")
+            await wait_until(pilot, lambda: app.waiting == ["小華"])
+            assert "› 阿明：阿明躲起來" in log_lines(app)
+            assert "等待 小華" in app.query_one("#cmd", Input).placeholder
+
+            await guest.send({"type": "send", "text": "1"})
+            await wait_until(pilot, lambda: app.actor == "阿明" and not app.typing and len(log_lines(app)) > 2)
+            assert "阿明阿明躲起來；小華小華往上爬" in log_lines(app)
+
+            # 第二回合小華先行動：阿明這邊跳出通知，選項不重建（以前會整個重畫、閃一下）
+            rebuilt = []
+            original = app.set_choices
+            app.set_choices = lambda choices: (rebuilt.append(choices), original(choices))
+            await guest.send({"type": "send", "text": "1"})
+            await wait_until(pilot, lambda: any("小華 已行動" in str(n.message) for n in app._notifications))
+            assert rebuilt == [] and app.choices == ["阿明往上爬", "阿明躲起來"]
+            guest.close()
+    finally:
+        await room.stop()
+
+
+async def test_narrow_screen_uses_smaller_margins(isolated):
+    """手機直式（60 格以下）縮小邊距；電腦的寬畫面維持原樣。"""
+    for width, narrow in ((40, True), (100, False)):
+        (isolated / "save.json").unlink(missing_ok=True)  # 每次都從新故事開始
+        app = StoryApp()
+        async with app.run_test(size=(width, 30)) as pilot:
+            await start_game(pilot, app)
+            assert app.screen.has_class("-narrow") is narrow
+            assert app.query_one("#log").styles.padding.left == (1 if narrow else 3)
+
+
+async def test_busy_line_shows_opening_progress(monkeypatch):
+    class SlowOpening(FakeEngine):
+        def start(self, state):
+            self.stage = "規劃故事大綱"
+            time.sleep(0.6)
+            self.stage = ""
+            super().start(state)
+
+    monkeypatch.setattr(app_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=SlowOpening(), **kw))
+    app = StoryApp()
+    async with app.run_test(size=SIZE) as pilot:
+        await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog))
+        app.screen.query_one("#ok", Button).press()
+        await wait_until(pilot, lambda: app.busy_line is not None and "規劃故事大綱" in str(app.busy_line.render()))
+        await wait_until(pilot, lambda: app.choices and not app.typing)

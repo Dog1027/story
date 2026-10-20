@@ -1,6 +1,7 @@
 """Textual 外殼的主畫面：上方固定狀態列、中間捲動的故事、下方選項與輸入框。
 
 只負責顯示與輸入：把玩家的輸入轉成文字送給核心（StoryCore），再依照回覆（Reply）更新畫面。
+線上多人（room）時沒有自己的核心：輸入送到網頁伺服器裡的房間，房間把核心的回覆推回來。
 """
 
 import asyncio
@@ -17,6 +18,7 @@ from textual.widgets import Input, OptionList, Static
 from story.core import ChangeGroups, PartyCore, Reply, Status, StoryCore
 from story.shells.apikey import forget_api_key, get_saved_api_key, save_api_key
 from story.shells.players import Player
+from story.shells.room import START, RoomConnection
 from story.shells.textual.commands import COMMANDS, help_text
 from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, NameDialog, PartyNamesDialog, PremiseDialog
 from story.shells.textual.prose import Prose
@@ -77,7 +79,15 @@ class StoryApp(App):
         border: round $panel-lighten-1; border-subtitle-color: $text-muted;
     }
     #cmd:focus { border: round $primary; background-tint: $foreground 0%; }
+
+    /* 窄畫面（手機）：縮小邊距，讓故事有更多寬度 */
+    Screen.-narrow #statusbar { padding: 0 1; }
+    Screen.-narrow #mode { width: 9; }
+    Screen.-narrow #log { padding: 1 1; }
+    Screen.-narrow #timer, Screen.-narrow #choices { margin: 0 0; }
+    Screen.-narrow #cmd { margin: 0 0; }
     """
+    HORIZONTAL_BREAKPOINTS = [(0, "-narrow"), (60, "-wide")]  # 60 格以下（手機直式）用窄畫面的樣式
     BINDINGS = [
         Binding(key, name.lstrip("/"), desc, priority=key.startswith("ctrl"))
         for name, (key, desc) in COMMANDS.items()
@@ -87,16 +97,23 @@ class StoryApp(App):
         Binding("down", "move_choice(1)", show=False),
     ]
 
-    def __init__(self, web: bool = False, party: bool = False) -> None:
+    def __init__(self, web: bool = False, party: bool = False, room: str | None = None) -> None:
         super().__init__()
         self.web = web  # 網頁版：先問名字，存檔依名字分開，API key 不存到伺服器
         self.party = party  # 多人模式：大家輪流在這台電腦上輸入行動
-        self.actor = ""  # 多人模式：現在輪到誰
+        self.room_path = room  # 線上多人：房間的 socket；這時不建立自己的核心
+        self.room: RoomConnection | None = None
+        self.inbox: asyncio.Queue[dict] = asyncio.Queue()  # 房間推來、要依序處理的訊息
+        self.suggestion: asyncio.Future | None = None
+        self.waiting: list[str] = []  # 線上多人：這回合還沒行動的人
+        self.my_name = ""  # 線上多人：自己的名字
+        self.actor = ""  # 多人模式：現在輪到誰（線上多人：輪到自己時是自己的名字）
         self.player: Player | None = None
         self.core: StoryCore | None = None
         self.choices: list[str] = []
         self.busy = False
         self.busy_line: Static | None = None  # 故事區裡的「故事生成中」那一行
+        self.progress = ""  # 線上多人：房間推來的進度（單人直接讀核心的 progress）
         self.frame = 0
         self.time_left = 0.0  # 限時模式的剩餘秒數，0 代表沒有在倒數
         self.last_tick = 0.0
@@ -121,6 +138,8 @@ class StoryApp(App):
     def on_unmount(self) -> None:
         if self.player:
             self.player.release()  # 連線異常中斷沒跑到這裡也沒關係：下次會發現鎖的程序已不存在而接手
+        if self.room:
+            self.room.close()
 
     def on_mount(self) -> None:
         self.theme = THEME
@@ -129,16 +148,25 @@ class StoryApp(App):
         self.set_interval(0.1, self.tick)
         self.boot()
 
+    def watch_app_focus(self, focus: bool) -> None:
+        # 網頁版一開始是失焦狀態，這時跳出的對話框不會自動聚焦；回到焦點時 Textual 只還原舊畫面上的焦點，
+        # 對話框裡就沒有元件能打字。這裡補上：沒有元件有焦點時，聚焦第一個。
+        if focus and self.screen.focused is None:
+            self.screen.focus_next()
+
     # ---------- 啟動：取得 key，建立核心 ----------
 
     @work
     async def boot(self) -> None:
+        if self.room_path:
+            await self.join_room()
+            return
         if self.web:
-            self.player = await self.push_screen_wait(NameDialog())
-            if self.player is None:
+            name = await self.push_screen_wait(NameDialog(self.claim_name))
+            if name is None:
                 self.exit()
                 return
-            key = await self.ask_api_key(f"{self.player.name}，請輸入你的 Gemini API key")
+            key = await self.ask_api_key(f"{name}，請輸入你的 Gemini API key")
         else:
             key = get_saved_api_key() or await self.ask_api_key("找不到 Gemini API key。")
         if key is None:
@@ -155,6 +183,13 @@ class StoryApp(App):
         else:
             self.core = StoryCore(api_key=key)
         await self.handle(self.core.start())
+
+    async def claim_name(self, name: str) -> str:
+        player = Player(name)
+        if not player.acquire():
+            return "這個名字正在遊戲中，請換一個名字，或等對方離開。"
+        self.player = player
+        return ""
 
     async def ask_api_key(self, reason: str) -> str | None:
         result = await self.push_screen_wait(ApiKeyDialog(reason, can_save=not self.web))
@@ -176,6 +211,9 @@ class StoryApp(App):
         if echo:
             self.set_choices([])
             self.log_message(f"› {echo}", "action")
+        if self.room:  # 線上多人：回覆會由房間推回來
+            await self.room.send({"type": "send", "text": text})
+            return
         reply = await self.ask_core(text)
         if reply is not None:
             await self.handle(reply)
@@ -226,7 +264,7 @@ class StoryApp(App):
             await self.send("1" if sure else "2")
         elif reply.phase in ("playing", "ending"):
             await self.show_turn(reply)
-            if reply.phase == "ending":
+            if reply.phase == "ending" and not self.room:  # 線上多人由房間接著寫尾聲
                 await self.send("")  # 讓核心接著寫尾聲
         elif reply.phase == "ended":
             await self.show_ending(reply)
@@ -235,8 +273,14 @@ class StoryApp(App):
         if reply.error == "api":
             return  # 開場生成失敗：錯誤已經提示了，留在原處，玩家可以用 Ctrl+R 再試
         timed = reply.timed
+        loop = asyncio.get_running_loop()
 
         def suggest(_: str) -> str:
+            if self.room:  # 對話框在背景執行緒呼叫這裡，請房間代問後等結果
+                text, error = asyncio.run_coroutine_threadsafe(self.ask_room_suggestion(), loop).result()
+                if error:
+                    raise RuntimeError(error)
+                return text
             suggestion = self.core.send("/suggest")
             if suggestion.error:
                 raise RuntimeError(suggestion.notice)
@@ -244,11 +288,102 @@ class StoryApp(App):
 
         premise, want_timed = await self.push_screen_wait(PremiseDialog(reply.premise_default, timed, suggest))
         if want_timed != timed:
-            await asyncio.to_thread(self.core.send, f"/timed {'on' if want_timed else 'off'}")
+            command = f"/timed {'on' if want_timed else 'off'}"
+            if self.room:
+                await self.room.send({"type": "send", "text": command})
+            else:
+                await asyncio.to_thread(self.core.send, command)
         self.query_one("#log", VerticalScroll).remove_children()
         self.set_choices([])
         self.set_status(None)
         await self.send(premise)
+
+    # ---------- 線上多人：和房間對話 ----------
+
+    async def join_room(self) -> None:
+        try:
+            self.room = await RoomConnection.open(self.room_path)
+        except OSError:
+            self.query_one("#status", Static).update(Text("連不上遊戲房間，請稍後重新整理。", style="bold red"))
+            return
+        name = await self.push_screen_wait(NameDialog(self.claim_seat, hint="大家在同一局裡，每個名字就是一位角色。中途斷線可以用同一個名字回來。"))
+        if name is None:
+            self.exit()
+            return
+        self.my_name = name
+        self.run_worker(self.listen(), exclusive=False)
+        self.run_worker(self.process_inbox(), exclusive=False)
+
+    async def claim_seat(self, name: str) -> str:
+        await self.room.send({"type": "join", "name": name})
+        answer = await self.room.receive()
+        if answer is None:
+            return "和遊戲房間的連線中斷了。"
+        return answer.get("reason", "") if answer["type"] == "rejected" else ""
+
+    async def listen(self) -> None:
+        """收房間推來的訊息。簡單的直接處理；回覆、大廳等要等前一個顯示完的，排進 inbox 依序處理。"""
+        while (message := await self.room.receive()) is not None:
+            kind = message["type"]
+            if kind == "busy":
+                self.progress = message.get("progress", "")
+                self.set_busy(message["on"])
+                if message["on"]:
+                    self.show_busy_line()
+            elif kind == "timer":
+                self.start_timer(message["seconds"])
+            elif kind == "waiting":
+                self.update_waiting(message["names"])
+            elif kind == "notice":
+                self.notify(message["text"])
+            elif kind == "suggestion" and self.suggestion:
+                self.suggestion.set_result((message["text"], message["error"]))
+            else:
+                self.inbox.put_nowait(message)
+        self.set_busy(False)
+        self.notify("和遊戲房間的連線中斷了，請重新整理頁面。", severity="error", timeout=30)
+
+    def update_waiting(self, names: list[str]) -> None:
+        """這回合還沒行動的人變了：有人行動時跳出通知，並更新提示（不重建選項，畫面才不會閃）。"""
+        if set(names) < set(self.waiting):  # 名單變短：有人剛行動（新回合時名單會變回全部的人）
+            acted = [n for n in self.waiting if n not in names and n != self.my_name]
+            if acted:
+                self.notify(f"{'、'.join(acted)} 已行動")
+        self.waiting = names
+        self.render_turn_hint()
+
+    async def process_inbox(self) -> None:
+        while True:
+            message = await self.inbox.get()
+            kind = message["type"]
+            if kind == "reply":
+                await self.handle(Reply.from_dict(message["reply"]))
+            elif kind == "lobby":
+                self.show_lobby(message["members"], message["host"])
+            elif kind == "new_story":
+                self.query_one("#log", VerticalScroll).remove_children()
+                self.set_choices([])
+                self.set_status(None)
+
+    async def ask_room_suggestion(self) -> tuple[str, str]:
+        self.suggestion = asyncio.get_running_loop().create_future()
+        await self.room.send({"type": "send", "text": "/suggest"})
+        try:
+            return await self.suggestion
+        finally:
+            self.suggestion = None
+
+    def show_lobby(self, members: list[str], host: str) -> None:
+        names = [f"{n}（房主）" if n == host else n for n in members]
+        self.query_one("#status", Static).update(Text.assemble(("大廳  ", "dim"), (" · ".join(names), "bold")))
+        self.actor, self.waiting = "", []
+        me = self.query_one("#cmd", Input)
+        if self.my_name == host:
+            self.set_choices([START] if len(members) >= 2 else [])
+            me.placeholder = "選「開始遊戲」，大家就會一起進入故事" if len(members) >= 2 else "等其他玩家加入（至少 2 人）…"
+        else:
+            self.set_choices([])
+            me.placeholder = f"等房主 {host} 開始遊戲…"
 
     # ---------- 顯示 ----------
 
@@ -307,7 +442,10 @@ class StoryApp(App):
         self.set_status(reply.status, reply.party)
         self.set_choices(reply.choices)
         if reply.narration and reply.time_limit:
-            self.start_timer(reply.time_limit)
+            if self.room:  # 線上多人：告訴房間看完了，大家都看完房間才開始倒數
+                await self.room.send({"type": "ready"})
+            else:
+                self.start_timer(reply.time_limit)
 
     async def show_ending(self, reply: Reply) -> None:
         ending = reply.ending
@@ -317,10 +455,10 @@ class StoryApp(App):
         else:
             self.log_message("─── 故事結束 ───", "ending")
         await self.wait_for_enter("按 Enter 查看結局")
-        if await self.push_screen_wait(EndingDialog(ending.title, ending.record)):
-            await self.send("1")
-        else:
+        if not await self.push_screen_wait(EndingDialog(ending.title, ending.record)):
             self.exit()
+        elif not self.room:  # 線上多人：房間會自動回到大廳
+            await self.send("1")
 
     async def wait_for_enter(self, hint: str) -> None:
         line = self.log_message(f"（{hint}）", "busy")
@@ -351,10 +489,7 @@ class StoryApp(App):
     def set_choices(self, choices: list[str]) -> None:
         self.choices = list(choices)
         options = self.query_one("#choices", OptionList)
-        options.border_title = f"輪到 {self.actor}" if self.actor else "接下來"
-        self.query_one("#cmd", Input).placeholder = (
-            f"輪到 {self.actor}：↑↓ 選擇，或寫下行動" if self.actor else "↑↓ 選擇，或寫下你的行動"
-        )
+        self.render_turn_hint()
         options.clear_options()
         options.add_options([f"{i}. {c}" for i, c in enumerate(choices, 1)])
         options.set_class(not choices, "-empty")
@@ -362,6 +497,14 @@ class StoryApp(App):
             options.styles.opacity = 0.0
             options.styles.animate("opacity", 1.0, duration=0.4)
         self.query_one("#cmd", Input).focus()
+
+    def render_turn_hint(self) -> None:
+        """選項框的標題與輸入框的提示：輪到誰；線上多人時還在等誰。"""
+        self.query_one("#choices", OptionList).border_title = f"輪到 {self.actor}" if self.actor else "接下來"
+        cmd = self.query_one("#cmd", Input)
+        cmd.placeholder = f"輪到 {self.actor}：↑↓ 選擇，或寫下行動" if self.actor else "↑↓ 選擇，或寫下你的行動"
+        if self.room and not self.actor and self.waiting:
+            cmd.placeholder = f"等待 {'、'.join(self.waiting)} 行動…"
 
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
@@ -374,7 +517,12 @@ class StoryApp(App):
 
     def show_busy_line(self) -> None:
         if self.busy_line is None:
-            self.busy_line = self.log_message(f"{SPINNER[0]} 故事生成中…", "busy")
+            self.busy_line = self.log_message(self.busy_text(), "busy")
+
+    def busy_text(self) -> str:
+        """等待那一行的文字，例如「⠋ 故事生成中：規劃故事大綱…」。"""
+        progress = self.progress if self.room else (self.core.progress if self.core else "")
+        return f"{SPINNER[self.frame]} 故事生成中{'：' + progress if progress else ''}…"
 
     # ---------- 限時模式（倒數由外殼負責，時間到送 /timeout 給核心） ----------
 
@@ -410,14 +558,16 @@ class StoryApp(App):
         elapsed, self.last_tick = now - self.last_tick, now
         if self.busy_line is not None:
             self.frame = (self.frame + 1) % len(SPINNER)
-            self.busy_line.update(f"{SPINNER[self.frame]} 故事生成中…")
-        # 開著對話框或指令選單時暫停倒數
-        if self.time_left <= 0 or self.busy or isinstance(self.screen, ModalScreen):
+            self.busy_line.update(self.busy_text())
+        # 開著對話框或指令選單時暫停倒數（線上多人大家共用一個倒數，不能暫停）
+        if self.time_left <= 0 or self.busy or (not self.room and isinstance(self.screen, ModalScreen)):
             return
         self.time_left = max(0.0, self.time_left - elapsed)
         self.render_timer()
         if self.time_left == 0:
             self.stop_timer()
+            if self.room:
+                return  # 時間到由房間送出
             self.run_worker(self.send("/timeout", echo=self.core.action_for("/timeout") or ""))
 
     # ---------- 輸入 ----------
@@ -441,7 +591,7 @@ class StoryApp(App):
                 self.skip = True
             self.speed = FAST_FACTOR
             return
-        if self.core is None or self.busy:
+        if not self.connected or self.busy:
             return
         if not raw:
             # 輸入框是空的：選定用 ↑↓ 移到的選項
@@ -462,9 +612,19 @@ class StoryApp(App):
         text = str(index + 1)
         self.run_worker(self.send(text, echo=self.echo_for(text)))
 
+    @property
+    def connected(self) -> bool:
+        return self.core is not None or self.room is not None
+
     def echo_for(self, text: str) -> str:
         """送出前先顯示的行動；多人模式加上是誰的行動。"""
-        action = self.core.action_for(text) or ""
+        if self.room:  # 線上多人沒有自己的核心：輪到自己時，照畫面上的選項對應
+            if not self.actor or text.startswith("/"):
+                return ""
+            index = int(text) - 1 if text.isdigit() else -1
+            action = self.choices[index] if 0 <= index < len(self.choices) else text
+        else:
+            action = self.core.action_for(text) or ""
         return f"{self.actor}：{action}" if action and self.actor else action
 
     def action_move_choice(self, step: int) -> None:
@@ -486,14 +646,14 @@ class StoryApp(App):
             yield SystemCommand(name, f"{desc}（{key}）", getattr(self, f"action_{name[1:]}"))
 
     def action_state(self) -> None:
-        if self.core and not self.busy:
+        if self.connected and not self.busy:
             self.run_worker(self.send("/state"))
 
     def action_help(self) -> None:
         self.push_screen(InfoDialog("指令", help_text()))
 
     def action_restart(self) -> None:
-        if self.core and not self.busy and not self.typing:
+        if self.connected and not self.busy and not self.typing:
             self.run_worker(self.send("/restart"))
 
     def action_quit(self) -> None:

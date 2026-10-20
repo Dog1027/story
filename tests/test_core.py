@@ -214,3 +214,18 @@ def test_new_game_from_continue_prompt_reuses_premise(engine, isolated):
     reply = StoryCore(api_key="test", engine=FakeEngine(), save_path=isolated / "save.json")
     reply.start()
     assert reply.send("2").premise_default == "自訂的前提"
+
+
+def test_progress_tells_what_the_opening_is_doing(isolated):
+    """開新故事要呼叫兩次 AI：progress 依序是「規劃故事大綱」「寫開場」，結束後清空。"""
+    from conftest import beat, make_engine
+
+    engine, gemini = make_engine(beat(narration="燈塔的門吱呀一聲打開。"))
+    core = StoryCore(api_key="test", engine=engine, save_path=isolated / "save.json")
+    seen = []
+    generate = gemini.generate_content
+    gemini.models.generate_content = lambda **kw: (seen.append(core.progress), generate(**kw))[1]
+    core.start()
+    core.send("")
+    assert seen == ["規劃故事大綱", "寫開場"]
+    assert core.progress == ""

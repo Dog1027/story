@@ -72,6 +72,68 @@ async def test_web_shell_runs_separate_games_and_limits_sessions(monkeypatch):
         await third.close()
 
 
+@pytest.mark.slow
+async def test_web_party_mode_puts_every_tab_in_one_lobby():
+    import tempfile
+    from pathlib import Path
+
+    from story.shells.room import Room
+
+    room_path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
+    server = web.LimitedServer(web.game_command(room_path), host="127.0.0.1", port=0, title="Story", room=Room.for_server("test"), room_path=room_path)
+    async with TestClient(TestServer(await server._make_app())) as client:
+        tabs = []
+        for name in ("阿明", "小華"):
+            ws = await client.ws_connect("/ws?width=100&height=30")
+            assert "大家在同一局裡" in await read_screen(ws, 10)
+            await ws.send_str(json.dumps(["stdin", f"{name}\r"]))
+            tabs.append(ws)
+        screen = await read_screen(tabs[0], 5)
+        assert "阿明（房主）" in screen and "小華" in screen
+        for ws in tabs:
+            await ws.close()
+
+
+@pytest.mark.slow
+async def test_mobile_input_bar_pastes_text_into_the_game():
+    """手機輸入列的送法：終端機失焦後，送 focus、用「貼上」送整段文字、再送 Enter。中文不會重複。"""
+    server = web.LimitedServer(web.game_command(), host="127.0.0.1", port=0, title="Story")
+    async with TestClient(TestServer(await server._make_app())) as client:
+        ws = await client.ws_connect("/ws?width=40&height=30")
+        assert "你的名字" in await read_screen(ws, 10)
+        await ws.send_str(json.dumps(["blur"]))  # 點了頁面下方的輸入列
+        for message in (["focus"], ["stdin", "\x1b[200~阿明\x1b[201~"], ["stdin", "\r"]):
+            await ws.send_str(json.dumps(message))
+        screen = await read_screen(ws, 5)
+        assert "阿明，請輸入你的 Gemini API key" in screen
+        assert "阿明阿明" not in screen
+        await ws.close()
+
+
+async def test_web_page_supports_phones():
+    server = web.LimitedServer(web.game_command(), host="127.0.0.1", port=0, title="Story")
+    async with TestClient(TestServer(await server._make_app())) as client:
+        page = await (await client.get("/")).text()
+    assert '<meta name="viewport" content="width=device-width' in page
+    assert 'id="mobile-input"' in page
+    assert 'data-session-websocket-url="ws://' in page  # 模板的變數照常填入
+
+
+async def test_web_page_urls_follow_the_browser_address():
+    # 監聽 0.0.0.0 時，頁面裡的網址不能寫成 0.0.0.0，要跟著瀏覽器連進來的網址
+    server = web.LimitedServer(web.game_command(), host="0.0.0.0", port=8080, title="Story")
+    async with TestClient(TestServer(await server._make_app())) as client:
+        page = await (await client.get("/", headers={"Host": "192.168.1.5:8080"})).text()
+    assert "0.0.0.0" not in page
+    assert 'src="http://192.168.1.5:8080/static/js/textual.js"' in page
+    assert 'data-session-websocket-url="ws://192.168.1.5:8080/ws"' in page
+
+    fixed = web.LimitedServer(web.game_command(), host="0.0.0.0", port=8080, public_url="https://story.example")
+    async with TestClient(TestServer(await fixed._make_app())) as client:
+        page = await (await client.get("/")).text()
+    assert 'data-session-websocket-url="wss://story.example/ws"' in page
+
+
 def test_plain_shell_party_mode(monkeypatch, capsys):
     from conftest import FakePartyEngine
     from story.core import PartyCore

@@ -228,6 +228,64 @@ def test_resume_party_save(engine, isolated):
     assert others.start().phase == "ask_premise"  # 玩家不同就開新局
 
 
+def test_resume_ignores_player_order(engine, isolated):
+    first = PartyCore("test", NAMES, save_path=isolated / "party.json", engine=engine)
+    first.start()
+    first.send("")
+    reversed_order = PartyCore("test", NAMES[::-1], save_path=isolated / "party.json", engine=FakePartyEngine())
+    assert reversed_order.start().phase == "ask_continue"  # 線上多人加入的順序不同也能接續
+
+
+# ---------- 線上多人：send_as 與 view ----------
+
+
+def test_send_as_accepts_actions_in_any_order(core, engine):
+    core.start()
+    core.send("")
+    reply = core.send_as("小華", "2")
+    assert "已記下 小華 的行動" in reply.notice and reply.actor == "" and reply.choices == []
+    assert core.waiting() == ["阿明"]
+    assert "已經行動" in core.send_as("小華", "1").notice
+    core.send_as("阿明", "1")
+    assert engine.rounds == [{"阿明": "阿明往上爬", "小華": "小華躲起來"}]
+
+
+def test_view_gives_each_player_their_own_choices(core):
+    core.start()
+    opening = core.send("")
+    assert core.view("小華", opening).choices == ["小華往上爬", "小華躲起來"]
+    assert core.view("小華", opening).actor == "小華"
+    assert core.view("小華", opening).narration == opening.narration
+    core.send_as("阿明", "1")
+    me = core.view("阿明")  # 重新連線：目前這回合的畫面
+    assert me.actor == "" and me.choices == [] and me.resumed and me.narration == "兩人在燈塔醒來。"
+    assert core.view("小華").choices == ["小華往上爬", "小華躲起來"]
+
+
+def test_send_as_rejects_fallen_characters(core):
+    core.start()
+    core.send("")
+    for _ in range(2):
+        core.send("1")
+        core.send("1")  # 第 3 回合阿明倒下
+    assert "倒下" in core.send_as("阿明", "1").notice
+
+
+def test_reply_survives_json_round_trip(core):
+    import json
+
+    from story.core import Reply
+
+    core.start()
+    core.send("")
+    core.send("1")
+    reply = core.send("1")
+    back = Reply.from_dict(json.loads(json.dumps(reply.to_dict(), ensure_ascii=False)))
+    assert back.party[0].name == "阿明" and back.party[0].inventory == ["油燈"]
+    assert back.party_changes[0][0] == "阿明"
+    assert back.narration == reply.narration and back.choices == reply.choices
+
+
 def test_party_core_with_real_engine(isolated):
     """PartyCore 接上真的 Engine（只有 Gemini 是假的），從開場一路玩到有人倒下。"""
     lethal = [cond("失血", "重"), cond("骨折", "重")]

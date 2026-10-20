@@ -9,10 +9,12 @@ PartyEngine 繼承單人的 Engine，PartyCore 繼承單人的 StoryCore，只�
 - reply.party 是每位角色的狀態，reply.party_changes 是每位角色這回合的變化
 - /timeout 會把還沒行動的人都當作「時間到」，直接推進這一回合
 
-目前的外殼是「輪流在同一台電腦上輸入」；之後做網路多人時，只要讓每位玩家各自送文字進來即可。
+同一台電腦輪流輸入時用 send()，照隊伍順序收行動；線上多人用 send_as(名字, 文字)，誰先送誰先記，
+再用 view(名字) 取得某位玩家眼中的畫面（自己的選項）。
 """
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from google.genai import types
@@ -34,7 +36,7 @@ from story.core.engine import (
 )
 from story.core.models import Character, GameState, PartyBeat
 from story.core.records import change_groups, snapshot
-from story.core.session import Reply, Status, StoryCore
+from story.core.session import Reply, Status, StoryCore, render_text
 
 # 多人模式的 system prompt：規則和單人相同，只是主角變成一支隊伍
 PARTY_SYSTEM_PROMPT = """你是一個多人互動式文字冒險遊戲的敘事者。每位玩家扮演隊伍中的一位角色。
@@ -198,11 +200,12 @@ class PartyCore(StoryCore):
         self.players = names
         self.pending: dict[str, str] = {}  # 這一回合已經輸入的行動
         self._last_actor: str | None = None  # 最後輸入行動的人（推進失敗時讓他重送）
+        self._as: str | None = None  # send_as() 指定的角色
 
     # ---------- 覆寫 StoryCore 的掛勾 ----------
 
     def _resumable(self, state: GameState) -> bool:
-        return not state.game_over and [c.name for c in state.party] == self.players  # 玩家不同就開新局
+        return not state.game_over and sorted(c.name for c in state.party) == sorted(self.players)  # 玩家不同就開新局
 
     def _new_state(self, premise: str) -> GameState:
         self.pending = {}
@@ -263,6 +266,41 @@ class PartyCore(StoryCore):
             fields.setdefault("party", [_character_status(self.state.turn, c) for c in self.state.party])
         return super()._reply(**fields)
 
+    # ---------- 線上多人：每位玩家各自送行動 ----------
+
+    def send_as(self, name: str, text: str) -> Reply:
+        """以某位角色的身分送出輸入，不用照隊伍順序。遊戲中以外的階段（前提、確認……）等同 send()。"""
+        if self.phase == "playing" and not text.strip().startswith("/"):
+            character = next((c for c in self.state.party if c.name == name), None)
+            if character is None or not character.alive:
+                return self._reply(notice="你的角色已經倒下了。", **self._screen())
+            if name in self.pending:
+                return self._reply(notice="你這回合已經行動了，等其他人行動。", **self._screen())
+        self._as = name
+        try:
+            return self.send(text)
+        finally:
+            self._as = None
+
+    def view(self, name: str, reply: Reply | None = None) -> Reply:
+        """某位玩家眼中的畫面：actor 與 choices 換成這位角色的（已經行動或倒下的人沒有選項）。
+        給了 reply 就沿用它的其他欄位，否則是目前這一回合的畫面（重新連線時用）。"""
+        if reply is None:
+            reply = self._reply(**self._screen())
+            if self.phase == "playing":
+                reply.narration, reply.resumed = self.state.current_narration, True
+        if self.phase != "playing":
+            mine = replace(reply, actor="", choices=[] if reply.actor else reply.choices)
+        else:
+            actor = next((c for c in self._waiting() if c.name == name), None)
+            mine = replace(reply, actor=name if actor else "", choices=list(actor.choices) if actor else [])
+        mine.text = render_text(mine)
+        return mine
+
+    def waiting(self) -> list[str]:
+        """這回合還沒行動的角色名字。"""
+        return [c.name for c in self._waiting()] if self.state and self.phase == "playing" else []
+
     # ---------- 輪到誰 ----------
 
     def _waiting(self) -> list[Character]:
@@ -271,6 +309,8 @@ class PartyCore(StoryCore):
 
     def _actor(self) -> Character | None:
         waiting = self._waiting() if self.state else []
+        if self._as is not None:
+            return next((c for c in waiting if c.name == self._as), None)
         return waiting[0] if waiting else None
 
 

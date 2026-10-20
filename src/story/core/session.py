@@ -8,7 +8,7 @@ API key、玩家名字、倒數計時、打字效果屬於外殼，不在這裡�
 """
 
 import threading
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -84,6 +84,21 @@ class Reply:
     party: list[Status] = field(default_factory=list)  # 每位角色的狀態
     party_changes: list[tuple[str, ChangeGroups]] = field(default_factory=list)  # 每位角色這回合的變化
 
+    def to_dict(self) -> dict:
+        """轉成可以存成 JSON 的 dict（線上多人在程序之間傳送回覆用）。"""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Reply":
+        """to_dict() 的反向。JSON 沒有 tuple，tuple 會變成 list，外殼拆開使用時沒有差別。"""
+        data = dict(data)
+        if data.get("status"):
+            data["status"] = Status(**data["status"])
+        if data.get("ending"):
+            data["ending"] = Ending(**data["ending"])
+        data["party"] = [Status(**s) for s in data.get("party", [])]
+        return cls(**data)
+
 
 class StoryCore:
     def __init__(self, api_key: str, save_path: Path = SAVE_PATH, log_path: Path = LOG_PATH, engine: Engine | None = None):
@@ -98,6 +113,12 @@ class StoryCore:
 
     def set_api_key(self, api_key: str) -> None:
         self.engine.set_api_key(api_key)
+
+    @property
+    def progress(self) -> str:
+        """send() 執行中時，目前在做什麼（例如「規劃故事大綱」）；沒有特別的階段時是空字串。
+        外殼可以在另一個執行緒讀取，顯示在等待畫面上。"""
+        return getattr(self.engine, "stage", "")
 
     # ---------- 對外介面 ----------
 

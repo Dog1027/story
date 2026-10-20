@@ -1,7 +1,7 @@
 """Textual 外殼的對話框：API key、名字、新故事、確認、結局、說明。"""
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from textual import on, work
 from textual.app import ComposeResult
@@ -14,7 +14,7 @@ from textual.widgets import Button, Checkbox, Input, Static, TextArea
 
 from story.core import MAX_PLAYERS
 from story.shells.apikey import KEY_PATH
-from story.shells.players import MAX_NAME_LEN, InvalidName, Player, check_name
+from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 
 
 class Dialog(ModalScreen):
@@ -32,6 +32,7 @@ class Dialog(ModalScreen):
     Dialog Input:focus { border: round $primary; background-tint: $foreground 0%; }
     Dialog Checkbox { border: none; background: $surface; padding: 0; margin-bottom: 1; }
     Dialog Horizontal { height: auto; align-horizontal: right; margin-top: 1; }
+    Dialog.-narrow > Vertical { width: 100%; max-width: 100%; padding: 1 1; }
     /* 只有焦點所在的按鈕有底色；其他按鈕是純文字，主要按鈕用文字顏色區分。
        內建按鈕樣式的選擇器比較具體，所以要用 !important；規則順序決定優先權，焦點放最後。 */
     Dialog Button {
@@ -115,12 +116,17 @@ class ApiKeyDialog(Dialog):
 
 
 class NameDialog(Dialog):
-    """網頁版：輸入名字。名字決定存檔，同一個名字同時只能有一個連線。回傳佔用成功的 Player 或 None。"""
+    """網頁版：輸入名字。claim(名字) 負責佔用這個名字，成功回傳空字串，失敗回傳要顯示的原因。
+    回傳佔用成功的名字或 None。"""
+
+    def __init__(self, claim: Callable[[str], Awaitable[str]], hint: str = "每個名字有自己的存檔，下次用同一個名字進來就能接著玩。"):
+        super().__init__()
+        self.claim, self.hint = claim, hint
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static("你的名字", classes="title")
-            yield Static("每個名字有自己的存檔，下次用同一個名字進來就能接著玩。", classes="hint")
+            yield Static(self.hint, classes="hint")
             yield Input(placeholder="例如：阿明", id="name", max_length=MAX_NAME_LEN)
             yield Static("", id="error", classes="hint")
             with Horizontal():
@@ -129,17 +135,17 @@ class NameDialog(Dialog):
 
     @on(Input.Submitted)
     @on(Button.Pressed, "#ok")
-    def submit(self) -> None:
+    async def submit(self) -> None:
         error = self.query_one("#error", Static)
         try:
-            player = Player(check_name(self.query_one("#name", Input).value))
+            name = check_name(self.query_one("#name", Input).value)
         except InvalidName as e:
             error.update(str(e))
             return
-        if not player.acquire():
-            error.update("這個名字正在遊戲中，請換一個名字，或等對方離開。")
+        if reason := await self.claim(name):
+            error.update(reason)
             return
-        self.dismiss(player)
+        self.dismiss(name)
 
     @on(Button.Pressed, "#cancel")
     def cancel(self) -> None:

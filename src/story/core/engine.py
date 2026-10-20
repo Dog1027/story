@@ -213,6 +213,7 @@ class Engine:
     def __init__(self, api_key: str | None = None, client: genai.Client | None = None, log_path: Path = LOG_PATH):
         self.client = client or genai.Client(api_key=api_key)
         self.log_path = log_path  # 網頁版每個玩家各自一份紀錄
+        self.stage = ""  # 開新故事時目前在做什麼，外殼顯示在等待畫面上（例如「規劃故事大綱」）
 
     def set_api_key(self, api_key: str) -> None:
         self.client = genai.Client(api_key=api_key)
@@ -220,9 +221,14 @@ class Engine:
     # ---------- 對外介面 ----------
 
     def start(self, state: GameState) -> None:
-        """先規劃隱藏的故事大綱，再產生開場。"""
-        self.plan_arc(state)
-        self._advance(state, action=None)
+        """先規劃隱藏的故事大綱，再產生開場。要呼叫兩次 AI，比一般回合久，所以用 stage 告訴外殼進度。"""
+        try:
+            self.stage = "規劃故事大綱"
+            self.plan_arc(state)
+            self.stage = "寫開場"
+            self._advance(state, action=None)
+        finally:
+            self.stage = ""
 
     def plan_arc(self, state: GameState) -> None:
         """請 AI 規劃故事大綱。舊存檔沒有大綱時，依目前的劇情補一份，並依回合數決定從哪一幕接著走。"""
