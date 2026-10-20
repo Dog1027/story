@@ -2,9 +2,7 @@
 
 import asyncio
 import time
-from collections import Counter
 from collections.abc import Callable
-from pathlib import Path
 
 from google.genai import errors
 from rich.text import Text
@@ -19,70 +17,37 @@ from textual.widgets import Button, Checkbox, Input, OptionList, Static, TextAre
 
 from story.apikey import KEY_PATH, forget_api_key, get_saved_api_key, is_key_error, save_api_key
 from story.commands import COMMANDS, help_text
-from story.engine import DAY, TIMEOUT_ACTION, Engine, body_conditions, body_level, mind_conditions
+from story.common import (
+    SAVE_PATH,
+    CHAR_DELAY,
+    DEFAULT_PREMISE,
+    FAST_FACTOR,
+    LEVEL_COLORS,
+    PAUSE_AFTER,
+    SEVERITY_COLORS,
+    Snapshot,
+    change_groups,
+    ending_record,
+    load,
+    memory_text,
+    save,
+    snapshot,
+)
+from story.engine import LOG_PATH, TIMEOUT_ACTION, Engine, body_conditions, body_level, mind_conditions
 from story.models import GameState
+from story.players import MAX_NAME_LEN, InvalidName, Player, check_name
 
-SAVE_PATH = Path("save.json")
-DEFAULT_PREMISE = "你是一名失憶的旅人，在暴風雨夜醒來，發現自己躺在一座廢棄燈塔的底層，手裡握著一把不屬於你的鑰匙。"
-
-CHAR_DELAY = 0.03  # 每個字的間隔秒數
-FAST_FACTOR = 0.15  # 按一次 Enter 後，間隔縮成原本的幾倍
-PAUSE_AFTER = {"。": 0.25, "！": 0.25, "？": 0.25, "，": 0.1, "、": 0.08, "…": 0.15, "\n": 0.1}
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-SEVERITY_COLORS = {"輕": "#e0af68", "中": "#ff9e64", "重": "#f7768e"}
-LEVEL_COLORS = {"良好": "#9ece6a", "輕傷": "#e0af68", "受傷": "#ff9e64", "重傷": "#f7768e", "瀕死": "#db4b4b", "死亡": "#db4b4b"}
 THEME = "tokyo-night"  # 其他選擇：catppuccin-mocha、rose-pine、nord、dracula……
-
-
-def save(state: GameState) -> None:
-    SAVE_PATH.write_text(state.model_dump_json(indent=2), encoding="utf-8")
-
-
-def load() -> GameState | None:
-    if not SAVE_PATH.exists():
-        return None
-    return GameState.model_validate_json(SAVE_PATH.read_text(encoding="utf-8"))
-
-
-def memory_text(state: GameState) -> str:
-    events = "\n".join(f"  - {e}" for e in state.key_events) or "  （無）"
-    return (
-        f"[已確立的事實]\n  {'、'.join(state.flags) or '無'}\n\n"
-        f"[重大事件]\n{events}\n\n"
-        f"[長期摘要]\n  {state.summary or '（尚無）'}\n\n"
-        f"[近期記憶] {len(state.recent)} 回合原文，{len(state.unsummarized)} 回合等待壓縮"
-    )
 
 
 # ---------- 回合間的變化 ----------
 
-Snapshot = tuple[dict[str, str], Counter]  # (狀態名稱 → 程度, 背包物品數量)
-
-
-def snapshot(state: GameState) -> Snapshot:
-    return {c.name: c.severity for c in state.conditions}, Counter(state.inventory)
-
 
 def describe_changes(before: Snapshot, state: GameState) -> Text | None:
     """比較回合前後，列出狀態與背包的變化，例如「新增 右臂撕裂傷（重）　痊癒 左肘擦傷　獲得 油燈」。"""
-    old_conds, old_items = before
-    new_conds, new_items = snapshot(state)
-    order = ["輕", "中", "重"]
-    good, bad = "#9ece6a", "#f7768e"
-    groups: list[tuple[str, list[tuple[str, str]]]] = [
-        ("新增", [(f"{n}（{v}）", SEVERITY_COLORS[v]) for n, v in new_conds.items() if n not in old_conds]),
-        ("惡化", [(f"{n}（{old_conds[n]}→{v}）", bad) for n, v in new_conds.items()
-                if n in old_conds and order.index(v) > order.index(old_conds[n])]),
-        ("好轉", [(f"{n}（{old_conds[n]}→{v}）", good) for n, v in new_conds.items()
-                if n in old_conds and order.index(v) < order.index(old_conds[n])]),
-        ("痊癒", [(n, good) for n in old_conds if n not in new_conds]),
-        ("獲得", [(n, "") for n in (new_items - old_items).elements()]),
-        ("失去", [(n, "dim") for n in (old_items - new_items).elements()]),
-    ]
     parts: list[tuple[str, str]] = []
-    for label, items in groups:
-        if not items:
-            continue
+    for label, items in change_groups(before, state):
         parts.append((("　" if parts else "") + label + " ", "dim"))
         for i, item in enumerate(items):
             parts += [(" · ", "dim")] * bool(i) + [item]
@@ -159,18 +124,20 @@ class Dialog(ModalScreen):
 
 
 class ApiKeyDialog(Dialog):
-    """請玩家輸入 API key。回傳 (key, 是否儲存) 或 None。"""
+    """請玩家輸入 API key。回傳 (key, 是否儲存) 或 None。網頁版不提供儲存，key 只留在這次連線的記憶體裡。"""
 
-    def __init__(self, reason: str):
+    def __init__(self, reason: str, can_save: bool = True):
         super().__init__()
-        self.reason = reason
+        self.reason, self.can_save = reason, can_save
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static(self.reason, classes="title")
             yield Static("可以到 https://aistudio.google.com/apikey 免費申請。", classes="hint")
+            if not self.can_save:
+                yield Static("key 只用於這次連線，不會存到伺服器上；下次進來要重新輸入。", classes="hint")
             yield Input(placeholder="貼上 API key", password=True, id="key")
-            yield Checkbox(f"儲存到 {KEY_PATH}，下次自動使用", value=True, id="save")
+            yield Checkbox(f"儲存到 {KEY_PATH}，下次自動使用", value=True, id="save", disabled=not self.can_save)
             with Horizontal():
                 yield Button("離開", id="cancel", compact=True)
                 yield Button("確定", variant="primary", id="ok", compact=True)
@@ -180,7 +147,39 @@ class ApiKeyDialog(Dialog):
     def submit(self) -> None:
         key = self.query_one("#key", Input).value.strip()
         if key:
-            self.dismiss((key, self.query_one("#save", Checkbox).value))
+            self.dismiss((key, self.can_save and self.query_one("#save", Checkbox).value))
+
+    @on(Button.Pressed, "#cancel")
+    def cancel(self) -> None:
+        self.dismiss(None)
+
+
+class NameDialog(Dialog):
+    """網頁版：輸入名字。名字決定存檔，同一個名字同時只能有一個連線。回傳佔用成功的 Player 或 None。"""
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static("你的名字", classes="title")
+            yield Static("每個名字有自己的存檔，下次用同一個名字進來就能接著玩。", classes="hint")
+            yield Input(placeholder="例如：阿明", id="name", max_length=MAX_NAME_LEN)
+            yield Static("", id="error", classes="hint")
+            with Horizontal():
+                yield Button("離開", id="cancel", compact=True)
+                yield Button("進入", variant="primary", id="ok", compact=True)
+
+    @on(Input.Submitted)
+    @on(Button.Pressed, "#ok")
+    def submit(self) -> None:
+        error = self.query_one("#error", Static)
+        try:
+            player = Player(check_name(self.query_one("#name", Input).value))
+        except InvalidName as e:
+            error.update(str(e))
+            return
+        if not player.acquire():
+            error.update("這個名字正在遊戲中，請換一個名字，或等對方離開。")
+            return
+        self.dismiss(player)
 
     @on(Button.Pressed, "#cancel")
     def cancel(self) -> None:
@@ -378,8 +377,11 @@ class StoryApp(App):
         Binding("down", "move_choice(1)", show=False),
     ]
 
-    def __init__(self) -> None:
+    def __init__(self, web: bool = False) -> None:
         super().__init__()
+        self.web = web  # 網頁版：先問名字，存檔依名字分開，API key 不存到伺服器
+        self.player: Player | None = None
+        self.save_path = SAVE_PATH
         self.engine: Engine | None = None
         self.state: GameState | None = None
         self.busy = False
@@ -407,6 +409,10 @@ class StoryApp(App):
         cmd.border_subtitle = "/ 指令 · F1 說明"
         yield cmd
 
+    def on_unmount(self) -> None:
+        if self.player:
+            self.player.release()  # 連線異常中斷沒跑到這裡也沒關係：下次會發現鎖的程序已不存在而接手
+
     def on_mount(self) -> None:
         self.theme = THEME
         self.set_status()
@@ -417,13 +423,21 @@ class StoryApp(App):
 
     @work
     async def boot(self) -> None:
-        key = get_saved_api_key() or await self.ask_api_key("找不到 Gemini API key。")
+        if self.web:
+            self.player = await self.push_screen_wait(NameDialog())
+            if self.player is None:
+                self.exit()
+                return
+            self.save_path = self.player.save_path
+            key = await self.ask_api_key(f"{self.player.name}，請輸入你的 Gemini API key")
+        else:
+            key = get_saved_api_key() or await self.ask_api_key("找不到 Gemini API key。")
         if key is None:
             self.exit()
             return
-        self.engine = Engine(api_key=key)
+        self.engine = Engine(api_key=key, log_path=self.player.log_path if self.player else LOG_PATH)
 
-        state = load()
+        state = load(self.save_path)
         if state and not state.game_over and await self.push_screen_wait(
             ConfirmDialog("找到存檔，要繼續嗎？", yes="繼續", no="開新遊戲")
         ):
@@ -435,7 +449,7 @@ class StoryApp(App):
             await self.new_game()
 
     async def ask_api_key(self, reason: str) -> str | None:
-        result = await self.push_screen_wait(ApiKeyDialog(reason))
+        result = await self.push_screen_wait(ApiKeyDialog(reason, can_save=not self.web))
         if result is None:
             return None
         key, keep = result
@@ -453,7 +467,7 @@ class StoryApp(App):
         self.set_choices([])
         if await self.generate(lambda: self.engine.start(state)):
             self.state = state
-            save(state)
+            save(state, self.save_path)
             await self.show_turn()
         else:
             self.log_message("開場生成失敗。按 Ctrl+R 再試一次。", "ending")
@@ -474,7 +488,8 @@ class StoryApp(App):
                     if not is_key_error(e):
                         self.notify(str(e)[:300], title="出錯了", severity="error", timeout=8)
                         return False
-                    forget_api_key()
+                    if not self.web:  # 網頁版本來就沒有存 key
+                        forget_api_key()
                     key = await self.ask_api_key("API key 無效或沒有權限，請重新輸入。")
                     if key is None:
                         return False
@@ -491,11 +506,11 @@ class StoryApp(App):
         self.log_message(f"› {action}", "action")
         before = snapshot(self.state)
         if await self.generate(lambda: self.engine.act(self.state, action)):
-            save(self.state)
+            save(self.state, self.save_path)
             await self.show_turn(before)
         else:
             # act() 可能已經改了一半的狀態，從存檔還原
-            self.state = load() or self.state
+            self.state = load(self.save_path) or self.state
             self.set_choices(self.state.current_choices)
 
     # ---------- 顯示 ----------
@@ -554,13 +569,13 @@ class StoryApp(App):
         except Exception:
             return
         if state is self.state:  # 期間開了新局的話，不要用舊局覆蓋存檔
-            save(state)
+            save(state, self.save_path)
 
     async def show_ending(self) -> None:
         """故事結束：請 AI 寫尾聲，顯示在故事區，再跳出結局對話框。尾聲寫失敗也照樣能重玩。"""
         s = self.state
         if not s.epilogue and await self.generate(lambda: self.engine.write_epilogue(s)):
-            save(s)
+            save(s, self.save_path)
         if s.epilogue:
             self.log_message(f"─── {s.ending_title} ───", "ending")
             await self.typewrite(s.epilogue)
@@ -568,13 +583,7 @@ class StoryApp(App):
             self.log_message("─── 故事結束 ───", "ending")
 
         await self.wait_for_enter("按 Enter 查看結局")
-
-        days = (s.minutes or 0) // DAY + 1
-        dead = body_level(s) == "死亡"
-        record = f"共 {s.turn} 回合，歷時 {days} 天。\n" + ("你在這趟旅程中倒下了。" if dead else "你走到了故事的盡頭。")
-        if s.key_events:
-            record += "\n\n這趟旅程中：\n" + "\n".join(f"・{e}" for e in s.key_events[-5:])
-        if await self.push_screen_wait(EndingDialog(s.ending_title, record)):
+        if await self.push_screen_wait(EndingDialog(s.ending_title, ending_record(s))):
             await self.new_game(last_premise=s.premise)
         else:
             self.exit()

@@ -3,7 +3,7 @@
 這是一個由 LLM（Gemini）即時生成劇情的文字冒險遊戲。設計原則是 **LLM 負責說故事，程式負責記憶與把關**：AI 每回合只「提議」劇情與狀態變化，程式驗證後才寫進遊戲狀態。
 
 ```
-玩家行動
+玩家行動（終端機，或透過 web.py 的瀏覽器殼）
    │
    ▼
 ui.py ──────► engine.py ──────► Gemini
@@ -24,7 +24,7 @@ ui.py ──────► engine.py ──────► Gemini
 
 ### `__init__.py`：程式進入點
 
-只有 `main()`，負責啟動介面 `StoryApp`。`uv run story` 執行的就是這個函式（定義在 `pyproject.toml` 的 `[project.scripts]`）。
+只有 `main()`，負責啟動介面 `StoryApp`。`uv run story` 執行的就是這個函式（定義在 `pyproject.toml` 的 `[project.scripts]`）。帶 `--web` 參數時以網頁模式啟動：先問名字、存檔依名字分開、API key 不存到伺服器。
 
 ### `models.py`：資料結構
 
@@ -95,16 +95,29 @@ ui.py ──────► engine.py ──────► Gemini
 | `PREMISE_GENRES`、`PREMISE_SETTINGS` | 「幫我想」隨機挑選的題材與情境 | 14 種、8 種 |
 | `SYSTEM_PROMPT` | 給 AI 的寫作與遊戲規則 | — |
 
+### `common.py`：介面用的共用工具
+
+| 名稱 | 做什麼 |
+|---|---|
+| `save()`、`load()` | 存讀存檔（終端機版 `save.json`，網頁版由 `players.py` 指定路徑） |
+| `snapshot()`、`change_groups()` | 比較回合前後，列出「新增／惡化／好轉／痊癒／獲得／失去」，`ui.py` 再決定怎麼上色顯示 |
+| `ending_record()` | 結局對話框裡的旅程紀錄（回合數、天數、重大事件） |
+| `memory_text()` | 「程式記住的東西」顯示的內容 |
+| `CHAR_DELAY`、`FAST_FACTOR`、`PAUSE_AFTER` | 打字效果的速度與標點停頓 |
+| `SEVERITY_COLORS`、`LEVEL_COLORS` | 狀態程度與整體狀態的顏色 |
+| `DEFAULT_PREMISE` | 預設的故事前提 |
+
 ### `ui.py`：終端機介面
 
-用 [Textual](https://textual.textualize.io/) 寫成的介面，負責顯示、輸入、存讀檔與遊戲流程。所有 AI 呼叫都透過 `Engine`，自己不寫遊戲規則。
+用 [Textual](https://textual.textualize.io/) 寫成的介面，負責顯示、輸入與遊戲流程。所有 AI 呼叫都透過 `Engine`，自己不寫遊戲規則。
 
 **對話框**
 
 | 類別 | 用途 |
 |---|---|
 | `Dialog` | 所有對話框共用的樣式，以及方向鍵規則（←→ 在按鈕間移動、↑↓ 在列之間移動） |
-| `ApiKeyDialog` | 輸入 Gemini API key |
+| `ApiKeyDialog` | 輸入 Gemini API key（網頁模式不提供儲存） |
+| `NameDialog` | 網頁模式：輸入名字並佔用 |
 | `PremiseDialog` + `PremiseArea` | 新故事：多行輸入框、限時模式勾選、「幫我想」按鈕 |
 | `ConfirmDialog` | 是／否確認 |
 | `EndingDialog` | 結局名稱、旅程紀錄、再玩一次 |
@@ -124,9 +137,33 @@ ui.py ──────► engine.py ──────► Gemini
 | `start_timer()`、`tick()` | 限時模式的倒數（開著對話框時暫停） |
 | `submit()` | 處理輸入框：指令、數字選項、自由行動、打字中按 Enter 加速 |
 
-**輔助函式**：`save()`、`load()`（存讀檔）、`snapshot()`、`describe_changes()`（比較回合前後，產生「新增／惡化／痊癒／獲得」那一行）、`memory_text()`（`/state` 顯示的內容）。
+**輔助函式**：`describe_changes()`，把 `common.change_groups()` 的結果轉成終端機的彩色文字。
 
-**可以調整的常數**：`THEME`（配色主題）、`CHAR_DELAY`、`FAST_FACTOR`、`PAUSE_AFTER`（打字速度與停頓）、`SEVERITY_COLORS`、`LEVEL_COLORS`（狀態顏色）、`DEFAULT_PREMISE`（預設故事前提）。
+**可以調整的常數**：`THEME`（配色主題）。
+
+### `web.py`：網頁殼
+
+用 [textual-serve](https://github.com/Textualize/textual-serve) 把終端機版原封不動地放進瀏覽器。每開一個分頁，伺服器就在背景用 `python -m story --web` 啟動一個網頁模式的遊戲，畫面透過網頁上的終端機模擬器（xterm.js）顯示。這裡不寫任何介面或遊戲邏輯，所以改功能時只要改 `ui.py`，網頁版會一起變。
+
+| 名稱 | 做什麼 |
+|---|---|
+| `LimitedServer` | 限制同時在線人數（`MAX_SESSIONS`），滿了就顯示提示並關閉連線 |
+| `main()` | `uv run story-web` 的進入點；參數 `--host`、`--port`、`--public-url` |
+
+預設只監聽 `127.0.0.1`。`--host 0.0.0.0` 會開放其他電腦連線，但目前沒有 HTTPS，玩家的 API key 會以明文傳送。
+
+### `players.py`：網頁版的玩家
+
+| 名稱 | 做什麼 |
+|---|---|
+| `check_name()` | 檢查名字：不能空白、最多 20 字、只能有文字數字底線連字號（名字會變成檔名，所以擋掉 `../` 這類字元） |
+| `Player` | 一個玩家的存檔、紀錄檔、鎖定檔路徑（都在 `saves/`）；`acquire()` 佔用名字，`release()` 釋放 |
+
+同一個名字同時只能有一個連線：佔用時建立 `saves/名字.lock`，裡面記錄程序編號。連線異常中斷沒有釋放時，下一個人會發現那個程序已經不存在，直接接手。
+
+### `__main__.py`：`python -m story` 的進入點
+
+讓 `python -m story` 也能啟動終端機版。網頁殼用 `python -m story --web` 在背景啟動遊戲。
 
 ### `commands.py`：指令清單
 
@@ -147,7 +184,7 @@ ui.py ──────► engine.py ──────► Gemini
 
 | 檔案 | 用途 |
 |---|---|
-| `pyproject.toml` | 專案設定：相依套件（`google-genai`、`pydantic`、`textual`）、執行指令 `story` |
+| `pyproject.toml` | 專案設定：相依套件（`google-genai`、`pydantic`、`textual`、`textual-serve`）、執行指令 `story` 與 `story-web` |
 | `uv.lock` | `uv` 鎖定的套件版本，確保每台電腦裝到一樣的版本 |
 | `.python-version` | 使用的 Python 版本（3.14） |
 | `.gitignore` | 不進版本控制的檔案：虛擬環境、存檔、紀錄檔等 |
@@ -158,8 +195,9 @@ ui.py ──────► engine.py ──────► Gemini
 
 | 檔案 | 用途 |
 |---|---|
-| `save.json` | 存檔，每回合自動更新。內容就是 `GameState` |
-| `story_log.jsonl` | 每回合一行的紀錄：玩家行動、AI 提議的變化、套用前後的狀態、遊戲內時間。用來查「為什麼會這樣」 |
+| `save.json` | 終端機版的存檔，每回合自動更新。內容就是 `GameState` |
+| `saves/名字.json`、`saves/名字.log.jsonl`、`saves/名字.lock` | 網頁版每個玩家的存檔、每回合紀錄、在線鎖定 |
+| `story_log.jsonl` | 終端機版每回合一行的紀錄：玩家行動、AI 提議的變化、套用前後的狀態、遊戲內時間。用來查「為什麼會這樣」 |
 | `~/.config/story/api_key` | 儲存的 API key（在家目錄，不在專案裡） |
 
-這兩個檔案（`save.json`、`story_log.jsonl`）會產生在執行 `uv run story` 時所在的資料夾。
+這些檔案會產生在執行 `uv run story` 或 `uv run story-web` 時所在的資料夾。

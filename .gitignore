@@ -12,3 +12,4 @@ wheels/
 # Game saves
 save.json
 story_log.jsonl
+saves/

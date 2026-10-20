@@ -108,8 +108,9 @@ SUMMARY_SYSTEM = "你負責壓縮文字冒險遊戲的劇情紀錄。用繁體�
 
 
 class Engine:
-    def __init__(self, api_key: str | None = None, client: genai.Client | None = None):
+    def __init__(self, api_key: str | None = None, client: genai.Client | None = None, log_path: Path = LOG_PATH):
         self.client = client or genai.Client(api_key=api_key)
+        self.log_path = log_path  # 網頁版每個玩家各自一份紀錄
 
     def set_api_key(self, api_key: str) -> None:
         self.client = genai.Client(api_key=api_key)
@@ -221,7 +222,7 @@ class Engine:
             "time": clock_text(state.minutes),
         }
         try:
-            with LOG_PATH.open("a", encoding="utf-8") as f:
+            with self.log_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         except OSError:
             pass  # 紀錄寫不進去不影響遊戲
