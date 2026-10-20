@@ -33,7 +33,8 @@ src/story/
 ├── __main__.py          python -m story
 ├── core/                核心：完全不知道有任何介面，也不 import shells/
 │   ├── __init__.py      對外只匯出 StoryCore、Reply、Status 等
-│   ├── session.py       StoryCore
+│   ├── session.py       StoryCore（單人）
+│   ├── party.py         多人模式：PartyEngine（繼承 Engine）、PartyCore（繼承 StoryCore）
 │   ├── engine.py        遊戲規則與 AI
 │   ├── models.py        資料結構
 │   └── records.py       存讀檔、回合變化、結局紀錄
@@ -42,6 +43,7 @@ src/story/
     │   ├── app.py       主畫面 StoryApp
     │   ├── dialogs.py   對話框
     │   ├── style.py     配色、打字節奏
+    │   ├── prose.py     懂中文的換行
     │   └── commands.py  指令與快捷鍵
     ├── web.py           網頁殼
     ├── plain.py         純文字外殼
@@ -62,6 +64,7 @@ src/story/
 - 沒有參數：Textual 外殼 `StoryApp`
 - `--web`：網頁模式的 `StoryApp`（由網頁殼使用），先問名字、存檔依名字分開、API key 不存到伺服器
 - `--plain`：純文字外殼
+- `--party`：多人模式（可以和 `--plain` 一起用）
 
 ## 核心 `core/`
 
@@ -77,12 +80,16 @@ src/story/
 | `ConditionChange` | AI 回報的一個狀態：名稱、類別（身體／精神）、程度（輕／中／重） |
 | `StoryArc`、`Act` | 開場前規劃的隱藏大綱：目標、四幕與各自的里程碑、可能的結局 |
 | `Epilogue` | 故事結束後的尾聲與結局名稱 |
+| `PartyBeat`、`CharacterUpdate` | 多人模式每回合的回傳：一段包含所有角色的劇情，加上每位角色各自的狀態、物品變化與選項 |
+
+單人模式和多人模式用不同的回傳格式，單人模式送給 AI 的內容因此不受多人模式影響。
 
 **程式保存的狀態**
 
 | 類別 | 用途 |
 |---|---|
-| `GameState` | 整個遊戲的狀態，存檔就是把它轉成 JSON。包含回合、身體與精神狀況、背包、事實、遊戲內時鐘、大綱進度、分層記憶、目前畫面 |
+| `GameState` | 整個遊戲的狀態，存檔就是把它轉成 JSON。包含回合、身體與精神狀況、背包、事實、遊戲內時鐘、大綱進度、分層記憶、目前畫面。`party` 是多人模式的隊伍，空的代表單人模式 |
+| `Character` | 多人模式的一位角色：名字、狀態、背包、目前的選項、是否還活著 |
 | `Condition` | 玩家身上的一個狀態，另外記錄在目前程度下經過了多久，用來計算痊癒 |
 | `Turn` | 一回合的原文紀錄（劇情 + 玩家行動），用於近期記憶 |
 
@@ -114,6 +121,10 @@ src/story/
 | `_apply_conditions()` | 狀態規則：依時間自然痊癒、好轉一回合最多一級、身體的中重傷不能直接移除 |
 | `_write_death()` | 程式判定傷重死亡、但 AI 寫的劇情裡主角還活著時，請 AI 補寫死亡結局 |
 | `_log_turn()` | 把每回合的變化寫進 `story_log.jsonl` |
+
+**給多人模式覆寫的掛勾**（這裡是單人的版本）：類別屬性 `system_prompt`、`beat_schema`、`turn_label`、`epilogue_look_back`，以及 `_cast_section()`（規劃大綱時的主角名單）、`_action_text()`（記在近期記憶裡的行動）、`_status_section()`（提示詞裡的狀態區塊）、`_instruction_sections()`（提示詞最後的行動與指示）。提示詞的其他部分、呼叫 AI（`_call()`）、尾聲、大綱、記憶壓縮都由單人與多人共用。
+
+**套用規則的函式**（單人、多人共用，單人傳 `GameState`、多人傳 `Character`）：`advance_clock()`、`apply_condition_changes()`、`apply_items()`、`apply_story_progress()`、`clamp_time_limit()`。
 
 **計算規則的函式**：`clock_text()`（遊戲內時間的文字）、`body_score()`、`body_level()`（傷勢分數與整體狀態，只算身體狀態）、`body_conditions()`、`mind_conditions()`、`is_key_error()`（判斷 Gemini 錯誤是不是 key 無效）。
 
@@ -183,7 +194,30 @@ core.set_api_key("…")                    # key 失效時換一個
 | `/restart` | 遊戲中、結束後 | 重新開始（遊戲中會先確認） |
 | `/state`、`/help` | 任何時候 | 記憶、說明 |
 
+**給多人模式覆寫的掛勾**：`_resumable()`、`_new_state()`、`_current_choices()`、`_take_action()`、`_snapshot()`、`_turn_failed()`，見下面的 `core/party.py`。
+
 **內部**：每個階段一個處理函式（`_on_playing()` 等）；LLM 失敗時從存檔還原、留在原階段；回合結束後在背景執行緒壓縮記憶，下一次呼叫 LLM 前會先等它完成；`render_text()` 負責組出純文字。
+
+### `core/party.py`：多人模式
+
+多人模式疊在單人模式上：`PartyEngine` 繼承 `Engine`、`PartyCore` 繼承 `StoryCore`，只覆寫「主角變成一支隊伍」不一樣的地方。規則（傷勢、痊癒、時間、背包、限時）、記憶、大綱與節奏、存檔、文字指令、錯誤處理都直接沿用單人模式。
+
+**`PartyEngine`**：系統提示詞換成 `PARTY_SYSTEM_PROMPT`、回傳格式換成 `PartyBeat`；提示詞的狀態區塊改成「隊伍」，並由程式輪流指定「焦點」角色；`_apply()` 對每位角色各自套用單人的規則，傷重的角色倒下（`_write_deaths()` 請 AI 補寫倒下的場景），全員倒下就結束。
+
+**`PartyCore(api_key, players)`**：介面一樣是 `send(文字) → Reply`。覆寫 `StoryCore` 的掛勾：
+
+| 掛勾 | 單人模式 | 多人模式 |
+|---|---|---|
+| `_resumable()` | 沒結束的存檔就能接續 | 還要玩家名單相同 |
+| `_new_state()` | 一位主角 | 建立隊伍 |
+| `_current_choices()` | 主角的選項 | 現在輪到的角色的選項 |
+| `_take_action()` | 直接推進一回合 | 先記下這位角色的行動，所有人都行動後才推進；`/timeout` 時還沒行動的人都算遲疑 |
+| `_snapshot()`、`_turn_reply()` | 主角的變化 | 每位角色各自的變化 |
+| `_turn_failed()` | 不用做事 | 讓最後輸入的人重送同一句就能重試，其他人的行動保留 |
+
+回覆的差別：`reply.actor` 是現在輪到誰；`reply.party` 是每位角色的狀態（`Status` 多了 `name`、`alive`）；`reply.party_changes` 是每位角色這回合的變化。存檔是 `party_save.json`。
+
+目前的外殼是「輪流在同一台電腦上輸入」；之後做網路多人時，只要讓每位玩家各自送文字進來即可。
 
 ### `core/records.py`：紀錄工具
 
@@ -209,6 +243,7 @@ core.set_api_key("…")                    # key 失效時換一個
 |---|---|
 | `Dialog` | 所有對話框共用的樣式，以及方向鍵規則（←→ 在按鈕間移動、↑↓ 在列之間移動） |
 | `ApiKeyDialog` | 輸入 Gemini API key（網頁模式不提供儲存） |
+| `PartyNamesDialog` | 多人模式：輸入 2 到 4 位玩家的名字 |
 | `NameDialog` | 網頁模式：輸入名字並佔用 |
 | `PremiseDialog` + `PremiseArea` | 新故事：多行輸入框、限時模式勾選、「幫我想」按鈕（送 `/suggest` 給核心） |
 | `ConfirmDialog` | 是／否確認（找到存檔、重新開始） |
@@ -237,6 +272,10 @@ core.set_api_key("…")                    # key 失效時換一個
 | `THEME` | 配色主題（`tokyo-night`，可換成 `catppuccin-mocha`、`rose-pine`、`nord` 等） |
 | `CHAR_DELAY`、`FAST_FACTOR`、`PAUSE_AFTER` | 打字效果的速度、按 Enter 後的加速倍率、標點停頓 |
 | `SEVERITY_COLORS`、`LEVEL_COLORS`、`TONE_STYLES` | 狀態程度、整體狀態、變化語氣的顏色 |
+
+**`prose.py`：中文換行**
+
+Textual 底層的 Rich 只會在空格處換行，是為英文設計的。AI 常在英文名字前後加空格（「看向 Bob，發現……」），空格後面整段中文會被當成一個長單字推到下一行，造成提早換行；句號也可能落在行首。`wrap()` 改用中文的規則：中文字之間哪裡都能換行、英文單字保持完整、標點不放行首、開頭的引號不留在行尾。`Prose` 是用這個規則顯示的文字區塊，劇情和尾聲都用它，視窗寬度改變時會重新排版。
 
 **`commands.py`：指令與快捷鍵**
 
@@ -292,11 +331,13 @@ uv run pytest -m "not slow"    # 略過會啟動真的伺服器的測試（約 1
 
 | 檔案 | 驗證什麼 |
 |---|---|
-| `conftest.py` | 共用的假物件：`FakeGemini`（假的 Gemini，讓真的 Engine 跑規則）、`FakeEngine`（假的 engine，讓核心與外殼的測試能精準控制每回合）、`beat()`、`cond()` |
+| `conftest.py` | 共用的假物件：`FakeGemini`（假的 Gemini，讓真的 `Engine`／`PartyEngine` 跑規則）、`FakeEngine`／`FakePartyEngine`（假的 engine，讓核心與外殼的測試能精準控制每回合）、`beat()`、`pbeat()`、`upd()`、`cond()` |
 | `test_engine.py` | 遊戲規則：狀態增減與好轉限制、身體／精神、整體狀態與死亡、時間與痊癒、限時秒數、背包與事實、大綱與節奏提醒、提示詞內容、記憶壓縮 |
 | `test_records.py` | 存讀檔、舊存檔相容、回合變化的語氣、結局紀錄 |
 | `test_core.py` | 核心的文字協定：開新局、幫我想、限時切換、`action_for()`、各種指令、key 失效與重送、重新開始、結局、讀檔接續 |
+| `test_party.py` | 多人模式：每位角色各自的規則、未知角色與漏掉的角色、單人倒下與全員倒下、焦點輪替、輪流輸入、時間到、失敗重試、讀檔；以及接上真的 engine 的整合測試 |
 | `test_players.py` | 名字檢查、同名鎖定、接手異常中斷的鎖 |
+| `test_prose.py` | 中文換行：英文名字不造成提早換行、英文單字不拆開、標點不在行首、引號不留在行尾 |
 | `test_textual.py` | Textual 外殼：模擬按鍵跑完整流程，包括打字與狀態列時機、倒數與暫停、對話框方向鍵、結局、讀檔、網頁模式 |
 | `test_shells.py` | 純文字外殼玩完整局；網頁殼（`slow`）：每個連線是獨立的遊戲、同時在線人數上限 |
 
@@ -320,6 +361,7 @@ uv run pytest -m "not slow"    # 略過會啟動真的伺服器的測試（約 1
 | 檔案 | 用途 |
 |---|---|
 | `save.json` | 終端機版的存檔，每回合自動更新。內容就是 `GameState` |
+| `party_save.json`、`party_log.jsonl` | 多人模式的存檔與每回合紀錄 |
 | `saves/名字.json`、`saves/名字.log.jsonl`、`saves/名字.lock` | 網頁版每個玩家的存檔、每回合紀錄、在線鎖定 |
 | `story_log.jsonl` | 終端機版每回合一行的紀錄：玩家行動、AI 提議的變化、套用前後的狀態、遊戲內時間。用來查「為什麼會這樣」 |
 | `~/.config/story/api_key` | 儲存的 API key（在家目錄，不在專案裡） |

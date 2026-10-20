@@ -14,11 +14,12 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Input, OptionList, Static
 
-from story.core import ChangeGroups, Reply, Status, StoryCore
+from story.core import ChangeGroups, PartyCore, Reply, Status, StoryCore
 from story.shells.apikey import forget_api_key, get_saved_api_key, save_api_key
 from story.shells.players import Player
 from story.shells.textual.commands import COMMANDS, help_text
-from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, NameDialog, PremiseDialog
+from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, NameDialog, PartyNamesDialog, PremiseDialog
+from story.shells.textual.prose import Prose
 from story.shells.textual.style import CHAR_DELAY, FAST_FACTOR, LEVEL_COLORS, PAUSE_AFTER, SEVERITY_COLORS, SPINNER, THEME, TONE_STYLES
 
 
@@ -86,9 +87,11 @@ class StoryApp(App):
         Binding("down", "move_choice(1)", show=False),
     ]
 
-    def __init__(self, web: bool = False) -> None:
+    def __init__(self, web: bool = False, party: bool = False) -> None:
         super().__init__()
         self.web = web  # 網頁版：先問名字，存檔依名字分開，API key 不存到伺服器
+        self.party = party  # 多人模式：大家輪流在這台電腦上輸入行動
+        self.actor = ""  # 多人模式：現在輪到誰
         self.player: Player | None = None
         self.core: StoryCore | None = None
         self.choices: list[str] = []
@@ -141,7 +144,13 @@ class StoryApp(App):
         if key is None:
             self.exit()
             return
-        if self.player:
+        if self.party:
+            names = await self.push_screen_wait(PartyNamesDialog())
+            if names is None:
+                self.exit()
+                return
+            self.core = PartyCore(api_key=key, players=names)
+        elif self.player:
             self.core = StoryCore(api_key=key, save_path=self.player.save_path, log_path=self.player.log_path)
         else:
             self.core = StoryCore(api_key=key)
@@ -162,7 +171,8 @@ class StoryApp(App):
         """送一句文字給核心並顯示回覆。echo 是要先顯示在故事區的玩家行動。"""
         if self.busy:
             return
-        self.stop_timer()
+        if not self.party:  # 多人模式的倒數以整回合為單位，換人輸入時繼續跑
+            self.stop_timer()
         if echo:
             self.set_choices([])
             self.log_message(f"› {echo}", "action")
@@ -196,6 +206,9 @@ class StoryApp(App):
     async def handle(self, reply: Reply) -> None:
         """依照回覆的階段與欄位更新畫面。"""
         self.render_mode(reply.timed)
+        self.actor = reply.actor
+        if reply.phase != "playing":
+            self.stop_timer()
         if reply.info:
             self.push_screen(InfoDialog(*reply.info))
         if reply.error == "api":
@@ -239,10 +252,7 @@ class StoryApp(App):
 
     # ---------- 顯示 ----------
 
-    def set_status(self, status: Status | None) -> None:
-        if status is None:
-            self.query_one("#status", Static).update(Text("Story", style="dim"))
-            return
+    def set_status(self, status: Status | None, party: list[Status] | None = None) -> None:
         muted = "dim"
 
         def listed(conds: list[tuple[str, str]], first_sep: str) -> list[tuple[str, str]]:
@@ -250,6 +260,23 @@ class StoryApp(App):
             for i, (name, severity) in enumerate(conds):
                 parts += [(" · " if i else first_sep, muted), (name, SEVERITY_COLORS[severity])]
             return parts
+
+        if party:
+            lines = [Text.assemble(("回合 ", muted), (str(party[0].turn), "bold"))]
+            for st in party:
+                if not st.alive:
+                    lines.append(Text.assemble((st.name, "bold dim"), ("  已倒下", muted)))
+                    continue
+                lines.append(Text.assemble(
+                    (st.name, "bold"), ("  ", ""), (st.level, f"bold {LEVEL_COLORS[st.level]}"), *listed(st.body, "  "),
+                    *([("     精神 ", muted)] + listed(st.mind, "") if st.mind else []),
+                    ("     背包 ", muted), (" · ".join(st.inventory) or "空", ""),
+                ))
+            self.query_one("#status", Static).update(Text("\n").join(lines))
+            return
+        if status is None:
+            self.query_one("#status", Static).update(Text("Story", style="dim"))
+            return
 
         bar = Text.assemble(
             ("回合 ", muted), (str(status.turn), "bold"),
@@ -274,7 +301,10 @@ class StoryApp(App):
             await self.typewrite(reply.narration)
             if changes := describe_changes(reply.changes):
                 self.log_message(changes, "changes")
-        self.set_status(reply.status)
+            for name, groups in reply.party_changes:
+                self.log_message(Text.assemble((f"{name}　", "bold"), describe_changes(groups)), "changes")
+            self.stop_timer()
+        self.set_status(reply.status, reply.party)
         self.set_choices(reply.choices)
         if reply.narration and reply.time_limit:
             self.start_timer(reply.time_limit)
@@ -302,24 +332,29 @@ class StoryApp(App):
 
     async def typewrite(self, text: str) -> None:
         """一個字一個字顯示。按 Enter 加速，再按一次直接顯示全部。"""
-        widget = self.log_message("", "narration")
         log = self.query_one("#log", VerticalScroll)
+        widget = Prose(classes="narration")  # 懂中文換行規則的文字區塊
+        log.mount(widget)
         self.typing, self.speed, self.skip = True, 1.0, False
         try:
             for i, ch in enumerate(text, 1):
                 if self.skip:
                     break
-                widget.update(text[:i])
+                widget.set_text(text[:i])
                 log.scroll_end(animate=False)
                 await asyncio.sleep((CHAR_DELAY + PAUSE_AFTER.get(ch, 0)) * self.speed)
         finally:
-            widget.update(text)
+            widget.set_text(text)
             log.scroll_end(animate=False)
             self.typing = False
 
     def set_choices(self, choices: list[str]) -> None:
         self.choices = list(choices)
         options = self.query_one("#choices", OptionList)
+        options.border_title = f"輪到 {self.actor}" if self.actor else "接下來"
+        self.query_one("#cmd", Input).placeholder = (
+            f"輪到 {self.actor}：↑↓ 選擇，或寫下行動" if self.actor else "↑↓ 選擇，或寫下你的行動"
+        )
         options.clear_options()
         options.add_options([f"{i}. {c}" for i, c in enumerate(choices, 1)])
         options.set_class(not choices, "-empty")
@@ -377,7 +412,7 @@ class StoryApp(App):
             self.frame = (self.frame + 1) % len(SPINNER)
             self.busy_line.update(f"{SPINNER[self.frame]} 故事生成中…")
         # 開著對話框或指令選單時暫停倒數
-        if self.time_left <= 0 or isinstance(self.screen, ModalScreen):
+        if self.time_left <= 0 or self.busy or isinstance(self.screen, ModalScreen):
             return
         self.time_left = max(0.0, self.time_left - elapsed)
         self.render_timer()
@@ -421,11 +456,16 @@ class StoryApp(App):
             else:
                 self.run_worker(self.send(raw))  # 交給核心，它會回覆「沒有這個指令」
             return
-        self.run_worker(self.send(raw, echo=self.core.action_for(raw) or ""))
+        self.run_worker(self.send(raw, echo=self.echo_for(raw)))
 
     def choose_index(self, index: int) -> None:
         text = str(index + 1)
-        self.run_worker(self.send(text, echo=self.core.action_for(text) or ""))
+        self.run_worker(self.send(text, echo=self.echo_for(text)))
+
+    def echo_for(self, text: str) -> str:
+        """送出前先顯示的行動；多人模式加上是誰的行動。"""
+        action = self.core.action_for(text) or ""
+        return f"{self.actor}：{action}" if action and self.actor else action
 
     def action_move_choice(self, step: int) -> None:
         if isinstance(self.screen, ModalScreen):

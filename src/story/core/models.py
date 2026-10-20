@@ -47,6 +47,33 @@ class StoryBeat(BaseModel):
     game_over: bool = Field(description="故事是否在本回合結束（死亡、達成結局等）")
 
 
+class CharacterUpdate(BaseModel):
+    """多人模式：AI 回報某一位角色這回合的變化與下一步的選項。"""
+
+    name: str = Field(description="角色名字，必須是「隊伍」裡的名字")
+    choices: list[str] = Field(description="給這位角色的 2-4 個行動選項，每個一句話；角色已死亡時留空")
+    conditions_changed: list[ConditionChange] = Field(description="這位角色新出現的狀態，或程度改變的既有狀態")
+    conditions_removed: list[str] = Field(description="這位角色痊癒或消失的既有狀態名稱")
+    items_gained: list[str] = Field(description="這位角色本回合獲得的物品名稱")
+    items_lost: list[str] = Field(description="這位角色本回合失去或用掉的物品名稱")
+
+
+class PartyBeat(BaseModel):
+    """多人模式每回合的回傳：一段包含所有角色的劇情，加上每位角色各自的變化。"""
+
+    narration: str = Field(description="本回合的劇情敘述，包含每位角色行動的結果，200-400 字；提到角色時用名字")
+    character_updates: list[CharacterUpdate] = Field(description="隊伍中每位角色各一筆，順序和「隊伍」相同")
+    time_passed: TimeSpan = Field(
+        description="本回合經過的時間：瞬間＝打鬥閃避；片刻＝對話、搜索；一陣子＝趕路，約一小時；一夜＝睡覺"
+    )
+    start_time_of_day: TimeOfDay = Field(description="現在的時段；只在開場或時間「尚未確定」時採用")
+    time_limit: int = Field(description="限時模式下緊迫時的反應秒數，否則為 0")
+    milestone_reached: bool = Field(description="本回合是否達成了「故事進度」中目前這一幕的里程碑")
+    flags_set: list[str] = Field(description="新確立的長期事實，例如「與守門人結仇」；通常為空")
+    key_event: str = Field(description="改變故事走向的大事，一句話；大多數回合為空字串")
+    game_over: bool = Field(description="故事是否在本回合自然走到結局")
+
+
 class Act(BaseModel):
     name: str = Field(description="這一幕的名稱，4-8 字")
     milestone: str = Field(description="這一幕結束前必須發生的關鍵事件，一句話，要具體可判斷")
@@ -74,6 +101,16 @@ class Turn(BaseModel):
     action: str  # 玩家在看完 narration 之後做的事
 
 
+class Character(BaseModel):
+    """多人模式的一位角色。單人模式不用這個，主角的狀態直接放在 GameState 上。"""
+
+    name: str
+    conditions: list[Condition] = Field(default_factory=list)
+    inventory: list[str] = Field(default_factory=list)
+    choices: list[str] = Field(default_factory=list)  # 這位角色目前的選項
+    alive: bool = True
+
+
 class GameState(BaseModel):
     """所有程式記住的東西。存檔就是把它序列化成 JSON。"""
 
@@ -81,6 +118,7 @@ class GameState(BaseModel):
     turn: int = 0
     conditions: list[Condition] = Field(default_factory=list)  # 身體與精神狀態，空的代表狀況良好
     timed_mode: bool = False  # 限時模式：緊急情況要在時間內做出決定
+    party: list[Character] = Field(default_factory=list)  # 多人模式的隊伍；空的代表單人模式（主角用下面的 conditions、inventory）
     arc: StoryArc | None = None  # 隱藏的故事大綱（舊存檔沒有，會在下回合補上）
     act: int = 0  # 目前在第幾幕（0-3）
     act_turns: int = 0  # 在目前這一幕已經待了幾回合

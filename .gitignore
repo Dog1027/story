@@ -14,3 +14,5 @@ save.json
 story_log.jsonl
 saves/
 .*.tmp
+party_save.json
+party_log.jsonl

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from story.core.engine import Engine
-from story.core.models import Condition, StoryArc, StoryBeat
+from story.core.models import Condition, PartyBeat, StoryArc, StoryBeat
 
 
 @pytest.fixture(autouse=True)
@@ -29,6 +29,21 @@ def beat(**fields) -> StoryBeat:
         items_gained=[], items_lost=[], flags_set=[], key_event="", game_over=False,
     )
     return StoryBeat(**{**base, **fields})
+
+
+def pbeat(*updates, **fields) -> PartyBeat:
+    """多人模式的 AI 回覆。updates 用 upd() 建立。"""
+    base = dict(
+        narration="大家各自行動。", character_updates=list(updates), time_passed="片刻", start_time_of_day="傍晚",
+        time_limit=0, milestone_reached=False, flags_set=[], key_event="", game_over=False,
+    )
+    return PartyBeat(**{**base, **fields})
+
+
+def upd(name: str, **fields) -> dict:
+    """多人模式中一位角色的變化。"""
+    base = dict(name=name, choices=["前進", "等待"], conditions_changed=[], conditions_removed=[], items_gained=[], items_lost=[])
+    return {**base, **fields}
 
 
 def cond(name: str, severity: str, kind: str = "身體") -> dict:
@@ -60,21 +75,23 @@ class FakeGemini:
     def generate_content(self, model, contents, config):
         self.prompts.append(contents)
         schema = getattr(config, "response_schema", None)
-        if schema is StoryBeat:
+        if schema in (StoryBeat, PartyBeat):
             return SimpleNamespace(parsed=self.beats.pop(0), candidates=[])
         if schema is StoryArc:
             return SimpleNamespace(parsed=self.arc)
         if schema is not None:  # Epilogue
             return SimpleNamespace(parsed=schema(title="燈塔守望者", text="多年以後，燈塔仍會亮起。"))
+        if "傷重倒下的場景" in contents:
+            return SimpleNamespace(text="（倒下的場景）")
         if "故事前提" in contents and "題材" in contents:
             return SimpleNamespace(text=self.premise)
         return SimpleNamespace(text=self.summary)
 
 
-def make_engine(*beats, **kwargs) -> tuple[Engine, FakeGemini]:
-    """用假的 Gemini 建立真的 Engine，所以 engine 的規則都會實際執行。"""
+def make_engine(*beats, engine_class=Engine, **kwargs) -> tuple[Engine, FakeGemini]:
+    """用假的 Gemini 建立真的 Engine（多人模式傳 engine_class=PartyEngine），所以 engine 的規則都會實際執行。"""
     gemini = FakeGemini(beats, **kwargs)
-    return Engine(client=gemini), gemini
+    return engine_class(client=gemini), gemini
 
 
 # ---------- 給核心與外殼用的假 engine（不跑規則，直接改狀態） ----------
@@ -123,6 +140,46 @@ class FakeEngine:
 
     def write_epilogue(self, state):
         state.ending_title, state.epilogue = "燈塔守望者", "多年以後，燈塔仍會亮起。"
+
+
+class FakePartyEngine:
+    """取代 Engine 的多人部分，精準控制每回合。"""
+
+    def __init__(self):
+        self.rounds: list[dict] = []
+        self.fail_with: Exception | None = None
+
+    def set_api_key(self, key):
+        self.fail_with = None
+
+    def needs_compaction(self, state):
+        return False
+
+    def suggest_premise(self, avoid=""):
+        return "AI 想的開頭"
+
+    def start(self, state):
+        state.turn, state.minutes = 1, 600
+        state.current_narration = "兩人在燈塔醒來。"
+        for c in state.party:
+            c.choices = [f"{c.name}往上爬", f"{c.name}躲起來"]
+
+    def act(self, state, actions):
+        if self.fail_with:
+            state.turn += 99
+            raise self.fail_with
+        self.rounds.append(dict(actions))
+        state.turn += 1
+        state.current_narration = "；".join(f"{k}{v}" for k, v in actions.items())
+        if state.turn == 2:
+            state.party[0].inventory.append("油燈")
+        if state.turn >= 3:
+            state.party[0].alive, state.party[0].choices = False, []
+        if state.turn >= 4:
+            state.game_over = True
+
+    def write_epilogue(self, state):
+        state.ending_title, state.epilogue = "燈塔雙人行", "兩人的故事結束了。"
 
 
 class InvalidKeyError(RuntimeError):

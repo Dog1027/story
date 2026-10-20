@@ -45,8 +45,17 @@ def memory_text(state: GameState) -> str:
 def ending_record(state: GameState) -> str:
     """結局的旅程紀錄。遊戲內時間只在這裡揭曉。"""
     days = (state.minutes or 0) // DAY + 1
-    dead = body_level(state) == "死亡"
-    record = f"共 {state.turn} 回合，歷時 {days} 天。\n" + ("你在這趟旅程中倒下了。" if dead else "你走到了故事的盡頭。")
+    record = f"共 {state.turn} 回合，歷時 {days} 天。\n"
+    if state.party:
+        fallen = [c.name for c in state.party if not c.alive]
+        if len(fallen) == len(state.party):
+            record += "隊伍全員都在這趟旅程中倒下了。"
+        elif fallen:
+            record += f"{'、'.join(fallen)} 在這趟旅程中倒下了，其他人走到了故事的盡頭。"
+        else:
+            record += "所有人一起走到了故事的盡頭。"
+    else:
+        record += "你在這趟旅程中倒下了。" if body_level(state) == "死亡" else "你走到了故事的盡頭。"
     if state.key_events:
         record += "\n\n這趟旅程中：\n" + "\n".join(f"・{e}" for e in state.key_events[-5:])
     return record

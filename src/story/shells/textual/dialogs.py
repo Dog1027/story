@@ -12,6 +12,7 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Static, TextArea
 
+from story.core import MAX_PLAYERS
 from story.shells.apikey import KEY_PATH
 from story.shells.players import MAX_NAME_LEN, InvalidName, Player, check_name
 
@@ -139,6 +140,45 @@ class NameDialog(Dialog):
             error.update("這個名字正在遊戲中，請換一個名字，或等對方離開。")
             return
         self.dismiss(player)
+
+    @on(Button.Pressed, "#cancel")
+    def cancel(self) -> None:
+        self.dismiss(None)
+
+
+class PartyNamesDialog(Dialog):
+    """多人模式：輸入每位玩家的名字。回傳名字清單或 None。"""
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static("多人模式", classes="title")
+            yield Static(
+                f"每位玩家扮演一位角色，大家輪流在這台電腦上輸入行動。\n輸入 2 到 {MAX_PLAYERS} 位玩家的名字，用逗號或空白隔開。",
+                classes="hint",
+            )
+            yield Input(placeholder="例如：阿明，小華", id="names")
+            yield Static("", id="error", classes="hint")
+            with Horizontal():
+                yield Button("離開", id="cancel", compact=True)
+                yield Button("開始", variant="primary", id="ok", compact=True)
+
+    @on(Input.Submitted)
+    @on(Button.Pressed, "#ok")
+    def submit(self) -> None:
+        error = self.query_one("#error", Static)
+        raw = self.query_one("#names", Input).value.replace("，", " ").replace(",", " ").replace("、", " ")
+        try:
+            names = [check_name(n) for n in raw.split()]
+        except InvalidName as e:
+            error.update(str(e))
+            return
+        if not 2 <= len(names) <= MAX_PLAYERS:
+            error.update(f"需要 2 到 {MAX_PLAYERS} 位玩家。")
+            return
+        if len(set(names)) != len(names):
+            error.update("名字不能重複。")
+            return
+        self.dismiss(names)
 
     @on(Button.Pressed, "#cancel")
     def cancel(self) -> None:

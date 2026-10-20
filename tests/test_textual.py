@@ -10,6 +10,7 @@ from textual.widgets import Button, Checkbox, Input, Static
 import story.shells.textual.app as app_module
 from story.core import StoryCore
 from story.shells.textual import StoryApp
+from story.shells.textual.prose import Prose
 from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, NameDialog, PremiseDialog
 
 SIZE = (100, 28)
@@ -25,7 +26,7 @@ def fast_and_fake(monkeypatch):
 
 
 def log_lines(app):
-    return [str(w.render()) for w in app.query("#log Static")]
+    return [w.text if isinstance(w, Prose) else str(w.render()) for w in app.query("#log Static")]
 
 
 def status_text(app):
@@ -201,3 +202,47 @@ async def test_web_mode_asks_name_and_never_stores_key(isolated):
         assert (isolated / "saves" / "阿明.lock").exists()
     assert not (isolated / "saves" / "阿明.lock").exists()  # 離開時釋放
     assert not (isolated / "api_key").exists()
+
+
+async def test_party_mode_takes_turns(monkeypatch):
+    from conftest import FakePartyEngine
+    from story.core import PartyCore
+    from story.shells.textual.dialogs import PartyNamesDialog
+
+    monkeypatch.setattr(app_module, "PartyCore", lambda api_key, players: PartyCore(api_key, players, engine=FakePartyEngine()))
+    app = StoryApp(party=True)
+    async with app.run_test(size=(110, 32)) as pilot:
+        await wait_until(pilot, lambda: isinstance(app.screen, PartyNamesDialog))
+        app.screen.query_one("#names", Input).value = "阿明"
+        await pilot.press("enter")
+        assert "2 到" in str(app.screen.query_one("#error").render())
+        app.screen.query_one("#names", Input).value = "阿明，小華"
+        await pilot.press("enter")
+        await start_game(pilot, app)
+        assert app.actor == "阿明" and app.choices == ["阿明往上爬", "阿明躲起來"]
+        assert "阿明" in status_text(app) and "小華" in status_text(app)
+        assert app.query_one("#choices").border_title == "輪到 阿明"
+
+        await pilot.press("1", "enter")
+        await wait_until(pilot, lambda: app.actor == "小華")
+        assert "› 阿明：阿明往上爬" in log_lines(app)
+        await pilot.press("2", "enter")
+        await wait_until(pilot, lambda: app.actor == "阿明" and not app.typing and app.core.state.turn == 2)
+        lines = log_lines(app)
+        assert "› 小華：小華躲起來" in lines
+        assert any(line.startswith("阿明　獲得 油燈") for line in lines)
+
+
+async def test_narration_uses_chinese_line_breaking(monkeypatch):
+    class EnglishNameEngine(FakeEngine):
+        def start(self, state):
+            super().start(state)
+            state.current_narration = "阿明轉頭看向 Bob，發現他的手臂正在流血，鮮血順著指尖一滴一滴落在冰冷的石地上。"
+
+    monkeypatch.setattr(app_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=EnglishNameEngine(), **kw))
+    app = StoryApp()
+    async with app.run_test(size=(48, 28)) as pilot:  # 故事區扣掉邊距後寬 41
+        await start_game(pilot, app)
+        narration = app.query_one(".narration", Prose)
+        lines = str(narration.render()).splitlines()
+        assert lines[0].startswith("阿明轉頭看向 Bob，")

@@ -51,6 +51,8 @@ class Status:
     body: list[tuple[str, str]]  # 身體狀態：(名稱, 程度)
     mind: list[tuple[str, str]]  # 精神狀態：(名稱, 程度)
     inventory: list[str]
+    name: str = ""  # 多人模式：角色名字
+    alive: bool = True  # 多人模式：角色是否還活著
 
 
 @dataclass
@@ -77,6 +79,10 @@ class Reply:
     suggestion: str = ""  # ask_premise：/suggest 想出來的前提
     ending: Ending | None = None  # ended：尾聲與旅程紀錄
     error: Literal["api_key", "api"] | None = None  # api_key：key 無效，外殼換 key 後可以重送同一句
+    # 以下只有多人模式（PartyCore）會用到，單人模式都是空的
+    actor: str = ""  # 現在輪到哪位角色輸入行動；choices 就是這位角色的選項
+    party: list[Status] = field(default_factory=list)  # 每位角色的狀態
+    party_changes: list[tuple[str, ChangeGroups]] = field(default_factory=list)  # 每位角色這回合的變化
 
 
 class StoryCore:
@@ -98,7 +104,7 @@ class StoryCore:
     def start(self) -> Reply:
         """第一個回覆：有存檔就問要不要繼續，否則請玩家輸入故事前提。"""
         state = load(self.save_path)
-        if state and not state.game_over:
+        if state and self._resumable(state):
             self.state, self.timed, self.phase = state, state.timed_mode, "ask_continue"
             return self._reply(
                 choices=["繼續", "開新遊戲"],
@@ -116,7 +122,7 @@ class StoryCore:
             return TIMEOUT_ACTION
         if raw.startswith("/"):
             return None
-        return self._pick(raw, self.state.current_choices) or raw
+        return self._pick(raw, self._current_choices()) or raw
 
     def send(self, text: str) -> Reply:
         """送出一句玩家輸入，拿回覆。可能會呼叫 LLM，所以會花幾秒。"""
@@ -164,7 +170,7 @@ class StoryCore:
             return self._ask_premise(notice=f"沒有 {raw} 這個指令，輸入 /help 查看說明。")
 
         premise = " ".join(raw.split()) or self._default_premise()
-        state = GameState(premise=premise, timed_mode=self.timed)
+        state = self._new_state(premise)
         try:
             self.engine.start(state)
         except (errors.APIError, RuntimeError) as e:
@@ -181,13 +187,21 @@ class StoryCore:
         if action is None:
             notice = f"沒有 {raw} 這個指令，輸入 /help 查看說明。" if raw else "請輸入行動，或輸入數字選擇選項。"
             return self._reply(notice=notice, **self._screen())
+        return self._take_action(action, timeout=raw == "/timeout")
 
+    def _take_action(self, action: str, timeout: bool) -> Reply:
+        """收到一個行動。單人模式直接推進一回合；多人模式會先收齊所有人的行動。"""
+        return self._play_turn(action)
+
+    def _play_turn(self, action) -> Reply:
+        """呼叫 engine 推進一回合，存檔，回傳這回合的回覆。"""
         self._wait_compaction()
-        before = snapshot(self.state)
+        before = self._snapshot()
         try:
             self.engine.act(self.state, action)
         except (errors.APIError, RuntimeError) as e:
             self.state = load(self.save_path) or self.state  # act() 可能已經改了一半的狀態，從存檔還原
+            self._turn_failed()
             return self._failed(e, lambda **kw: self._reply(**self._screen(), **kw))
         save(self.state, self.save_path)
         if self.state.game_over:
@@ -239,6 +253,26 @@ class StoryCore:
             notice=notice,
             error=error,
         )
+
+    # ---------- 多人模式覆寫的掛勾（下面是單人模式的版本） ----------
+
+    def _resumable(self, state: GameState) -> bool:
+        """這份存檔能不能接續。"""
+        return not state.game_over
+
+    def _new_state(self, premise: str) -> GameState:
+        return GameState(premise=premise, timed_mode=self.timed)
+
+    def _current_choices(self) -> list[str]:
+        """現在要輸入行動的人的選項。"""
+        return self.state.current_choices
+
+    def _snapshot(self):
+        """回合開始前記下的狀態，用來算出這回合的變化。"""
+        return snapshot(self.state)
+
+    def _turn_failed(self) -> None:
+        """推進回合失敗、已從存檔還原之後要做的事。"""
 
     def _default_premise(self) -> str:
         return self.suggested or self.last_premise or DEFAULT_PREMISE
@@ -333,6 +367,17 @@ def status_line(status: Status, timed: bool) -> str:
     return "｜".join(parts)
 
 
+def party_line(status: Status) -> str:
+    if not status.alive:
+        return f"{status.name}｜已倒下"
+    line = f"{status.name}｜{status.level}"
+    if status.body:
+        line += "：" + "、".join(f"{n}（{v}）" for n, v in status.body)
+    if status.mind:
+        line += "｜精神 " + "、".join(f"{n}（{v}）" for n, v in status.mind)
+    return line + "｜背包 " + ("、".join(status.inventory) or "空")
+
+
 def changes_line(groups: ChangeGroups) -> str:
     return "　".join(f"{label} " + "、".join(text for text, _ in items) for label, items in groups)
 
@@ -356,6 +401,8 @@ def render_text(reply: Reply) -> str:
         parts.append(reply.narration)
     if reply.changes:
         parts.append(changes_line(reply.changes))
+    for name, groups in reply.party_changes:
+        parts.append(f"{name}　{changes_line(groups)}")
     if reply.ending:
         e = reply.ending
         parts.append(f"─── {e.title or '故事結束'} ───")
@@ -364,8 +411,12 @@ def render_text(reply: Reply) -> str:
         parts.append(e.record)
     if reply.status and reply.phase in ("playing", "ending") and reply.narration:
         parts.append(status_line(reply.status, reply.timed))
+    if reply.party and reply.phase in ("playing", "ending") and reply.narration:
+        parts.append("\n".join(party_line(st) for st in reply.party) + ("\n限時模式" if reply.timed else ""))
     if reply.phase == "ending":
         parts.append("（故事結束了。送出任何文字查看尾聲。）")
+    if reply.actor:
+        parts.append(f"輪到 {reply.actor} 行動：")
     if reply.choices:
         parts.append("\n".join(f"{i}. {c}" for i, c in enumerate(reply.choices, 1)))
     if reply.time_limit:
