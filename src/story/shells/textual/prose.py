@@ -72,6 +72,29 @@ def _wrap_paragraph(paragraph: str, width: int) -> list[str]:
     return lines
 
 
+class Marked:
+    """開頭有標記的一段文字，例如「› 往上爬」「1. 點亮油燈」：用上面的規則換行，換行後對齊在標記後面。
+    是 Rich 的 renderable，可以放進 Static 或 OptionList 的選項（Rich 預設的換行會在標記後的空格斷開，
+    標記自己留在一行、整段中文推到下一行）。"""
+
+    def __init__(self, marker: str, text: str):
+        self.marker, self.text = marker, text
+
+    def __rich_console__(self, console, options):
+        indent = cell_len(self.marker)
+        lines = wrap(self.text, options.max_width - indent)
+        yield Text("\n".join((self.marker if i == 0 else " " * indent) + line for i, line in enumerate(lines)), no_wrap=True)
+
+    def __rich_measure__(self, console, options):
+        from rich.measure import Measurement
+
+        indent = cell_len(self.marker)
+        return Measurement(indent + 2, indent + cell_len(self.text))
+
+    def __str__(self) -> str:
+        return self.marker + self.text
+
+
 class Prose(Static):
     """用上面的規則換行的文字區塊，視窗寬度改變時會重新排版。"""
 

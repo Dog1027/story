@@ -8,7 +8,7 @@ import asyncio
 import time
 
 from rich.text import Text
-from textual import on, work
+from textual import events, on, work
 from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
@@ -21,8 +21,11 @@ from story.shells.players import Player
 from story.shells.room import START, RoomConnection
 from story.shells.textual.commands import COMMANDS, help_text
 from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, NameDialog, PartyNamesDialog, PremiseDialog
-from story.shells.textual.prose import Prose
+from story.shells.textual.prose import Marked, Prose
 from story.shells.textual.style import CHAR_DELAY, FAST_FACTOR, LEVEL_COLORS, PAUSE_AFTER, SEVERITY_COLORS, SPINNER, THEME, TONE_STYLES
+
+
+NARROW_WIDTH = 60  # 比這個窄（手機直式）就用窄畫面的樣式，背包預設收合
 
 
 # ---------- 回合間的變化 ----------
@@ -49,6 +52,7 @@ class StoryApp(App):
         border-bottom: hkey $panel-lighten-1; background: $background;
     }
     #status { width: 1fr; }
+    #status:hover { background: $panel 40%; }  /* 點狀態列可以展開／收合背包 */
     #mode { width: 18; text-align: right; }
     #log {
         padding: 1 3; align-horizontal: center;
@@ -87,7 +91,7 @@ class StoryApp(App):
     Screen.-narrow #timer, Screen.-narrow #choices { margin: 0 0; }
     Screen.-narrow #cmd { margin: 0 0; }
     """
-    HORIZONTAL_BREAKPOINTS = [(0, "-narrow"), (60, "-wide")]  # 60 格以下（手機直式）用窄畫面的樣式
+    HORIZONTAL_BREAKPOINTS = [(0, "-narrow"), (NARROW_WIDTH, "-wide")]  # 60 格以下（手機直式）用窄畫面的樣式
     BINDINGS = [
         Binding(key, name.lstrip("/"), desc, priority=key.startswith("ctrl"))
         for name, (key, desc) in COMMANDS.items()
@@ -114,6 +118,8 @@ class StoryApp(App):
         self.busy = False
         self.busy_line: Static | None = None  # 故事區裡的「故事生成中」那一行
         self.progress = ""  # 線上多人：房間推來的進度（單人直接讀核心的 progress）
+        self.shown_status: tuple[Status | None, list[Status] | None] = (None, None)  # 狀態列目前顯示的內容
+        self.inventory_open: bool | None = None  # 背包展開與否；None 是依畫面寬度（手機收合、電腦展開）
         self.frame = 0
         self.time_left = 0.0  # 限時模式的剩餘秒數，0 代表沒有在倒數
         self.last_tick = 0.0
@@ -210,7 +216,7 @@ class StoryApp(App):
             self.stop_timer()
         if echo:
             self.set_choices([])
-            self.log_message(f"› {echo}", "action")
+            self.log_message(Marked("› ", echo), "action")
         if self.room:  # 線上多人：回覆會由房間推回來
             await self.room.send({"type": "send", "text": text})
             return
@@ -387,7 +393,31 @@ class StoryApp(App):
 
     # ---------- 顯示 ----------
 
+    @on(events.Click, "#status")
+    def toggle_inventory(self) -> None:
+        """點狀態列：展開或收合背包。"""
+        self.inventory_open = not self.inventory_expanded()
+        self.set_status(*self.shown_status)
+
+    def on_resize(self, event: events.Resize) -> None:
+        if self.inventory_open is None:  # 依畫面寬度決定的話，轉向或改變視窗大小時重畫
+            self.set_status(*self.shown_status)
+
+    def inventory_expanded(self) -> bool:
+        if self.inventory_open is None:
+            return self.size.width >= NARROW_WIDTH  # 手機（窄畫面）預設收合
+        return self.inventory_open
+
+    def inventory_parts(self, items: list[str]) -> list[tuple[str, str]]:
+        """狀態列的背包：展開時列出物品，收合時只顯示件數。"""
+        if not items:
+            return [("     背包 ", "dim"), ("空", "")]
+        if self.inventory_expanded():
+            return [("     背包 ▾ ", "dim"), (" · ".join(items), "")]
+        return [("     背包 ", "dim"), (f"{len(items)} 件", ""), (" ▸", "dim")]
+
     def set_status(self, status: Status | None, party: list[Status] | None = None) -> None:
+        self.shown_status = (status, party)
         muted = "dim"
 
         def listed(conds: list[tuple[str, str]], first_sep: str) -> list[tuple[str, str]]:
@@ -405,7 +435,7 @@ class StoryApp(App):
                 lines.append(Text.assemble(
                     (st.name, "bold"), ("  ", ""), (st.level, f"bold {LEVEL_COLORS[st.level]}"), *listed(st.body, "  "),
                     *([("     精神 ", muted)] + listed(st.mind, "") if st.mind else []),
-                    ("     背包 ", muted), (" · ".join(st.inventory) or "空", ""),
+                    *self.inventory_parts(st.inventory),
                 ))
             self.query_one("#status", Static).update(Text("\n").join(lines))
             return
@@ -417,11 +447,11 @@ class StoryApp(App):
             ("回合 ", muted), (str(status.turn), "bold"),
             ("     狀態 ", muted), (status.level, f"bold {LEVEL_COLORS[status.level]}"), *listed(status.body, "  "),
             *([("     精神 ", muted)] + listed(status.mind, "") if status.mind else []),
-            ("     背包 ", muted), (" · ".join(status.inventory) or "空", ""),
+            *self.inventory_parts(status.inventory),
         )
         self.query_one("#status", Static).update(bar)
 
-    def log_message(self, text: str | Text, kind: str) -> Static:
+    def log_message(self, text: str | Text | Marked, kind: str) -> Static:
         log = self.query_one("#log", VerticalScroll)
         widget = Static(text, classes=kind, markup=False)
         log.mount(widget)
@@ -429,8 +459,14 @@ class StoryApp(App):
         return widget
 
     async def show_turn(self, reply: Reply) -> None:
-        """有新劇情時逐字顯示，打完才顯示變化與更新狀態列，避免先劇透。"""
+        """有新劇情時逐字顯示，打完才顯示變化、選項與更新狀態列，避免先劇透。
+        選項框和倒數條在打字前就先佔好位置（看不見），打完字時版面才不會突然往上跳（手機上特別明顯）。"""
         if reply.narration:
+            self.typing = True  # 從現在起按 Enter 都算加速打字，不會選到還看不見的選項
+            self.stop_timer()
+            self.set_choices(reply.choices, reveal=False)
+            if reply.time_limit:
+                self.reserve_timer()
             if reply.resumed:
                 self.log_message(reply.notice, "action")
             await self.typewrite(reply.narration)
@@ -438,9 +474,10 @@ class StoryApp(App):
                 self.log_message(changes, "changes")
             for name, groups in reply.party_changes:
                 self.log_message(Text.assemble((f"{name}　", "bold"), describe_changes(groups)), "changes")
-            self.stop_timer()
+            self.reveal_choices()
+        else:
+            self.set_choices(reply.choices)
         self.set_status(reply.status, reply.party)
-        self.set_choices(reply.choices)
         if reply.narration and reply.time_limit:
             if self.room:  # 線上多人：告訴房間看完了，大家都看完房間才開始倒數
                 await self.room.send({"type": "ready"})
@@ -486,17 +523,22 @@ class StoryApp(App):
             log.scroll_end(animate=False)
             self.typing = False
 
-    def set_choices(self, choices: list[str]) -> None:
+    def set_choices(self, choices: list[str], reveal: bool = True) -> None:
+        """換上新的選項。reveal=False 時先透明地佔好位置，之後用 reveal_choices() 淡入。"""
         self.choices = list(choices)
         options = self.query_one("#choices", OptionList)
         self.render_turn_hint()
         options.clear_options()
-        options.add_options([f"{i}. {c}" for i, c in enumerate(choices, 1)])
+        options.add_options([Marked(f"{i}. ", c) for i, c in enumerate(choices, 1)])
         options.set_class(not choices, "-empty")
-        if choices:
-            options.styles.opacity = 0.0
-            options.styles.animate("opacity", 1.0, duration=0.4)
+        self.animator.force_stop_animation(options.styles, "opacity")  # 上一次的淡入還沒播完時，不能讓它把新選項又調回可見
+        options.styles.opacity = 0.0
+        if reveal:
+            self.reveal_choices()
         self.query_one("#cmd", Input).focus()
+
+    def reveal_choices(self) -> None:
+        self.query_one("#choices", OptionList).styles.animate("opacity", 1.0, duration=0.4)
 
     def render_turn_hint(self) -> None:
         """選項框的標題與輸入框的提示：輪到誰；線上多人時還在等誰。"""
@@ -531,6 +573,12 @@ class StoryApp(App):
         self.last_tick = time.monotonic()
         self.query_one("#timer", Static).add_class("show")
         self.render_timer()
+
+    def reserve_timer(self) -> None:
+        """先空出倒數條那一行，倒數開始時才不會把版面往上推。"""
+        timer = self.query_one("#timer", Static)
+        timer.update("")
+        timer.add_class("show")
 
     def stop_timer(self) -> None:
         self.time_left = 0.0

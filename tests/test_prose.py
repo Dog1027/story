@@ -39,3 +39,17 @@ def test_lines_fit_the_width_and_keep_paragraphs():
 
 def test_word_longer_than_line_is_split():
     assert all(cell_len(line) <= 10 for line in wrap("Supercalifragilistic", 10))
+
+
+def test_marked_text_wraps_after_the_marker():
+    """「› 」「1. 」後面接長中文時，標記不會自己留在一行，換行後對齊在標記後面。"""
+    from rich.console import Console
+
+    from story.shells.textual.prose import Marked
+
+    console = Console(width=20, record=True)
+    console.print(Marked("1. ", "沿著濕滑的螺旋樓梯往上爬到燈室"))
+    lines = console.export_text().splitlines()
+    assert lines[0].startswith("1. 沿著")
+    assert all(line.startswith("   ") for line in lines[1:])
+    assert "".join(line.strip() for line in lines) == "1. 沿著濕滑的螺旋樓梯往上爬到燈室"

@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from pathlib import Path
 
 import pytest
 from conftest import FakeEngine
@@ -26,7 +27,7 @@ def fast_and_fake(monkeypatch):
 
 
 def log_lines(app):
-    return [w.text if isinstance(w, Prose) else str(w.render()) for w in app.query("#log Static")]
+    return [w.text if isinstance(w, Prose) else str(w.content) for w in app.query("#log Static")]
 
 
 def status_text(app):
@@ -328,3 +329,34 @@ async def test_busy_line_shows_opening_progress(monkeypatch):
         app.screen.query_one("#ok", Button).press()
         await wait_until(pilot, lambda: app.busy_line is not None and "規劃故事大綱" in str(app.busy_line.render()))
         await wait_until(pilot, lambda: app.choices and not app.typing)
+
+
+async def test_story_does_not_jump_when_choices_appear(monkeypatch):
+    """選項框在打字前就佔好位置（看不見），打完字時故事區的高度不變，文字才不會突然往上跳。"""
+    monkeypatch.setattr(app_module, "CHAR_DELAY", 0.1)
+    app = StoryApp()
+    async with app.run_test(size=(40, 30)) as pilot:
+        await start_game(pilot, app)
+        await pilot.press("1", "enter")
+        await wait_until(pilot, lambda: app.typing)
+        options = app.query_one("#choices")
+        assert options.styles.opacity == 0.0 and not options.has_class("-empty")  # 已佔位、還看不見
+        height_while_typing = app.query_one("#log").size.height
+        await wait_until(pilot, lambda: not app.typing)
+        await pilot.pause(0.5)
+        assert app.query_one("#log").size.height == height_while_typing
+        assert options.styles.opacity == 1.0
+
+
+async def test_inventory_collapses_on_phones_and_expands_on_click():
+    for width, expanded in ((40, False), (100, True)):
+        app = StoryApp()
+        async with app.run_test(size=(width, 30)) as pilot:
+            await start_game(pilot, app)
+            await pilot.press("1", "enter")
+            await wait_until(pilot, lambda: app.choices == ["點亮油燈", "躲起來"] and not app.typing)
+            assert ("鑰匙 · 油燈" in status_text(app)) is expanded
+            assert ("2 件" in status_text(app)) is not expanded
+            await pilot.click("#status")
+            assert ("鑰匙 · 油燈" in status_text(app)) is not expanded  # 點一下切換
+        (Path("save.json")).unlink(missing_ok=True)
