@@ -4,7 +4,6 @@ import asyncio
 import time
 from collections.abc import Callable
 
-from google.genai import errors
 from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult, SystemCommand
@@ -15,26 +14,11 @@ from textual.events import Key
 from textual.message import Message
 from textual.widgets import Button, Checkbox, Input, OptionList, Static, TextArea
 
-from story.apikey import KEY_PATH, forget_api_key, get_saved_api_key, is_key_error, save_api_key
+from story.apikey import KEY_PATH, forget_api_key, get_saved_api_key, save_api_key
 from story.commands import COMMANDS, help_text
-from story.common import (
-    SAVE_PATH,
-    CHAR_DELAY,
-    DEFAULT_PREMISE,
-    FAST_FACTOR,
-    LEVEL_COLORS,
-    PAUSE_AFTER,
-    SEVERITY_COLORS,
-    Snapshot,
-    change_groups,
-    ending_record,
-    load,
-    memory_text,
-    save,
-    snapshot,
-)
-from story.engine import LOG_PATH, TIMEOUT_ACTION, Engine, body_conditions, body_level, mind_conditions
-from story.models import GameState
+from story.common import CHAR_DELAY, FAST_FACTOR, LEVEL_COLORS, PAUSE_AFTER, SEVERITY_COLORS, ChangeGroups
+from story.core import Reply, Status, StoryCore
+from story.engine import TIMEOUT_ACTION
 from story.players import MAX_NAME_LEN, InvalidName, Player, check_name
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -44,10 +28,10 @@ THEME = "tokyo-night"  # 其他選擇：catppuccin-mocha、rose-pine、nord、dr
 # ---------- 回合間的變化 ----------
 
 
-def describe_changes(before: Snapshot, state: GameState) -> Text | None:
-    """比較回合前後，列出狀態與背包的變化，例如「新增 右臂撕裂傷（重）　痊癒 左肘擦傷　獲得 油燈」。"""
+def describe_changes(groups: ChangeGroups) -> Text | None:
+    """把核心回覆的變化轉成彩色文字，例如「新增 右臂撕裂傷（重）　痊癒 左肘擦傷　獲得 油燈」。"""
     parts: list[tuple[str, str]] = []
-    for label, items in change_groups(before, state):
+    for label, items in groups:
         parts.append((("　" if parts else "") + label + " ", "dim"))
         for i, item in enumerate(items):
             parts += [(" · ", "dim")] * bool(i) + [item]
@@ -225,15 +209,15 @@ class PremiseDialog(Dialog):
     PremiseDialog TextArea:focus { border: round $primary; background-tint: $foreground 0%; }
     """
 
-    def __init__(self, default: str, hint: str, timed: bool, suggest: Callable[[str], str]):
+    def __init__(self, default: str, timed: bool, suggest: Callable[[str], str]):
         super().__init__()
-        self.default, self.hint, self.timed = default, hint, timed
+        self.default, self.timed = default, timed
         self.suggest = suggest  # 請 AI 想一個開頭（會在背景執行緒呼叫）
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static("新的故事", classes="title")
-            yield Static(f"輸入故事前提，留白則{self.hint}：\n{self.default}", classes="hint")
+            yield Static(f"輸入故事前提，留白則使用：\n{self.default}", classes="hint")
             yield PremiseArea(placeholder="例如：你是一名在末日城市送信的郵差……", id="premise", highlight_cursor_line=False)
             yield Checkbox("限時模式：情勢緊迫時，要在時間內做出決定", value=self.timed, id="timed")
             with Horizontal():
@@ -381,16 +365,13 @@ class StoryApp(App):
         super().__init__()
         self.web = web  # 網頁版：先問名字，存檔依名字分開，API key 不存到伺服器
         self.player: Player | None = None
-        self.save_path = SAVE_PATH
-        self.engine: Engine | None = None
-        self.state: GameState | None = None
+        self.core: StoryCore | None = None
+        self.choices: list[str] = []
         self.busy = False
         self.busy_line: Static | None = None  # 故事區裡的「故事生成中」那一行
         self.frame = 0
         self.time_left = 0.0  # 限時模式的剩餘秒數，0 代表沒有在倒數
         self.last_tick = 0.0
-        self.timed_mode = False  # 開新局時的預設模式（沿用上一局的選擇）
-        self.compaction: asyncio.Task | None = None  # 背景壓縮記憶的工作
         self.continue_event: asyncio.Event | None = None  # 等玩家按 Enter 繼續
         self.typing = False
         self.speed = 1.0
@@ -415,11 +396,11 @@ class StoryApp(App):
 
     def on_mount(self) -> None:
         self.theme = THEME
-        self.set_status()
+        self.set_status(None)
         self.set_interval(0.1, self.tick)
         self.boot()
 
-    # ---------- 啟動流程 ----------
+    # ---------- 啟動：取得 key，建立核心 ----------
 
     @work
     async def boot(self) -> None:
@@ -428,25 +409,17 @@ class StoryApp(App):
             if self.player is None:
                 self.exit()
                 return
-            self.save_path = self.player.save_path
             key = await self.ask_api_key(f"{self.player.name}，請輸入你的 Gemini API key")
         else:
             key = get_saved_api_key() or await self.ask_api_key("找不到 Gemini API key。")
         if key is None:
             self.exit()
             return
-        self.engine = Engine(api_key=key, log_path=self.player.log_path if self.player else LOG_PATH)
-
-        state = load(self.save_path)
-        if state and not state.game_over and await self.push_screen_wait(
-            ConfirmDialog("找到存檔，要繼續嗎？", yes="繼續", no="開新遊戲")
-        ):
-            self.state = state
-            self.timed_mode = state.timed_mode
-            self.log_message(f"讀取存檔：{state.premise}", "action")
-            await self.show_turn()
+        if self.player:
+            self.core = StoryCore(api_key=key, save_path=self.player.save_path, log_path=self.player.log_path)
         else:
-            await self.new_game()
+            self.core = StoryCore(api_key=key)
+        await self.handle(self.core.start())
 
     async def ask_api_key(self, reason: str) -> str | None:
         result = await self.push_screen_wait(ApiKeyDialog(reason, can_save=not self.web))
@@ -457,87 +430,109 @@ class StoryApp(App):
             save_api_key(key)
         return key
 
-    async def new_game(self, last_premise: str | None = None) -> None:
-        default = last_premise or DEFAULT_PREMISE
-        hint = "沿用上一局的前提" if last_premise else "使用預設"
-        premise, self.timed_mode = await self.push_screen_wait(PremiseDialog(default, hint, self.timed_mode, self.engine.suggest_premise))
+    # ---------- 和核心對話 ----------
+
+    async def send(self, text: str, echo: str = "") -> None:
+        """送一句文字給核心並顯示回覆。echo 是要先顯示在故事區的玩家行動。"""
+        if self.busy:
+            return
         self.stop_timer()
-        state = GameState(premise=premise, timed_mode=self.timed_mode)
-        self.query_one("#log", VerticalScroll).remove_children()
-        self.set_choices([])
-        if await self.generate(lambda: self.engine.start(state)):
-            self.state = state
-            save(state, self.save_path)
-            await self.show_turn()
-        else:
-            self.log_message("開場生成失敗。按 Ctrl+R 再試一次。", "ending")
+        if echo:
+            self.set_choices([])
+            self.log_message(f"› {echo}", "action")
+        reply = await self.ask_core(text)
+        if reply is not None:
+            await self.handle(reply)
 
-    # ---------- 呼叫 LLM ----------
-
-    async def generate(self, call: Callable[[], None]) -> bool:
-        """在背景執行緒呼叫 LLM，期間顯示等待動畫。key 無效時請玩家重新輸入並重試。"""
+    async def ask_core(self, text: str) -> Reply | None:
+        """在背景執行緒呼叫核心；超過一下子才顯示等待動畫。key 無效時請玩家換一個再重送。"""
         self.set_busy(True)
-        if self.compaction and not self.compaction.done():
-            await self.compaction
         try:
             while True:
-                try:
-                    await asyncio.to_thread(call)
-                    return True
-                except (errors.APIError, RuntimeError) as e:
-                    if not is_key_error(e):
-                        self.notify(str(e)[:300], title="出錯了", severity="error", timeout=8)
-                        return False
-                    if not self.web:  # 網頁版本來就沒有存 key
-                        forget_api_key()
-                    key = await self.ask_api_key("API key 無效或沒有權限，請重新輸入。")
-                    if key is None:
-                        return False
-                    self.engine.set_api_key(key)
+                task = asyncio.create_task(asyncio.to_thread(self.core.send, text))
+                done, _ = await asyncio.wait({task}, timeout=0.15)
+                if not done:
+                    self.show_busy_line()
+                reply = await task
+                if reply.error != "api_key":
+                    return reply
+                if not self.web:  # 網頁版本來就沒有存 key
+                    forget_api_key()
+                self.set_busy(False)
+                key = await self.ask_api_key("API key 無效或沒有權限，請重新輸入。")
+                if key is None:
+                    return reply
+                self.core.set_api_key(key)
+                self.set_busy(True)
         finally:
             self.set_busy(False)
 
-    @work
-    async def act(self, action: str) -> None:
-        if self.busy or self.typing or self.state is None or self.state.game_over:
-            return
-        self.stop_timer()
+    async def handle(self, reply: Reply) -> None:
+        """依照回覆的階段與欄位更新畫面。"""
+        if reply.info:
+            self.push_screen(InfoDialog(*reply.info))
+        if reply.error == "api":
+            self.notify(reply.notice, title="出錯了", severity="error", timeout=8)
+        elif reply.notice and reply.phase in ("playing", "ending", "ended") and not reply.narration:
+            self.notify(reply.notice)
+
+        if reply.phase == "ask_continue":
+            keep = await self.push_screen_wait(ConfirmDialog(f"{reply.notice}\n\n要繼續嗎？", yes="繼續", no="開新遊戲"))
+            await self.send("1" if keep else "2")
+        elif reply.phase == "ask_premise":
+            await self.ask_premise(reply)
+        elif reply.phase == "confirm_restart":
+            sure = await self.push_screen_wait(ConfirmDialog(reply.notice))
+            await self.send("1" if sure else "2")
+        elif reply.phase in ("playing", "ending"):
+            await self.show_turn(reply)
+            if reply.phase == "ending":
+                await self.send("")  # 讓核心接著寫尾聲
+        elif reply.phase == "ended":
+            await self.show_ending(reply)
+
+    async def ask_premise(self, reply: Reply) -> None:
+        if reply.error == "api":
+            return  # 開場生成失敗：錯誤已經提示了，留在原處，玩家可以用 Ctrl+R 再試
+        timed = self.core.timed
+
+        def suggest(_: str) -> str:
+            suggestion = self.core.send("/suggest")
+            if suggestion.error:
+                raise RuntimeError(suggestion.notice)
+            return suggestion.suggestion
+
+        premise, want_timed = await self.push_screen_wait(PremiseDialog(reply.premise_default, timed, suggest))
+        if want_timed != timed:
+            await asyncio.to_thread(self.core.send, f"/timed {'on' if want_timed else 'off'}")
+        self.query_one("#log", VerticalScroll).remove_children()
         self.set_choices([])
-        self.log_message(f"› {action}", "action")
-        before = snapshot(self.state)
-        if await self.generate(lambda: self.engine.act(self.state, action)):
-            save(self.state, self.save_path)
-            await self.show_turn(before)
-        else:
-            # act() 可能已經改了一半的狀態，從存檔還原
-            self.state = load(self.save_path) or self.state
-            self.set_choices(self.state.current_choices)
+        self.set_status(None)
+        await self.send(premise)
 
     # ---------- 顯示 ----------
 
-    def set_status(self) -> None:
-        s = self.state
-        if s is None:
+    def set_status(self, status: Status | None) -> None:
+        if status is None:
             self.query_one("#status", Static).update(Text("Story", style="dim"))
+            self.render_mode(self.core.timed if self.core else False)
             return
         muted = "dim"
-        level = body_level(s)
 
-        def listed(conds, first_sep: str) -> list[tuple[str, str]]:
+        def listed(conds: list[tuple[str, str]], first_sep: str) -> list[tuple[str, str]]:
             parts: list[tuple[str, str]] = []
-            for i, c in enumerate(conds):
-                parts += [(" · " if i else first_sep, muted), (c.name, SEVERITY_COLORS[c.severity])]
+            for i, (name, severity) in enumerate(conds):
+                parts += [(" · " if i else first_sep, muted), (name, SEVERITY_COLORS[severity])]
             return parts
 
-        mind = mind_conditions(s)
         bar = Text.assemble(
-            ("回合 ", muted), (str(s.turn), "bold"),
-            ("     狀態 ", muted), (level, f"bold {LEVEL_COLORS[level]}"), *listed(body_conditions(s), "  "),
-            *([("     精神 ", muted)] + listed(mind, "") if mind else []),
-            ("     背包 ", muted), (" · ".join(s.inventory) or "空", ""),
+            ("回合 ", muted), (str(status.turn), "bold"),
+            ("     狀態 ", muted), (status.level, f"bold {LEVEL_COLORS[status.level]}"), *listed(status.body, "  "),
+            *([("     精神 ", muted)] + listed(status.mind, "") if status.mind else []),
+            ("     背包 ", muted), (" · ".join(status.inventory) or "空", ""),
         )
         self.query_one("#status", Static).update(bar)
-        self.render_mode()
+        self.render_mode(status.timed)
 
     def log_message(self, text: str | Text, kind: str) -> Static:
         log = self.query_one("#log", VerticalScroll)
@@ -546,45 +541,29 @@ class StoryApp(App):
         log.scroll_end(animate=False)
         return widget
 
-    async def show_turn(self, before: "Snapshot | None" = None) -> None:
-        """顯示這回合的劇情。狀態列等文字寫完才更新，避免先劇透；有 before 時另外列出這回合的變化。"""
-        s = self.state
-        await self.typewrite(s.current_narration)
-        if before is not None and (changes := describe_changes(before, s)):
-            self.log_message(changes, "changes")
-        self.set_status()
-        if s.game_over:
-            await self.show_ending()
-            return
-        self.set_choices(s.current_choices)
-        if s.current_time_limit:
-            self.start_timer(s.current_time_limit)
-        if self.engine.needs_compaction(s):
-            self.compaction = asyncio.create_task(self.compact_in_background(s))
+    async def show_turn(self, reply: Reply) -> None:
+        """有新劇情時逐字顯示，打完才顯示變化與更新狀態列，避免先劇透。"""
+        if reply.narration:
+            if reply.notice and reply.notice.startswith("讀取存檔"):
+                self.log_message(reply.notice, "action")
+            await self.typewrite(reply.narration)
+            if changes := describe_changes(reply.changes):
+                self.log_message(changes, "changes")
+        self.set_status(reply.status)
+        self.set_choices(reply.choices)
+        if reply.narration and reply.time_limit:
+            self.start_timer(reply.time_limit)
 
-    async def compact_in_background(self, state: GameState) -> None:
-        """玩家讀劇情時，順便把舊的記憶壓縮進摘要。失敗沒關係，下回合會再試。"""
-        try:
-            await asyncio.to_thread(self.engine.compact_memory, state)
-        except Exception:
-            return
-        if state is self.state:  # 期間開了新局的話，不要用舊局覆蓋存檔
-            save(state, self.save_path)
-
-    async def show_ending(self) -> None:
-        """故事結束：請 AI 寫尾聲，顯示在故事區，再跳出結局對話框。尾聲寫失敗也照樣能重玩。"""
-        s = self.state
-        if not s.epilogue and await self.generate(lambda: self.engine.write_epilogue(s)):
-            save(s, self.save_path)
-        if s.epilogue:
-            self.log_message(f"─── {s.ending_title} ───", "ending")
-            await self.typewrite(s.epilogue)
+    async def show_ending(self, reply: Reply) -> None:
+        ending = reply.ending
+        if ending.epilogue:
+            self.log_message(f"─── {ending.title} ───", "ending")
+            await self.typewrite(ending.epilogue)
         else:
             self.log_message("─── 故事結束 ───", "ending")
-
         await self.wait_for_enter("按 Enter 查看結局")
-        if await self.push_screen_wait(EndingDialog(s.ending_title, ending_record(s))):
-            await self.new_game(last_premise=s.premise)
+        if await self.push_screen_wait(EndingDialog(ending.title, ending.record)):
+            await self.send("1")
         else:
             self.exit()
 
@@ -614,6 +593,7 @@ class StoryApp(App):
             self.typing = False
 
     def set_choices(self, choices: list[str]) -> None:
+        self.choices = list(choices)
         options = self.query_one("#choices", OptionList)
         options.clear_options()
         options.add_options([f"{i}. {c}" for i, c in enumerate(choices, 1)])
@@ -626,15 +606,17 @@ class StoryApp(App):
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
         self.query_one("#cmd", Input).disabled = busy
-        if busy:
-            self.busy_line = self.log_message(f"{SPINNER[0]} 故事生成中…", "busy")
-        else:
+        if not busy:
             if self.busy_line is not None:
                 self.busy_line.remove()
                 self.busy_line = None
             self.query_one("#cmd", Input).focus()
 
-    # ---------- 限時模式 ----------
+    def show_busy_line(self) -> None:
+        if self.busy_line is None:
+            self.busy_line = self.log_message(f"{SPINNER[0]} 故事生成中…", "busy")
+
+    # ---------- 限時模式（倒數由外殼負責，時間到送 /timeout 給核心） ----------
 
     def start_timer(self, seconds: int) -> None:
         self.time_limit = self.time_left = float(seconds)
@@ -646,9 +628,8 @@ class StoryApp(App):
         self.time_left = 0.0
         self.query_one("#timer", Static).remove_class("show")
 
-    def render_mode(self) -> None:
+    def render_mode(self, timed: bool) -> None:
         """狀態列最右邊固定顯示目前的模式。"""
-        timed = self.state.timed_mode if self.state else self.timed_mode
         label = Text("限時模式", style="#f7768e") if timed else Text("一般模式", style="dim")
         self.query_one("#mode", Static).update(label)
 
@@ -667,7 +648,7 @@ class StoryApp(App):
     def tick(self) -> None:
         now = time.monotonic()
         elapsed, self.last_tick = now - self.last_tick, now
-        if self.busy and self.busy_line is not None:
+        if self.busy_line is not None:
             self.frame = (self.frame + 1) % len(SPINNER)
             self.busy_line.update(f"{SPINNER[self.frame]} 故事生成中…")
         # 開著對話框或指令選單時暫停倒數
@@ -677,7 +658,7 @@ class StoryApp(App):
         self.render_timer()
         if self.time_left == 0:
             self.stop_timer()
-            self.act(TIMEOUT_ACTION)
+            self.run_worker(self.send("/timeout", echo=TIMEOUT_ACTION))
 
     # ---------- 輸入 ----------
 
@@ -700,24 +681,28 @@ class StoryApp(App):
                 self.skip = True
             self.speed = FAST_FACTOR
             return
+        if self.core is None or self.busy:
+            return
         if not raw:
             # 輸入框是空的：選定用 ↑↓ 移到的選項
             highlighted = self.query_one("#choices", OptionList).highlighted
-            if highlighted is not None and self.state:
-                self.act(self.state.current_choices[highlighted])
+            if highlighted is not None:
+                self.choose_index(highlighted)
             return
         if raw.startswith("/"):
             action = getattr(self, f"action_{raw[1:]}", None)
             if raw in COMMANDS and action:
                 action()
             else:
-                self.notify(f"沒有 {raw} 這個指令，按 F1 看指令列表。", severity="warning")
+                self.run_worker(self.send(raw))  # 交給核心，它會回覆「沒有這個指令」
             return
+        if raw.isdigit() and 1 <= int(raw) <= len(self.choices):
+            self.choose_index(int(raw) - 1)
+            return
+        self.run_worker(self.send(raw, echo=raw))
 
-        choices = self.state.current_choices if self.state else []
-        if raw.isdigit() and 1 <= int(raw) <= len(choices):
-            raw = choices[int(raw) - 1]
-        self.act(raw)
+    def choose_index(self, index: int) -> None:
+        self.run_worker(self.send(str(index + 1), echo=self.choices[index]))
 
     def action_move_choice(self, step: int) -> None:
         if isinstance(self.screen, ModalScreen):
@@ -728,8 +713,8 @@ class StoryApp(App):
 
     @on(OptionList.OptionSelected, "#choices")
     def choose(self, event: OptionList.OptionSelected) -> None:
-        if self.state and not self.typing:
-            self.act(self.state.current_choices[event.option_index])
+        if not self.typing and not self.busy:
+            self.choose_index(event.option_index)
 
     # ---------- 指令 ----------
 
@@ -738,18 +723,15 @@ class StoryApp(App):
             yield SystemCommand(name, f"{desc}（{key}）", getattr(self, f"action_{name[1:]}"))
 
     def action_state(self) -> None:
-        if self.state:
-            self.push_screen(InfoDialog("程式記住的東西", memory_text(self.state)))
+        if self.core and not self.busy:
+            self.run_worker(self.send("/state"))
 
     def action_help(self) -> None:
         self.push_screen(InfoDialog("指令", help_text()))
 
-    @work
-    async def action_restart(self) -> None:
-        if self.busy:
-            return
-        if self.state is None or await self.push_screen_wait(ConfirmDialog("確定要放棄目前進度、重新開始嗎？")):
-            await self.new_game(last_premise=self.state.premise if self.state else None)
+    def action_restart(self) -> None:
+        if self.core and not self.busy and not self.typing:
+            self.run_worker(self.send("/restart"))
 
     def action_quit(self) -> None:
         self.exit()  # 每回合都已自動存檔

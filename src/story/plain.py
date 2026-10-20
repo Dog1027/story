@@ -1,0 +1,24 @@
+"""最簡單的外殼：只用 input() 和 print() 跟核心對話，示範核心「送文字進去、拿文字出來」。"""
+
+from getpass import getpass
+
+from story.apikey import get_saved_api_key
+from story.core import StoryCore
+
+
+def main() -> None:
+    key = get_saved_api_key() or getpass("Gemini API key（輸入時不會顯示）：").strip()
+    if not key:
+        return
+    core = StoryCore(api_key=key)
+    reply = core.start()
+    while True:
+        print(f"\n{reply.text}\n")
+        try:
+            text = input("> ")
+        except (EOFError, KeyboardInterrupt):
+            break
+        if text.strip() == "/quit":
+            break
+        reply = core.send(text)
+    print("\n已存檔，下次見。")

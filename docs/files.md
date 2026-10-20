@@ -2,21 +2,25 @@
 
 這是一個由 LLM（Gemini）即時生成劇情的文字冒險遊戲。設計原則是 **LLM 負責說故事，程式負責記憶與把關**：AI 每回合只「提議」劇情與狀態變化，程式驗證後才寫進遊戲狀態。
 
+程式分成**核心**與**外殼**。核心就像一個 LLM：送文字進去、拿回覆出來（`reply = core.send("往上爬")`），記憶、規則、存檔、遊戲流程都藏在裡面。外殼只負責顯示和輸入。
+
 ```
-玩家行動（終端機，或透過 web.py 的瀏覽器殼）
-   │
-   ▼
-ui.py ──────► engine.py ──────► Gemini
-（介面）       （組提示詞）        （寫劇情、提議變化）
-   ▲              │
-   │              ▼
-   │         驗證並套用到 GameState（models.py）
-   │              │
-   └──── 顯示劇情、變化摘要、更新狀態列 ◄──┘
-                  │
-                  ▼
-            save.json / story_log.jsonl
+外殼（只負責顯示和輸入）
+  ui.py      Textual 終端機介面 ─┐
+  web.py     瀏覽器殼（包住 ui.py）│   "往上爬"          Reply（文字＋附帶資料）
+  plain.py   純文字 input/print ─┴──────────►  ◄──────────────────
+                                          │          ▲
+┌─────────────── 核心 core.py ────────────▼──────────┴──────────┐
+│  StoryCore.send(text) → Reply                                   │
+│  解析輸入（行動、數字、/指令）、遊戲階段、存檔、背景壓縮記憶       │
+│        │                                                        │
+│        ▼                                                        │
+│  engine.py：組提示詞 → 呼叫 Gemini → 驗證 AI 的提議 → 套用        │
+│  models.py：GameState（= 存檔）、StoryBeat 等 AI 回傳格式          │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+API key、玩家名字、倒數計時、打字效果屬於外殼。核心只告訴外殼「這回合限時 12 秒」，時間到由外殼送出 `/timeout`。
 
 ---
 
@@ -24,7 +28,11 @@ ui.py ──────► engine.py ──────► Gemini
 
 ### `__init__.py`：程式進入點
 
-只有 `main()`，負責啟動介面 `StoryApp`。`uv run story` 執行的就是這個函式（定義在 `pyproject.toml` 的 `[project.scripts]`）。帶 `--web` 參數時以網頁模式啟動：先問名字、存檔依名字分開、API key 不存到伺服器。
+只有 `main()`，負責啟動外殼。`uv run story` 執行的就是這個函式（定義在 `pyproject.toml` 的 `[project.scripts]`）。
+
+- 沒有參數：Textual 外殼 `StoryApp`
+- `--web`：網頁模式的 `StoryApp`（由網頁殼使用），先問名字、存檔依名字分開、API key 不存到伺服器
+- `--plain`：純文字外殼
 
 ### `models.py`：資料結構
 
@@ -49,9 +57,9 @@ ui.py ──────► engine.py ──────► Gemini
 
 `GameState` 裡的 `_upgrade_old_conditions` 負責相容舊存檔。
 
-### `engine.py`：Harness 核心
+### `engine.py`：遊戲規則與 AI
 
-遊戲的大腦，負責所有和 AI 的互動，以及遊戲規則。不依賴介面，可以單獨測試。
+負責所有和 AI 的互動，以及遊戲規則。由 `core.py` 呼叫，外殼不會直接用到。
 
 **對外的方法**
 
@@ -62,7 +70,7 @@ ui.py ──────► engine.py ──────► Gemini
 | `plan_arc()` | 請 AI 規劃隱藏大綱；舊存檔沒有大綱時依摘要補一份 |
 | `suggest_premise()` | 「幫我想」按鈕：程式隨機挑題材與情境，請 AI 想一個故事前提 |
 | `write_epilogue()` | 故事結束後請 AI 寫尾聲 |
-| `needs_compaction()`、`compact_memory()` | 把舊回合、舊事件與事實壓縮進長期摘要（由介面在背景呼叫） |
+| `needs_compaction()`、`compact_memory()` | 把舊回合、舊事件與事實壓縮進長期摘要（由核心在背景執行緒呼叫） |
 
 **內部流程**
 
@@ -95,21 +103,69 @@ ui.py ──────► engine.py ──────► Gemini
 | `PREMISE_GENRES`、`PREMISE_SETTINGS` | 「幫我想」隨機挑選的題材與情境 | 14 種、8 種 |
 | `SYSTEM_PROMPT` | 給 AI 的寫作與遊戲規則 | — |
 
-### `common.py`：介面用的共用工具
+### `core.py`：最小核心
+
+整個遊戲對外只有一個入口：`StoryCore.send(text) → Reply`。輸入一律是文字，回覆和 LLM 的 API 一樣是「文字＋附帶資料」。
+
+**建立與使用**
+
+```python
+core = StoryCore(api_key="…")            # 網頁版另外傳 save_path、log_path
+reply = core.start()                     # 第一個回覆：有存檔就問要不要繼續，否則請你輸入前提
+reply = core.send("往上爬")               # 之後每一句輸入
+print(reply.text)                        # 只會印文字的外殼，這樣就能完整地玩
+```
+
+**`Reply` 的欄位**
+
+| 欄位 | 內容 |
+|---|---|
+| `phase` | 目前階段：`ask_continue`（找到存檔）、`ask_premise`（等前提）、`playing`、`confirm_restart`、`ending`（剛結束，下一句會寫尾聲）、`ended` |
+| `text` | 完整的純文字 |
+| `narration` | 這次產生（或讀檔重新顯示）的劇情；沒有新劇情時是空字串 |
+| `choices` | 選項 |
+| `status` | 狀態列資料（`Status`）：回合、整體狀態、身體、精神、背包、是否限時 |
+| `changes` | 這回合的變化：新增、惡化、好轉、痊癒、獲得、失去 |
+| `time_limit` | 限時秒數，0 代表不限時 |
+| `notice` | 簡短的系統訊息 |
+| `info` | 要另外顯示的內容（標題, 內容），例如 `/state`、`/help` |
+| `premise_default`、`suggestion` | 等前提時：留白會用的前提、`/suggest` 想出來的前提 |
+| `ending` | 結束時：結局名稱、尾聲、旅程紀錄 |
+| `error` | `api_key`：key 無效，外殼換 key（`core.set_api_key()`）後可以重送同一句；`api`：其他錯誤 |
+
+**輸入**
+
+| 輸入 | 何時 | 作用 |
+|---|---|---|
+| 數字、選項文字 | 有選項時 | 選擇該選項 |
+| 任意文字 | 遊戲中 | 自由行動 |
+| 任意文字、空白 | 等前提時 | 故事前提；空白使用預設（或剛才 `/suggest` 想出來的） |
+| `/suggest`、`/timed on`、`/timed off` | 等前提時 | 讓 AI 想開頭、切換限時模式 |
+| `/timeout` | 遊戲中 | 外殼的倒數時間到了 |
+| `/restart` | 遊戲中、結束後 | 重新開始（遊戲中會先確認） |
+| `/state`、`/help` | 任何時候 | 記憶、說明 |
+
+**內部**：每個階段一個處理函式（`_on_playing()` 等）；LLM 失敗時從存檔還原、留在原階段；回合結束後在背景執行緒壓縮記憶，下一次呼叫 LLM 前會先等它完成；`render_text()` 負責組出純文字。
+
+### `plain.py`：純文字外殼
+
+只用 `input()` 和 `print()` 跟核心對話，不到 30 行。示範核心可以接任何外殼：`uv run story --plain`。
+
+### `common.py`：共用工具
 
 | 名稱 | 做什麼 |
 |---|---|
 | `save()`、`load()` | 存讀存檔（終端機版 `save.json`，網頁版由 `players.py` 指定路徑） |
-| `snapshot()`、`change_groups()` | 比較回合前後，列出「新增／惡化／好轉／痊癒／獲得／失去」，`ui.py` 再決定怎麼上色顯示 |
+| `snapshot()`、`change_groups()` | 比較回合前後，列出「新增／惡化／好轉／痊癒／獲得／失去」（核心放進 `Reply.changes`） |
 | `ending_record()` | 結局對話框裡的旅程紀錄（回合數、天數、重大事件） |
 | `memory_text()` | 「程式記住的東西」顯示的內容 |
 | `CHAR_DELAY`、`FAST_FACTOR`、`PAUSE_AFTER` | 打字效果的速度與標點停頓 |
 | `SEVERITY_COLORS`、`LEVEL_COLORS` | 狀態程度與整體狀態的顏色 |
 | `DEFAULT_PREMISE` | 預設的故事前提 |
 
-### `ui.py`：終端機介面
+### `ui.py`：Textual 外殼
 
-用 [Textual](https://textual.textualize.io/) 寫成的介面，負責顯示、輸入與遊戲流程。所有 AI 呼叫都透過 `Engine`，自己不寫遊戲規則。
+用 [Textual](https://textual.textualize.io/) 寫成的終端機介面。只負責顯示和輸入：把玩家的輸入轉成文字送給核心，再依照 `Reply` 的階段和欄位更新畫面。不呼叫 engine，也不碰 `GameState`。
 
 **對話框**
 
@@ -118,26 +174,25 @@ ui.py ──────► engine.py ──────► Gemini
 | `Dialog` | 所有對話框共用的樣式，以及方向鍵規則（←→ 在按鈕間移動、↑↓ 在列之間移動） |
 | `ApiKeyDialog` | 輸入 Gemini API key（網頁模式不提供儲存） |
 | `NameDialog` | 網頁模式：輸入名字並佔用 |
-| `PremiseDialog` + `PremiseArea` | 新故事：多行輸入框、限時模式勾選、「幫我想」按鈕 |
-| `ConfirmDialog` | 是／否確認 |
+| `PremiseDialog` + `PremiseArea` | 新故事：多行輸入框、限時模式勾選、「幫我想」按鈕（送 `/suggest` 給核心） |
+| `ConfirmDialog` | 是／否確認（找到存檔、重新開始） |
 | `EndingDialog` | 結局名稱、旅程紀錄、再玩一次 |
-| `InfoDialog` | 說明與記憶檢視 |
+| `InfoDialog` | 顯示 `Reply.info`（記憶、說明） |
 
 **主畫面 `StoryApp`**
 
 | 方法 | 做什麼 |
 |---|---|
-| `boot()` | 啟動流程：取得 key → 讀存檔或開新局 |
-| `new_game()`、`act()` | 開新局、送出行動 |
-| `generate()` | 在背景執行緒呼叫 AI，期間顯示「故事生成中…」；key 無效時請玩家重新輸入 |
-| `show_turn()` | 打字效果顯示劇情，打完才顯示變化摘要並更新狀態列 |
+| `boot()` | 取得名字（網頁模式）與 API key，建立 `StoryCore`，顯示第一個回覆 |
+| `send()`、`ask_core()` | 把一句文字送給核心（在背景執行緒，超過 0.15 秒才顯示「故事生成中…」）；key 無效時請玩家換 key 後重送 |
+| `handle()` | 依 `reply.phase` 決定要跳出哪個對話框、顯示劇情或結局 |
+| `show_turn()` | 打字效果顯示劇情，打完才顯示變化摘要、更新狀態列、出現選項與倒數 |
 | `show_ending()` | 尾聲 → 按 Enter → 結局對話框 |
-| `compact_in_background()` | 玩家讀劇情時在背景壓縮記憶 |
-| `set_status()` | 狀態列：回合、整體狀態、身體與精神狀況、背包；最右邊固定顯示模式 |
-| `start_timer()`、`tick()` | 限時模式的倒數（開著對話框時暫停） |
-| `submit()` | 處理輸入框：指令、數字選項、自由行動、打字中按 Enter 加速 |
+| `set_status()` | 用 `Reply.status` 畫狀態列；最右邊固定顯示模式 |
+| `start_timer()`、`tick()` | 限時倒數（開著對話框時暫停），時間到送 `/timeout` |
+| `submit()` | 處理輸入框：打字中按 Enter 加速、指令、數字選項、自由行動 |
 
-**輔助函式**：`describe_changes()`，把 `common.change_groups()` 的結果轉成終端機的彩色文字。
+**輔助函式**：`describe_changes()`，把 `Reply.changes` 轉成彩色文字。
 
 **可以調整的常數**：`THEME`（配色主題）。
 
@@ -167,7 +222,9 @@ ui.py ──────► engine.py ──────► Gemini
 
 ### `commands.py`：指令清單
 
-`COMMANDS` 定義四個指令（`/state`、`/restart`、`/help`、`/quit`）的快捷鍵與說明；`help_text()` 產生 F1 說明的內容。新增指令時，在這裡加一行，再到 `ui.py` 的 `StoryApp` 加上對應的 `action_<名稱>` 方法。
+Textual 外殼的指令與快捷鍵：`COMMANDS` 定義四個指令（`/state`、`/restart`、`/help`、`/quit`）的快捷鍵與說明；`help_text()` 產生 F1 說明的內容。
+
+新增遊戲指令時，先在 `core.py` 的 `send()` 或對應階段的處理函式加上處理；若要有快捷鍵，再到這裡加一行，並在 `ui.py` 的 `StoryApp` 加上 `action_<名稱>` 方法。
 
 ### `apikey.py`：API key 管理
 
