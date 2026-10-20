@@ -114,20 +114,27 @@ core = StoryCore(api_key="…")            # 網頁版另外傳 save_path、log_
 reply = core.start()                     # 第一個回覆：有存檔就問要不要繼續，否則請你輸入前提
 reply = core.send("往上爬")               # 之後每一句輸入
 print(reply.text)                        # 只會印文字的外殼，這樣就能完整地玩
+
+core.action_for("2")                     # → "躲起來"：這句輸入代表的行動，讓外殼送出前先顯示
+core.set_api_key("…")                    # key 失效時換一個
 ```
+
+外殼只能用這四個方法，以及讀 `Reply` 的欄位，不直接讀核心的屬性，也不 import engine。這樣核心內部怎麼改都不會影響外殼。
 
 **`Reply` 的欄位**
 
 | 欄位 | 內容 |
 |---|---|
 | `phase` | 目前階段：`ask_continue`（找到存檔）、`ask_premise`（等前提）、`playing`、`confirm_restart`、`ending`（剛結束，下一句會寫尾聲）、`ended` |
+| `timed` | 目前是否為限時模式（遊戲中是這一局的模式，等前提時是開新局會用的模式） |
 | `text` | 完整的純文字 |
 | `narration` | 這次產生（或讀檔重新顯示）的劇情；沒有新劇情時是空字串 |
 | `choices` | 選項 |
-| `status` | 狀態列資料（`Status`）：回合、整體狀態、身體、精神、背包、是否限時 |
+| `status` | 狀態列資料（`Status`）：回合、整體狀態、身體、精神、背包 |
 | `changes` | 這回合的變化：新增、惡化、好轉、痊癒、獲得、失去 |
 | `time_limit` | 限時秒數，0 代表不限時 |
 | `notice` | 簡短的系統訊息 |
+| `resumed` | 這次是讀取存檔、重新顯示上次的劇情 |
 | `info` | 要另外顯示的內容（標題, 內容），例如 `/state`、`/help` |
 | `premise_default`、`suggestion` | 等前提時：留白會用的前提、`/suggest` 想出來的前提 |
 | `ending` | 結束時：結局名稱、尾聲、旅程紀錄 |

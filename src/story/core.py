@@ -52,7 +52,6 @@ class Status:
     body: list[tuple[str, str]]  # 身體狀態：(名稱, 程度)
     mind: list[tuple[str, str]]  # 精神狀態：(名稱, 程度)
     inventory: list[str]
-    timed: bool
 
 
 @dataclass
@@ -65,6 +64,7 @@ class Ending:
 @dataclass
 class Reply:
     phase: Phase
+    timed: bool = False  # 目前是否為限時模式（遊戲中是這一局的模式，等前提時是開新局會用的模式）
     text: str = ""  # 完整的純文字，只會印文字的外殼直接顯示這個就好
     narration: str = ""  # 這次產生（或讀檔重新顯示）的劇情；沒有新劇情時是空字串
     choices: list[str] = field(default_factory=list)
@@ -72,6 +72,7 @@ class Reply:
     changes: ChangeGroups = field(default_factory=list)  # 這回合的變化：新增、惡化、痊癒、獲得……
     time_limit: int = 0  # 限時秒數；0 代表不限時
     notice: str = ""  # 簡短的系統訊息，例如「讀取存檔」「沒有這個指令」
+    resumed: bool = False  # 這次是讀取存檔、重新顯示上次的劇情
     info: tuple[str, str] | None = None  # 要另外顯示的內容：(標題, 內容)，例如記憶、說明
     premise_default: str = ""  # ask_premise：留白時使用的前提
     suggestion: str = ""  # ask_premise：/suggest 想出來的前提
@@ -105,6 +106,18 @@ class StoryCore:
                 notice=f"找到存檔（第 {state.turn} 回合）：{state.premise}",
             )
         return self._ask_premise()
+
+    def action_for(self, text: str) -> str | None:
+        """這句輸入在遊戲中代表的行動文字（例如「2」→ 第二個選項），讓外殼可以在等待回覆前先顯示。
+        不是行動（指令、空白、不在遊戲中）時回傳 None。"""
+        raw = text.strip()
+        if self.phase != "playing" or not raw:
+            return None
+        if raw == "/timeout":
+            return TIMEOUT_ACTION
+        if raw.startswith("/"):
+            return None
+        return self._pick(raw, self.state.current_choices) or raw
 
     def send(self, text: str) -> Reply:
         """送出一句玩家輸入，拿回覆。可能會呼叫 LLM，所以會花幾秒。"""
@@ -165,13 +178,10 @@ class StoryCore:
         if raw == "/restart":
             self.phase = "confirm_restart"
             return self._reply(choices=["確定", "取消"], notice="確定要放棄目前進度、重新開始嗎？")
-        if raw == "/timeout":
-            raw = TIMEOUT_ACTION
-        elif raw.startswith("/"):
-            return self._reply(notice=f"沒有 {raw} 這個指令，輸入 /help 查看說明。", **self._screen())
-        elif not raw:
-            return self._reply(notice="請輸入行動，或輸入數字選擇選項。", **self._screen())
-        action = self._pick(raw, self.state.current_choices) or raw
+        action = self.action_for(raw)
+        if action is None:
+            notice = f"沒有 {raw} 這個指令，輸入 /help 查看說明。" if raw else "請輸入行動，或輸入數字選擇選項。"
+            return self._reply(notice=notice, **self._screen())
 
         self._wait_compaction()
         before = snapshot(self.state)
@@ -237,7 +247,7 @@ class StoryCore:
     def _resume(self) -> Reply:
         self.phase = "playing"
         s = self.state
-        return self._reply(narration=s.current_narration, notice=f"讀取存檔：{s.premise}", **self._screen())
+        return self._reply(narration=s.current_narration, notice=f"讀取存檔：{s.premise}", resumed=True, **self._screen())
 
     def _turn_reply(self, before) -> Reply:
         s = self.state
@@ -276,12 +286,12 @@ class StoryCore:
             body=[(c.name, c.severity) for c in body_conditions(s)],
             mind=[(c.name, c.severity) for c in mind_conditions(s)],
             inventory=list(s.inventory),
-            timed=s.timed_mode,
         )
 
     def _reply(self, **fields) -> Reply:
-        reply = Reply(phase=self.phase, status=self._status() if self.phase != "ask_premise" else None, **fields)
-        reply.text = render_text(reply, self.timed)
+        timed = self.state.timed_mode if self.state and self.phase != "ask_premise" else self.timed
+        reply = Reply(phase=self.phase, timed=timed, status=self._status() if self.phase != "ask_premise" else None, **fields)
+        reply.text = render_text(reply)
         return reply
 
     # ---------- 背景壓縮記憶 ----------
@@ -312,14 +322,14 @@ class StoryCore:
 # ---------- 純文字版的回覆 ----------
 
 
-def status_line(status: Status) -> str:
+def status_line(status: Status, timed: bool) -> str:
     parts = [f"回合 {status.turn}", f"狀態 {status.level}"]
     if status.body:
         parts[-1] += "：" + "、".join(f"{n}（{v}）" for n, v in status.body)
     if status.mind:
         parts.append("精神 " + "、".join(f"{n}（{v}）" for n, v in status.mind))
     parts.append("背包 " + ("、".join(status.inventory) or "空"))
-    if status.timed:
+    if timed:
         parts.append("限時模式")
     return "｜".join(parts)
 
@@ -328,7 +338,7 @@ def changes_line(groups: ChangeGroups) -> str:
     return "　".join(f"{label} " + "、".join(text for text, _ in items) for label, items in groups)
 
 
-def render_text(reply: Reply, timed: bool) -> str:
+def render_text(reply: Reply) -> str:
     """把回覆組成一段完整的純文字。"""
     parts: list[str] = []
     if reply.notice:
@@ -340,7 +350,7 @@ def render_text(reply: Reply, timed: bool) -> str:
         if reply.suggestion:
             parts.append("想到一個開頭了，直接送出空白就用它開始，也可以自己修改後送出。")
         parts.append(
-            f"新的故事（{'限時' if timed else '一般'}模式）。輸入故事前提，或直接送出空白使用：\n{reply.premise_default}\n"
+            f"新的故事（{'限時' if reply.timed else '一般'}模式）。輸入故事前提，或直接送出空白使用：\n{reply.premise_default}\n"
             "（/suggest 讓 AI 幫你想，/timed 切換限時模式）"
         )
     if reply.narration:
@@ -354,7 +364,7 @@ def render_text(reply: Reply, timed: bool) -> str:
             parts.append(e.epilogue)
         parts.append(e.record)
     if reply.status and reply.phase in ("playing", "ending") and reply.narration:
-        parts.append(status_line(reply.status))
+        parts.append(status_line(reply.status, reply.timed))
     if reply.phase == "ending":
         parts.append("（故事結束了。送出任何文字查看尾聲。）")
     if reply.choices:

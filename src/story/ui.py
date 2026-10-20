@@ -18,7 +18,6 @@ from story.apikey import KEY_PATH, forget_api_key, get_saved_api_key, save_api_k
 from story.commands import COMMANDS, help_text
 from story.common import CHAR_DELAY, FAST_FACTOR, LEVEL_COLORS, PAUSE_AFTER, SEVERITY_COLORS, ChangeGroups
 from story.core import Reply, Status, StoryCore
-from story.engine import TIMEOUT_ACTION
 from story.players import MAX_NAME_LEN, InvalidName, Player, check_name
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -397,6 +396,7 @@ class StoryApp(App):
     def on_mount(self) -> None:
         self.theme = THEME
         self.set_status(None)
+        self.render_mode(False)
         self.set_interval(0.1, self.tick)
         self.boot()
 
@@ -469,6 +469,7 @@ class StoryApp(App):
 
     async def handle(self, reply: Reply) -> None:
         """依照回覆的階段與欄位更新畫面。"""
+        self.render_mode(reply.timed)
         if reply.info:
             self.push_screen(InfoDialog(*reply.info))
         if reply.error == "api":
@@ -494,7 +495,7 @@ class StoryApp(App):
     async def ask_premise(self, reply: Reply) -> None:
         if reply.error == "api":
             return  # 開場生成失敗：錯誤已經提示了，留在原處，玩家可以用 Ctrl+R 再試
-        timed = self.core.timed
+        timed = reply.timed
 
         def suggest(_: str) -> str:
             suggestion = self.core.send("/suggest")
@@ -515,7 +516,6 @@ class StoryApp(App):
     def set_status(self, status: Status | None) -> None:
         if status is None:
             self.query_one("#status", Static).update(Text("Story", style="dim"))
-            self.render_mode(self.core.timed if self.core else False)
             return
         muted = "dim"
 
@@ -532,7 +532,6 @@ class StoryApp(App):
             ("     背包 ", muted), (" · ".join(status.inventory) or "空", ""),
         )
         self.query_one("#status", Static).update(bar)
-        self.render_mode(status.timed)
 
     def log_message(self, text: str | Text, kind: str) -> Static:
         log = self.query_one("#log", VerticalScroll)
@@ -544,7 +543,7 @@ class StoryApp(App):
     async def show_turn(self, reply: Reply) -> None:
         """有新劇情時逐字顯示，打完才顯示變化與更新狀態列，避免先劇透。"""
         if reply.narration:
-            if reply.notice and reply.notice.startswith("讀取存檔"):
+            if reply.resumed:
                 self.log_message(reply.notice, "action")
             await self.typewrite(reply.narration)
             if changes := describe_changes(reply.changes):
@@ -658,7 +657,7 @@ class StoryApp(App):
         self.render_timer()
         if self.time_left == 0:
             self.stop_timer()
-            self.run_worker(self.send("/timeout", echo=TIMEOUT_ACTION))
+            self.run_worker(self.send("/timeout", echo=self.core.action_for("/timeout") or ""))
 
     # ---------- 輸入 ----------
 
@@ -696,13 +695,11 @@ class StoryApp(App):
             else:
                 self.run_worker(self.send(raw))  # 交給核心，它會回覆「沒有這個指令」
             return
-        if raw.isdigit() and 1 <= int(raw) <= len(self.choices):
-            self.choose_index(int(raw) - 1)
-            return
-        self.run_worker(self.send(raw, echo=raw))
+        self.run_worker(self.send(raw, echo=self.core.action_for(raw) or ""))
 
     def choose_index(self, index: int) -> None:
-        self.run_worker(self.send(str(index + 1), echo=self.choices[index]))
+        text = str(index + 1)
+        self.run_worker(self.send(text, echo=self.core.action_for(text) or ""))
 
     def action_move_choice(self, step: int) -> None:
         if isinstance(self.screen, ModalScreen):
