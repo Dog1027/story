@@ -99,6 +99,7 @@ uv run story
 | 直接打字 | 自由行動，不照選項走 |
 | Enter（文字顯示中） | 加速，再按一次全部顯示 |
 | 點狀態列 | 展開或收合背包（手機預設收合，只顯示件數） |
+| F2 | 選擇配色主題（上下移動就能預覽；終端機版會記住） |
 | `/` 或 Ctrl+P | 開啟指令選單 |
 | Ctrl+T | 看程式記住了什麼 |
 | Ctrl+R | 重新開始 |
@@ -114,7 +115,7 @@ uv run story
 常用的設定都是程式檔開頭的常數：
 
 - 故事長度、使用的模型、傷勢與痊癒規則：`src/story/core/engine.py`
-- 配色主題、打字速度、狀態顏色：`src/story/shells/textual/style.py`（網頁版會跟著一起變）
+- 預設配色主題、打字速度：`src/story/shells/textual/style.py`（網頁版會跟著一起變）。遊戲中按 F2 或輸入 `/theme` 可以換主題，傷勢與狀態的顏色會從主題的成功／警告／錯誤色算出來
 
 每個檔案的詳細說明見 [docs/files.md](docs/files.md)。
 

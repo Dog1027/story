@@ -4,6 +4,7 @@
 COMMANDS = {
     "/state": ("ctrl+t", "看程式記住了什麼"),
     "/restart": ("ctrl+r", "重新開始"),
+    "/theme": ("f2", "選擇配色主題"),
     "/help": ("f1", "顯示指令列表"),
     "/quit": ("ctrl+q", "存檔並離開"),
 }

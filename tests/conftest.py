@@ -15,6 +15,7 @@ def isolated(tmp_path, monkeypatch):
     for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr("story.shells.apikey.KEY_PATH", tmp_path / "api_key")
+    monkeypatch.setattr("story.shells.prefs.THEME_PATH", tmp_path / "theme")
     return tmp_path
 
 

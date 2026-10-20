@@ -50,7 +50,8 @@ src/story/
     ├── web_templates/   網頁殼的頁面（加上手機支援的 textual-serve 模板）
     ├── plain.py         純文字外殼
     ├── players.py       網頁版的玩家
-    └── apikey.py        API key 的存取
+    ├── apikey.py        API key 的存取
+    └── prefs.py         偏好設定（配色主題）
 ```
 
 **相依的方向只有一個**：外殼 → `story.core`。核心不 import 任何外殼；外殼只用 `story.core` 匯出的名稱，不直接 import `engine`、`models` 這些內部模組。
@@ -283,9 +284,9 @@ core.progress                            # send() 執行中目前在做什麼，
 
 | 常數 | 意義 |
 |---|---|
-| `THEME` | 配色主題（`tokyo-night`，可換成 `catppuccin-mocha`、`rose-pine`、`nord` 等） |
+| `THEME` | 預設配色主題（`tokyo-night`）。遊戲中用 `/theme`（F2）打開 Textual 內建的主題選擇器；終端機版的選擇存在 `~/.config/story/theme`（`prefs.py`），網頁版不存（設定檔在伺服器上，存了會影響所有玩家） |
 | `CHAR_DELAY`、`FAST_FACTOR`、`PAUSE_AFTER` | 打字效果的速度、按 Enter 後的加速倍率、標點停頓 |
-| `SEVERITY_COLORS`、`LEVEL_COLORS`、`TONE_STYLES` | 狀態程度、整體狀態、變化語氣的顏色 |
+| `palette(主題)` | 狀態程度、整體狀態、變化語氣、倒數的顏色，從主題的成功／警告／錯誤色算出來，換主題時跟著變；並轉成 Rich 認得的寫法（ansi 主題的 `ansi_red` 要換成 `color(1)`） |
 
 **`prose.py`：中文換行**
 

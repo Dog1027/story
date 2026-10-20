@@ -22,7 +22,8 @@ from story.shells.room import START, RoomConnection
 from story.shells.textual.commands import COMMANDS, help_text
 from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, NameDialog, PartyNamesDialog, PremiseDialog
 from story.shells.textual.prose import Marked, Prose
-from story.shells.textual.style import CHAR_DELAY, FAST_FACTOR, LEVEL_COLORS, PAUSE_AFTER, SEVERITY_COLORS, SPINNER, THEME, TONE_STYLES
+from story.shells.prefs import get_saved_theme, save_theme
+from story.shells.textual.style import CHAR_DELAY, FAST_FACTOR, PAUSE_AFTER, SPINNER, THEME, palette
 
 
 NARROW_WIDTH = 60  # 比這個窄（手機直式）就用窄畫面的樣式，背包預設收合
@@ -31,13 +32,13 @@ NARROW_WIDTH = 60  # 比這個窄（手機直式）就用窄畫面的樣式，�
 # ---------- 回合間的變化 ----------
 
 
-def describe_changes(groups: ChangeGroups) -> Text | None:
-    """把核心回覆的變化轉成彩色文字，例如「新增 右臂撕裂傷（重）　痊癒 左肘擦傷　獲得 油燈」。"""
+def describe_changes(groups: ChangeGroups, colors: dict[str, str]) -> Text | None:
+    """把核心回覆的變化轉成彩色文字，例如「新增 右臂撕裂傷（重）　痊癒 左肘擦傷　獲得 油燈」。colors 是 palette() 的結果。"""
     parts: list[tuple[str, str]] = []
     for label, items in groups:
         parts.append((("　" if parts else "") + label + " ", "dim"))
         for i, (text, tone) in enumerate(items):
-            parts += [(" · ", "dim")] * bool(i) + [(text, TONE_STYLES[tone])]
+            parts += [(" · ", "dim")] * bool(i) + [(text, colors[tone])]
     return Text.assemble(*parts) if parts else None
 
 
@@ -120,6 +121,8 @@ class StoryApp(App):
         self.progress = ""  # 線上多人：房間推來的進度（單人直接讀核心的 progress）
         self.shown_status: tuple[Status | None, list[Status] | None] = (None, None)  # 狀態列目前顯示的內容
         self.inventory_open: bool | None = None  # 背包展開與否；None 是依畫面寬度（手機收合、電腦展開）
+        self.timed = False  # 狀態列右邊顯示的模式（換主題時重畫用）
+        self.theme_ready = False
         self.frame = 0
         self.time_left = 0.0  # 限時模式的剩餘秒數，0 代表沒有在倒數
         self.last_tick = 0.0
@@ -148,11 +151,30 @@ class StoryApp(App):
             self.room.close()
 
     def on_mount(self) -> None:
-        self.theme = THEME
+        saved = None if self.web else get_saved_theme()
+        self.theme = saved if saved in self.available_themes else THEME
+        self.theme_ready = True  # 之後的主題變更才是玩家選的，要記住
         self.set_status(None)
         self.render_mode(False)
         self.set_interval(0.1, self.tick)
         self.boot()
+
+    @property
+    def colors(self) -> dict[str, str]:
+        """目前主題的狀態顏色。"""
+        return palette(self.current_theme)
+
+    def watch_theme(self, theme: str) -> None:
+        """換了主題：狀態列跟著換色；終端機版記住選擇（網頁版的設定檔在伺服器上，不存）。"""
+        if not self.theme_ready:
+            return
+        self.set_status(*self.shown_status)
+        self.render_mode(self.timed)
+        if not self.web:
+            save_theme(theme)
+
+    def action_theme(self) -> None:
+        self.action_change_theme()  # Textual 內建的主題選擇器：上下移動就能預覽
 
     def watch_app_focus(self, focus: bool) -> None:
         # 網頁版一開始是失焦狀態，這時跳出的對話框不會自動聚焦；回到焦點時 Textual 只還原舊畫面上的焦點，
@@ -423,7 +445,7 @@ class StoryApp(App):
         def listed(conds: list[tuple[str, str]], first_sep: str) -> list[tuple[str, str]]:
             parts: list[tuple[str, str]] = []
             for i, (name, severity) in enumerate(conds):
-                parts += [(" · " if i else first_sep, muted), (name, SEVERITY_COLORS[severity])]
+                parts += [(" · " if i else first_sep, muted), (name, self.colors[severity])]
             return parts
 
         if party:
@@ -433,7 +455,7 @@ class StoryApp(App):
                     lines.append(Text.assemble((st.name, "bold dim"), ("  已倒下", muted)))
                     continue
                 lines.append(Text.assemble(
-                    (st.name, "bold"), ("  ", ""), (st.level, f"bold {LEVEL_COLORS[st.level]}"), *listed(st.body, "  "),
+                    (st.name, "bold"), ("  ", ""), (st.level, f"bold {self.colors[st.level]}"), *listed(st.body, "  "),
                     *([("     精神 ", muted)] + listed(st.mind, "") if st.mind else []),
                     *self.inventory_parts(st.inventory),
                 ))
@@ -445,7 +467,7 @@ class StoryApp(App):
 
         bar = Text.assemble(
             ("回合 ", muted), (str(status.turn), "bold"),
-            ("     狀態 ", muted), (status.level, f"bold {LEVEL_COLORS[status.level]}"), *listed(status.body, "  "),
+            ("     狀態 ", muted), (status.level, f"bold {self.colors[status.level]}"), *listed(status.body, "  "),
             *([("     精神 ", muted)] + listed(status.mind, "") if status.mind else []),
             *self.inventory_parts(status.inventory),
         )
@@ -470,10 +492,10 @@ class StoryApp(App):
             if reply.resumed:
                 self.log_message(reply.notice, "action")
             await self.typewrite(reply.narration)
-            if changes := describe_changes(reply.changes):
+            if changes := describe_changes(reply.changes, self.colors):
                 self.log_message(changes, "changes")
             for name, groups in reply.party_changes:
-                self.log_message(Text.assemble((f"{name}　", "bold"), describe_changes(groups)), "changes")
+                self.log_message(Text.assemble((f"{name}　", "bold"), describe_changes(groups, self.colors)), "changes")
             self.reveal_choices()
         else:
             self.set_choices(reply.choices)
@@ -586,14 +608,15 @@ class StoryApp(App):
 
     def render_mode(self, timed: bool) -> None:
         """狀態列最右邊固定顯示目前的模式。"""
-        label = Text("限時模式", style="#f7768e") if timed else Text("一般模式", style="dim")
+        self.timed = timed
+        label = Text("限時模式", style=self.colors["bad"]) if timed else Text("一般模式", style="dim")
         self.query_one("#mode", Static).update(label)
 
     def render_timer(self) -> None:
         """選項上方的倒數條。"""
         width = 24
         filled = round(width * self.time_left / self.time_limit)
-        color = "#f7768e" if self.time_left <= 5 else "#e0af68"
+        color = self.colors["重"] if self.time_left <= 5 else self.colors["輕"]
         self.query_one("#timer", Static).update(
             Text.assemble(
                 ("限時 ", "dim"), ("━" * filled, color), ("─" * (width - filled), "dim"),

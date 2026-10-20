@@ -360,3 +360,47 @@ async def test_inventory_collapses_on_phones_and_expands_on_click():
             await pilot.click("#status")
             assert ("鑰匙 · 油燈" in status_text(app)) is not expanded  # 點一下切換
         (Path("save.json")).unlink(missing_ok=True)
+
+
+async def test_theme_command_changes_colors_and_is_remembered(isolated):
+    from textual.command import CommandPalette
+
+    from story.shells.textual.style import palette
+
+    app = StoryApp()
+    async with app.run_test(size=SIZE) as pilot:
+        await start_game(pilot, app)
+        await pilot.press("f2")
+        await wait_until(pilot, lambda: isinstance(app.screen, CommandPalette))  # Textual 內建的主題選擇器
+        await pilot.press("escape")
+        app.theme = "solarized-light"
+        await pilot.pause()
+        assert app.colors == palette(app.current_theme)
+        assert app.colors["良好"] != palette(app.get_theme("tokyo-night"))["良好"]
+    assert (isolated / "theme").read_text() == "solarized-light"
+
+    app = StoryApp()
+    async with app.run_test(size=SIZE) as pilot:
+        await wait_until(pilot, lambda: isinstance(app.screen, ConfirmDialog))  # 有存檔，問要不要繼續
+        assert app.theme == "solarized-light"  # 下次開啟沿用
+
+
+async def test_web_mode_does_not_save_theme(isolated):
+    app = StoryApp(web=True)
+    async with app.run_test(size=SIZE) as pilot:
+        await wait_until(pilot, lambda: isinstance(app.screen, NameDialog))
+        app.theme = "nord"
+        await pilot.pause()
+    assert not (isolated / "theme").exists()  # 設定檔在伺服器上，存了會影響所有玩家
+
+
+def test_every_builtin_theme_gives_valid_status_colors():
+    """ansi 主題的顏色是 ansi_red 這種名稱，要轉成 Rich 認得的寫法，否則狀態列會出錯。"""
+    from rich.style import Style
+    from textual.theme import BUILTIN_THEMES
+
+    from story.shells.textual.style import palette
+
+    for theme in BUILTIN_THEMES.values():
+        for color in palette(theme).values():
+            Style.parse(f"bold {color}")  # 認不得會拋出錯誤
