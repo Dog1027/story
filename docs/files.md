@@ -5,19 +5,20 @@
 程式分成**核心**與**外殼**。核心就像一個 LLM：送文字進去、拿回覆出來（`reply = core.send("往上爬")`），記憶、規則、存檔、遊戲流程都藏在裡面。外殼只負責顯示和輸入。
 
 ```
-外殼（只負責顯示和輸入）
-  ui.py      Textual 終端機介面 ─┐
-  web.py     瀏覽器殼（包住 ui.py）│   "往上爬"          Reply（文字＋附帶資料）
-  plain.py   純文字 input/print ─┴──────────►  ◄──────────────────
-                                          │          ▲
-┌─────────────── 核心 core.py ────────────▼──────────┴──────────┐
-│  StoryCore.send(text) → Reply                                   │
-│  解析輸入（行動、數字、/指令）、遊戲階段、存檔、背景壓縮記憶       │
-│        │                                                        │
-│        ▼                                                        │
-│  engine.py：組提示詞 → 呼叫 Gemini → 驗證 AI 的提議 → 套用        │
-│  models.py：GameState（= 存檔）、StoryBeat 等 AI 回傳格式          │
-└─────────────────────────────────────────────────────────────────┘
+外殼 story/shells/（只負責顯示和輸入）
+  textual/   Textual 終端機介面 ─┐
+  web.py     瀏覽器殼（包住 textual）│   "往上爬"          Reply（文字＋附帶資料）
+  plain.py   純文字 input/print ───┴──────────►  ◄──────────────────
+                                            │          ▲
+┌──────────── 核心 story/core/ ──────────────▼──────────┴──────────┐
+│  session.py：StoryCore.send(text) → Reply                         │
+│    解析輸入（行動、數字、/指令）、遊戲階段、存檔、背景壓縮記憶       │
+│        │                                                          │
+│        ▼                                                          │
+│  engine.py：組提示詞 → 呼叫 Gemini → 驗證 AI 的提議 → 套用          │
+│  models.py：GameState（= 存檔）、StoryBeat 等 AI 回傳格式            │
+│  records.py：存讀檔、回合變化、結局紀錄                              │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 API key、玩家名字、倒數計時、打字效果屬於外殼。核心只告訴外殼「這回合限時 12 秒」，時間到由外殼送出 `/timeout`。
@@ -25,6 +26,34 @@ API key、玩家名字、倒數計時、打字效果屬於外殼。核心只告�
 ---
 
 ## 原始碼 `src/story/`
+
+```
+src/story/
+├── __init__.py          main()：依參數選外殼
+├── __main__.py          python -m story
+├── core/                核心：完全不知道有任何介面，也不 import shells/
+│   ├── __init__.py      對外只匯出 StoryCore、Reply、Status 等
+│   ├── session.py       StoryCore
+│   ├── engine.py        遊戲規則與 AI
+│   ├── models.py        資料結構
+│   └── records.py       存讀檔、回合變化、結局紀錄
+└── shells/              外殼：只透過 story.core 的公開介面跟核心溝通
+    ├── textual/
+    │   ├── app.py       主畫面 StoryApp
+    │   ├── dialogs.py   對話框
+    │   ├── style.py     配色、打字節奏
+    │   └── commands.py  指令與快捷鍵
+    ├── web.py           網頁殼
+    ├── plain.py         純文字外殼
+    ├── players.py       網頁版的玩家
+    └── apikey.py        API key 的存取
+```
+
+**相依的方向只有一個**：外殼 → `story.core`。核心不 import 任何外殼；外殼只用 `story.core` 匯出的名稱，不直接 import `engine`、`models` 這些內部模組。
+
+### `__main__.py`：`python -m story` 的進入點
+
+讓 `python -m story` 也能啟動終端機版。網頁殼用 `python -m story --web` 在背景啟動遊戲。
 
 ### `__init__.py`：程式進入點
 
@@ -34,7 +63,9 @@ API key、玩家名字、倒數計時、打字效果屬於外殼。核心只告�
 - `--web`：網頁模式的 `StoryApp`（由網頁殼使用），先問名字、存檔依名字分開、API key 不存到伺服器
 - `--plain`：純文字外殼
 
-### `models.py`：資料結構
+## 核心 `core/`
+
+### `core/models.py`：資料結構
 
 所有資料的形狀都定義在這裡，用 Pydantic 寫成。分成兩類：
 
@@ -57,9 +88,9 @@ API key、玩家名字、倒數計時、打字效果屬於外殼。核心只告�
 
 `GameState` 裡的 `_upgrade_old_conditions` 負責相容舊存檔。
 
-### `engine.py`：遊戲規則與 AI
+### `core/engine.py`：遊戲規則與 AI
 
-負責所有和 AI 的互動，以及遊戲規則。由 `core.py` 呼叫，外殼不會直接用到。
+負責所有和 AI 的互動，以及遊戲規則。由 `session.py` 呼叫，外殼不會直接用到。
 
 **對外的方法**
 
@@ -84,7 +115,7 @@ API key、玩家名字、倒數計時、打字效果屬於外殼。核心只告�
 | `_write_death()` | 程式判定傷重死亡、但 AI 寫的劇情裡主角還活著時，請 AI 補寫死亡結局 |
 | `_log_turn()` | 把每回合的變化寫進 `story_log.jsonl` |
 
-**計算規則的函式**：`clock_text()`（遊戲內時間的文字）、`body_score()`、`body_level()`（傷勢分數與整體狀態，只算身體狀態）、`body_conditions()`、`mind_conditions()`。
+**計算規則的函式**：`clock_text()`（遊戲內時間的文字）、`body_score()`、`body_level()`（傷勢分數與整體狀態，只算身體狀態）、`body_conditions()`、`mind_conditions()`、`is_key_error()`（判斷 Gemini 錯誤是不是 key 無效）。
 
 **可以調整的常數**（都在檔案開頭）
 
@@ -103,7 +134,7 @@ API key、玩家名字、倒數計時、打字效果屬於外殼。核心只告�
 | `PREMISE_GENRES`、`PREMISE_SETTINGS` | 「幫我想」隨機挑選的題材與情境 | 14 種、8 種 |
 | `SYSTEM_PROMPT` | 給 AI 的寫作與遊戲規則 | — |
 
-### `core.py`：最小核心
+### `core/session.py`：最小核心
 
 整個遊戲對外只有一個入口：`StoryCore.send(text) → Reply`。輸入一律是文字，回覆和 LLM 的 API 一樣是「文字＋附帶資料」。
 
@@ -154,27 +185,25 @@ core.set_api_key("…")                    # key 失效時換一個
 
 **內部**：每個階段一個處理函式（`_on_playing()` 等）；LLM 失敗時從存檔還原、留在原階段；回合結束後在背景執行緒壓縮記憶，下一次呼叫 LLM 前會先等它完成；`render_text()` 負責組出純文字。
 
-### `plain.py`：純文字外殼
-
-只用 `input()` 和 `print()` 跟核心對話，不到 30 行。示範核心可以接任何外殼：`uv run story --plain`。
-
-### `common.py`：共用工具
+### `core/records.py`：紀錄工具
 
 | 名稱 | 做什麼 |
 |---|---|
-| `save()`、`load()` | 存讀存檔（終端機版 `save.json`，網頁版由 `players.py` 指定路徑） |
-| `snapshot()`、`change_groups()` | 比較回合前後，列出「新增／惡化／好轉／痊癒／獲得／失去」（核心放進 `Reply.changes`） |
-| `ending_record()` | 結局對話框裡的旅程紀錄（回合數、天數、重大事件） |
+| `save()`、`load()` | 存讀存檔（終端機版 `save.json`，網頁版由 `players.py` 指定路徑）。存檔是**原子性寫入**：先寫暫存檔再一次換上去，背景壓縮記憶時同時存檔、或寫到一半被關掉，都不會讀到壞掉的存檔 |
+| `snapshot()`、`change_groups()` | 比較回合前後，列出「新增／惡化／好轉／痊癒／獲得／失去」（放進 `Reply.changes`）。每個項目帶的是**語氣**（`輕`／`中`／`重`／`good`／`bad`／`plain`／`muted`），不是顏色，由外殼決定怎麼呈現 |
+| `ending_record()` | 結局的旅程紀錄（回合數、天數、重大事件） |
 | `memory_text()` | 「程式記住的東西」顯示的內容 |
-| `CHAR_DELAY`、`FAST_FACTOR`、`PAUSE_AFTER` | 打字效果的速度與標點停頓 |
-| `SEVERITY_COLORS`、`LEVEL_COLORS` | 狀態程度與整體狀態的顏色 |
 | `DEFAULT_PREMISE` | 預設的故事前提 |
 
-### `ui.py`：Textual 外殼
+---
+
+## 外殼 `shells/`
+
+### `shells/textual/`：Textual 外殼
 
 用 [Textual](https://textual.textualize.io/) 寫成的終端機介面。只負責顯示和輸入：把玩家的輸入轉成文字送給核心，再依照 `Reply` 的階段和欄位更新畫面。不呼叫 engine，也不碰 `GameState`。
 
-**對話框**
+**`dialogs.py`：對話框**
 
 | 類別 | 用途 |
 |---|---|
@@ -186,7 +215,7 @@ core.set_api_key("…")                    # key 失效時換一個
 | `EndingDialog` | 結局名稱、旅程紀錄、再玩一次 |
 | `InfoDialog` | 顯示 `Reply.info`（記憶、說明） |
 
-**主畫面 `StoryApp`**
+**`app.py`：主畫面 `StoryApp`**
 
 | 方法 | 做什麼 |
 |---|---|
@@ -199,22 +228,41 @@ core.set_api_key("…")                    # key 失效時換一個
 | `start_timer()`、`tick()` | 限時倒數（開著對話框時暫停），時間到送 `/timeout` |
 | `submit()` | 處理輸入框：打字中按 Enter 加速、指令、數字選項、自由行動 |
 
-**輔助函式**：`describe_changes()`，把 `Reply.changes` 轉成彩色文字。
+**輔助函式**：`describe_changes()`，把 `Reply.changes` 依語氣轉成彩色文字。
 
-**可以調整的常數**：`THEME`（配色主題）。
+**`style.py`：外觀**
 
-### `web.py`：網頁殼
+| 常數 | 意義 |
+|---|---|
+| `THEME` | 配色主題（`tokyo-night`，可換成 `catppuccin-mocha`、`rose-pine`、`nord` 等） |
+| `CHAR_DELAY`、`FAST_FACTOR`、`PAUSE_AFTER` | 打字效果的速度、按 Enter 後的加速倍率、標點停頓 |
+| `SEVERITY_COLORS`、`LEVEL_COLORS`、`TONE_STYLES` | 狀態程度、整體狀態、變化語氣的顏色 |
 
-用 [textual-serve](https://github.com/Textualize/textual-serve) 把終端機版原封不動地放進瀏覽器。每開一個分頁，伺服器就在背景用 `python -m story --web` 啟動一個網頁模式的遊戲，畫面透過網頁上的終端機模擬器（xterm.js）顯示。這裡不寫任何介面或遊戲邏輯，所以改功能時只要改 `ui.py`，網頁版會一起變。
+**`commands.py`：指令與快捷鍵**
+
+`COMMANDS` 定義四個指令（`/state`、`/restart`、`/help`、`/quit`）的快捷鍵與說明；`help_text()` 產生 F1 說明的內容。
+
+新增遊戲指令時，先在 `core/session.py` 的 `send()` 或對應階段的處理函式加上處理；若要有快捷鍵，再到這裡加一行，並在 `app.py` 的 `StoryApp` 加上 `action_<名稱>` 方法。
+
+### `shells/plain.py`：純文字外殼
+
+只用 `input()` 和 `print()` 跟核心對話，不到 30 行。示範核心可以接任何外殼：`uv run story --plain`。
+
+
+
+### `shells/web.py`：網頁殼
+
+用 [textual-serve](https://github.com/Textualize/textual-serve) 把終端機版原封不動地放進瀏覽器。每開一個分頁，伺服器就在背景用 `python -m story --web` 啟動一個網頁模式的遊戲，畫面透過網頁上的終端機模擬器（xterm.js）顯示。這裡不寫任何介面或遊戲邏輯，所以改功能時只要改 Textual 外殼，網頁版會一起變。
 
 | 名稱 | 做什麼 |
 |---|---|
 | `LimitedServer` | 限制同時在線人數（`MAX_SESSIONS`），滿了就顯示提示並關閉連線 |
+| `game_command()` | 每個連線要啟動的遊戲指令 |
 | `main()` | `uv run story-web` 的進入點；參數 `--host`、`--port`、`--public-url` |
 
 預設只監聽 `127.0.0.1`。`--host 0.0.0.0` 會開放其他電腦連線，但目前沒有 HTTPS，玩家的 API key 會以明文傳送。
 
-### `players.py`：網頁版的玩家
+### `shells/players.py`：網頁版的玩家
 
 | 名稱 | 做什麼 |
 |---|---|
@@ -223,24 +271,36 @@ core.set_api_key("…")                    # key 失效時換一個
 
 同一個名字同時只能有一個連線：佔用時建立 `saves/名字.lock`，裡面記錄程序編號。連線異常中斷沒有釋放時，下一個人會發現那個程序已經不存在，直接接手。
 
-### `__main__.py`：`python -m story` 的進入點
-
-讓 `python -m story` 也能啟動終端機版。網頁殼用 `python -m story --web` 在背景啟動遊戲。
-
-### `commands.py`：指令清單
-
-Textual 外殼的指令與快捷鍵：`COMMANDS` 定義四個指令（`/state`、`/restart`、`/help`、`/quit`）的快捷鍵與說明；`help_text()` 產生 F1 說明的內容。
-
-新增遊戲指令時，先在 `core.py` 的 `send()` 或對應階段的處理函式加上處理；若要有快捷鍵，再到這裡加一行，並在 `ui.py` 的 `StoryApp` 加上 `action_<名稱>` 方法。
-
-### `apikey.py`：API key 管理
+### `shells/apikey.py`：API key 的存取
 
 | 函式 | 做什麼 |
 |---|---|
 | `get_saved_api_key()` | 依序從環境變數（`GEMINI_API_KEY`、`GOOGLE_API_KEY`）、設定檔取得 key |
 | `save_api_key()` | 存到 `~/.config/story/api_key`，權限 600（只有自己能讀） |
 | `forget_api_key()` | 刪除已儲存的 key（key 無效時使用） |
-| `is_key_error()` | 判斷 API 錯誤是不是 key 無效造成的 |
+
+---
+
+## 測試 `tests/`
+
+```bash
+uv run pytest                  # 全部（約 30 秒）
+uv run pytest -m "not slow"    # 略過會啟動真的伺服器的測試（約 10 秒）
+```
+
+測試都不會連到 Gemini，也不會動到你真的存檔或 API key：每個測試都在暫存資料夾裡執行，AI 的回覆由假物件提供。
+
+| 檔案 | 驗證什麼 |
+|---|---|
+| `conftest.py` | 共用的假物件：`FakeGemini`（假的 Gemini，讓真的 Engine 跑規則）、`FakeEngine`（假的 engine，讓核心與外殼的測試能精準控制每回合）、`beat()`、`cond()` |
+| `test_engine.py` | 遊戲規則：狀態增減與好轉限制、身體／精神、整體狀態與死亡、時間與痊癒、限時秒數、背包與事實、大綱與節奏提醒、提示詞內容、記憶壓縮 |
+| `test_records.py` | 存讀檔、舊存檔相容、回合變化的語氣、結局紀錄 |
+| `test_core.py` | 核心的文字協定：開新局、幫我想、限時切換、`action_for()`、各種指令、key 失效與重送、重新開始、結局、讀檔接續 |
+| `test_players.py` | 名字檢查、同名鎖定、接手異常中斷的鎖 |
+| `test_textual.py` | Textual 外殼：模擬按鍵跑完整流程，包括打字與狀態列時機、倒數與暫停、對話框方向鍵、結局、讀檔、網頁模式 |
+| `test_shells.py` | 純文字外殼玩完整局；網頁殼（`slow`）：每個連線是獨立的遊戲、同時在線人數上限 |
+
+改了遊戲規則或流程後跑一次 `uv run pytest`，就能確認原本的功能沒有被弄壞。新增功能時，在對應的測試檔加上測試。
 
 ---
 
@@ -248,11 +308,11 @@ Textual 外殼的指令與快捷鍵：`COMMANDS` 定義四個指令（`/state`�
 
 | 檔案 | 用途 |
 |---|---|
-| `pyproject.toml` | 專案設定：相依套件（`google-genai`、`pydantic`、`textual`、`textual-serve`）、執行指令 `story` 與 `story-web` |
+| `pyproject.toml` | 專案設定：相依套件（`google-genai`、`pydantic`、`textual`、`textual-serve`）、開發用套件（`pytest`、`pytest-asyncio`）、執行指令 `story` 與 `story-web`、pytest 設定 |
 | `uv.lock` | `uv` 鎖定的套件版本，確保每台電腦裝到一樣的版本 |
 | `.python-version` | 使用的 Python 版本（3.14） |
 | `.gitignore` | 不進版本控制的檔案：虛擬環境、存檔、紀錄檔等 |
-| `README.md` | 專案說明（目前是空的） |
+| `README.md` | 專案說明 |
 | `docs/files.md` | 本文件 |
 
 ## 執行時產生的檔案（不進版本控制）

@@ -28,9 +28,3 @@ def save_api_key(key: str) -> None:
 def forget_api_key() -> None:
     KEY_PATH.unlink(missing_ok=True)
 
-
-def is_key_error(e: Exception) -> bool:
-    """判斷 API 錯誤是不是 key 無效或沒有權限造成的。"""
-    code = getattr(e, "code", None)
-    text = str(e)
-    return code in (400, 401, 403) and ("API key" in text or "API_KEY" in text)

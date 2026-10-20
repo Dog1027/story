@@ -14,10 +14,9 @@ from typing import Literal
 
 from google.genai import errors
 
-from story.apikey import is_key_error
-from story.common import DEFAULT_PREMISE, SAVE_PATH, ChangeGroups, change_groups, ending_record, load, memory_text, save, snapshot
-from story.engine import LOG_PATH, TIMEOUT_ACTION, Engine, body_conditions, body_level, mind_conditions
-from story.models import GameState
+from story.core.records import DEFAULT_PREMISE, SAVE_PATH, ChangeGroups, change_groups, ending_record, load, memory_text, save, snapshot
+from story.core.engine import LOG_PATH, TIMEOUT_ACTION, Engine, body_conditions, body_level, is_key_error, mind_conditions
+from story.core.models import GameState
 
 Phase = Literal[
     "ask_continue",  # 找到存檔，問要不要繼續

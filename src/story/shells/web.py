@@ -35,6 +35,11 @@ class LimitedServer(Server):
             LimitedServer.sessions -= 1
 
 
+def game_command() -> str:
+    """每個連線要啟動的遊戲：同一個 Python 執行網頁模式的終端機版。"""
+    return f"{shlex.quote(sys.executable)} -m story --web"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="在瀏覽器裡玩 Story")
     parser.add_argument("--host", default=DEFAULT_HOST, help="監聽位址；0.0.0.0 代表開放其他電腦連線（預設只有本機）")
@@ -45,5 +50,4 @@ def main() -> None:
     if args.host != "127.0.0.1":
         print("⚠ 已開放其他電腦連線。目前沒有 HTTPS，玩家輸入的 API key 會以明文傳送，只建議在信任的網路使用。", flush=True)
     print(f"伺服器已啟動：http://{args.host}:{args.port}　按 Ctrl+C 結束。", flush=True)
-    command = f"{shlex.quote(sys.executable)} -m story --web"
-    LimitedServer(command, host=args.host, port=args.port, title="Story", public_url=args.public_url).serve()
+    LimitedServer(game_command(), host=args.host, port=args.port, title="Story", public_url=args.public_url).serve()

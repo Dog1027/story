@@ -13,3 +13,4 @@ wheels/
 save.json
 story_log.jsonl
 saves/
+.*.tmp

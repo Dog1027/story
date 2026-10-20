@@ -7,7 +7,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
-from story.models import Condition, Epilogue, GameState, StoryArc, StoryBeat, Turn
+from story.core.models import Condition, Epilogue, GameState, StoryArc, StoryBeat, Turn
 
 MODEL = "gemini-3.5-flash-lite"
 RECENT_WINDOW = 4  # 近期記憶保留幾回合原文
@@ -60,6 +60,13 @@ SYSTEM_PROMPT = """你是一個互動式文字冒險遊戲的敘事者。
 - 若「模式」區塊說明是限時模式：當情勢緊迫（追逐、墜落、對峙、倒數）時設定 time_limit，越危急越短；平靜的場景設 0。非限時模式一律設 0。
 - 若玩家行動是「（時間到……）」，代表玩家沒能及時反應，要描述猶豫帶來的後果。"""
 
+
+
+def is_key_error(e: Exception) -> bool:
+    """判斷 Gemini 的錯誤是不是 API key 無效或沒有權限造成的。"""
+    code = getattr(e, "code", None)
+    text = str(e)
+    return code in (400, 401, 403) and ("API key" in text or "API_KEY" in text)
 
 
 def clock_text(minutes: int) -> str:

@@ -1,25 +1,29 @@
-"""終端機版與網頁版共用的部分：存讀檔、回合變化、結局紀錄、打字節奏、配色。"""
+"""核心的紀錄工具：存讀檔、回合變化、結局紀錄、記憶文字。只處理資料，不管外觀。"""
 
+import os
+import tempfile
 from collections import Counter
 from pathlib import Path
+from typing import Literal
 
-from story.engine import DAY, body_level
-from story.models import GameState
+from story.core.engine import DAY, body_level
+from story.core.models import GameState
 
 SAVE_PATH = Path("save.json")
 DEFAULT_PREMISE = "你是一名失憶的旅人，在暴風雨夜醒來，發現自己躺在一座廢棄燈塔的底層，手裡握著一把不屬於你的鑰匙。"
 
-CHAR_DELAY = 0.03  # 每個字的間隔秒數
-FAST_FACTOR = 0.15  # 按一次 Enter 後，間隔縮成原本的幾倍
-PAUSE_AFTER = {"。": 0.25, "！": 0.25, "？": 0.25, "，": 0.1, "、": 0.08, "…": 0.15, "\n": 0.1}
-
-GOOD, BAD = "#9ece6a", "#f7768e"
-SEVERITY_COLORS = {"輕": "#e0af68", "中": "#ff9e64", "重": "#f7768e"}
-LEVEL_COLORS = {"良好": "#9ece6a", "輕傷": "#e0af68", "受傷": "#ff9e64", "重傷": "#f7768e", "瀕死": "#db4b4b", "死亡": "#db4b4b"}
-
 
 def save(state: GameState, path: Path = SAVE_PATH) -> None:
-    path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
+    """先寫到同資料夾的暫存檔，寫完再一次換上去。任何時候讀到的都是完整的存檔，
+    不會因為背景壓縮記憶時剛好在存檔、或寫到一半程式被關掉，而讀到空檔案或壞掉的檔案。"""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(state.model_dump_json(indent=2))
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def load(path: Path = SAVE_PATH) -> GameState | None:
@@ -39,7 +43,7 @@ def memory_text(state: GameState) -> str:
 
 
 def ending_record(state: GameState) -> str:
-    """結局對話框裡的旅程紀錄。遊戲內時間只在這裡揭曉。"""
+    """結局的旅程紀錄。遊戲內時間只在這裡揭曉。"""
     days = (state.minutes or 0) // DAY + 1
     dead = body_level(state) == "死亡"
     record = f"共 {state.turn} 回合，歷時 {days} 天。\n" + ("你在這趟旅程中倒下了。" if dead else "你走到了故事的盡頭。")
@@ -51,7 +55,11 @@ def ending_record(state: GameState) -> str:
 # ---------- 回合間的變化 ----------
 
 Snapshot = tuple[dict[str, str], Counter]  # (狀態名稱 → 程度, 背包物品數量)
-ChangeGroups = list[tuple[str, list[tuple[str, str]]]]  # [(標籤, [(文字, 顏色)])]，顏色空字串代表預設、"dim" 代表淡色
+
+# 每個項目的語氣，由外殼決定怎麼呈現（例如上什麼顏色）：
+# 輕／中／重＝新出現的狀態的程度；good＝好轉、痊癒；bad＝惡化；plain＝一般（獲得物品）；muted＝不重要（失去物品）
+Tone = Literal["輕", "中", "重", "good", "bad", "plain", "muted"]
+ChangeGroups = list[tuple[str, list[tuple[str, Tone]]]]  # [(標籤, [(文字, 語氣)])]
 
 
 def snapshot(state: GameState) -> Snapshot:
@@ -64,13 +72,13 @@ def change_groups(before: Snapshot, state: GameState) -> ChangeGroups:
     new_conds, new_items = snapshot(state)
     order = ["輕", "中", "重"]
     groups: ChangeGroups = [
-        ("新增", [(f"{n}（{v}）", SEVERITY_COLORS[v]) for n, v in new_conds.items() if n not in old_conds]),
-        ("惡化", [(f"{n}（{old_conds[n]}→{v}）", BAD) for n, v in new_conds.items()
+        ("新增", [(f"{n}（{v}）", v) for n, v in new_conds.items() if n not in old_conds]),
+        ("惡化", [(f"{n}（{old_conds[n]}→{v}）", "bad") for n, v in new_conds.items()
                 if n in old_conds and order.index(v) > order.index(old_conds[n])]),
-        ("好轉", [(f"{n}（{old_conds[n]}→{v}）", GOOD) for n, v in new_conds.items()
+        ("好轉", [(f"{n}（{old_conds[n]}→{v}）", "good") for n, v in new_conds.items()
                 if n in old_conds and order.index(v) < order.index(old_conds[n])]),
-        ("痊癒", [(n, GOOD) for n in old_conds if n not in new_conds]),
-        ("獲得", [(n, "") for n in (new_items - old_items).elements()]),
-        ("失去", [(n, "dim") for n in (old_items - new_items).elements()]),
+        ("痊癒", [(n, "good") for n in old_conds if n not in new_conds]),
+        ("獲得", [(n, "plain") for n in (new_items - old_items).elements()]),
+        ("失去", [(n, "muted") for n in (old_items - new_items).elements()]),
     ]
     return [(label, items) for label, items in groups if items]

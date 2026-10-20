@@ -2,8 +2,8 @@
 
 from getpass import getpass
 
-from story.apikey import get_saved_api_key
 from story.core import StoryCore
+from story.shells.apikey import get_saved_api_key
 
 
 def main() -> None:

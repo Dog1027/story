@@ -84,11 +84,19 @@ uv run story
 
 常用的設定都是程式檔開頭的常數：
 
-- 故事長度、使用的模型、傷勢與痊癒規則：`src/story/engine.py`
-- 打字速度、狀態顏色：`src/story/common.py`
-- 配色主題：`src/story/ui.py`（網頁版會跟著一起變）
+- 故事長度、使用的模型、傷勢與痊癒規則：`src/story/core/engine.py`
+- 配色主題、打字速度、狀態顏色：`src/story/shells/textual/style.py`（網頁版會跟著一起變）
 
 每個檔案的詳細說明見 [docs/files.md](docs/files.md)。
+
+## 測試
+
+```bash
+uv run pytest                  # 全部
+uv run pytest -m "not slow"    # 略過會啟動真的伺服器的測試
+```
+
+測試不會連到 Gemini，也不會動到你的存檔或 API key。改完功能後跑一次，就能確認原本的功能沒有被弄壞。各測試檔驗證的內容見 [docs/files.md](docs/files.md#測試-tests)。
 
 ## 除錯
 
