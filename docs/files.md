@@ -95,7 +95,7 @@ src/story/
 | `GameState` | 整個遊戲的狀態，存檔就是把它轉成 JSON。包含回合、身體與精神狀況、背包、事實、遊戲內時鐘、大綱進度、分層記憶、目前畫面。`party` 是多人模式的隊伍，空的代表單人模式 |
 | `Character` | 多人模式的一位角色：名字、狀態、背包、目前的選項、是否還活著 |
 | `Condition` | 玩家身上的一個狀態，另外記錄在目前程度下經過了多久，用來計算痊癒 |
-| `Turn` | 一回合的原文紀錄（劇情 + 玩家行動），用於近期記憶 |
+| `Turn` | 一回合的原文紀錄（劇情 + 玩家行動），存在劇情紀錄裡 |
 
 `GameState` 裡的 `_upgrade_old_conditions` 負責相容舊存檔。
 
@@ -112,13 +112,13 @@ src/story/
 | `plan_arc()` | 請 AI 規劃隱藏大綱；舊存檔沒有大綱時依摘要補一份 |
 | `suggest_premise()` | 「幫我想」按鈕：程式隨機挑題材與情境，請 AI 想一個故事前提 |
 | `write_epilogue()` | 故事結束後請 AI 寫尾聲 |
-| `needs_compaction()`、`compact_memory()` | 把舊回合、舊事件與事實壓縮進長期摘要（由核心在背景執行緒呼叫） |
+| `needs_compaction()`、`compact_memory()` | 劇情紀錄超過 `HISTORY_BUDGET` 時，把最舊的回合壓縮進長期摘要；舊事件與事實太多時也一併併入（由核心在背景執行緒呼叫）。40 回合的故事大約只有一萬字，通常不會觸發 |
 
 **內部流程**
 
 | 方法 | 做什麼 |
 |---|---|
-| `_build_prompt()` | 把 `GameState` 組成每回合的提示詞。順序是不常變的在前（前提、模式、故事進度、摘要），每回合會變的在後（近期劇情、狀態、行動） |
+| `_build_prompt()` | 把 `GameState` 組成每回合的提示詞。Gemini 的自動快取只認開頭完全相同的部分，所以順序是：前提、模式 → 摘要（很少變）→ 劇情紀錄（只往後追加）→ 重大事件、故事進度、狀態、本回合行動（隨劇情改變） |
 | `_progress_section()` | 隱藏的故事進度與節奏提醒（拖太久、進入最後一幕、超過預定長度） |
 | `_call_story()` | 呼叫 Gemini 並取得結構化的 `StoryBeat` |
 | `_apply()` | **驗證並套用** AI 提議的變化：推進時鐘、處理狀態與背包、推進幕次、限制限時秒數 |
@@ -126,7 +126,7 @@ src/story/
 | `_write_death()` | 程式判定傷重死亡、但 AI 寫的劇情裡主角還活著時，請 AI 補寫死亡結局 |
 | `_log_turn()` | 把每回合的變化寫進 `story_log.jsonl` |
 
-**給多人模式覆寫的掛勾**（這裡是單人的版本）：類別屬性 `system_prompt`、`beat_schema`、`turn_label`、`epilogue_look_back`，以及 `_cast_section()`（規劃大綱時的主角名單）、`_action_text()`（記在近期記憶裡的行動）、`_status_section()`（提示詞裡的狀態區塊）、`_instruction_sections()`（提示詞最後的行動與指示）。提示詞的其他部分、呼叫 AI（`_call()`）、尾聲、大綱、記憶壓縮都由單人與多人共用。
+**給多人模式覆寫的掛勾**（這裡是單人的版本）：類別屬性 `system_prompt`、`beat_schema`、`turn_label`、`epilogue_look_back`，以及 `_cast_section()`（規劃大綱時的主角名單）、`_action_text()`（記在劇情紀錄裡的行動）、`_status_section()`（提示詞裡的狀態區塊）、`_instruction_sections()`（提示詞最後的行動與指示）。提示詞的其他部分、呼叫 AI（`_call()`）、尾聲、大綱、記憶壓縮都由單人與多人共用。
 
 **套用規則的函式**（單人、多人共用，單人傳 `GameState`、多人傳 `Character`）：`advance_clock()`、`apply_condition_changes()`、`apply_items()`、`apply_story_progress()`、`clamp_time_limit()`。
 
@@ -138,8 +138,7 @@ src/story/
 |---|---|---|
 | `MODEL` | 使用的 Gemini 模型 | `gemini-3.5-flash-lite` |
 | `TARGET_TURNS` | 故事預定長度，超過只提醒收尾 | 40 回合 |
-| `RECENT_WINDOW` | 近期記憶保留幾回合原文 | 4 |
-| `SUMMARIZE_EVERY` | 累積幾回合就壓縮一次 | 4 |
+| `HISTORY_BUDGET` | 劇情紀錄保留原文的字數上限，超過才把最舊的部分壓縮進摘要（一次壓到剩一半） | 20,000 字 |
 | `KEEP_EVENTS`、`KEEP_FLAGS` | 重大事件、事實各保留幾條原文 | 6、12 |
 | `SEVERITY_POINTS` | 輕／中／重各幾分 | 1／2／4 |
 | `DEATH_SCORE`、`DYING_SCORE`、`HEAVY_SCORE` | 死亡、瀕死、重傷的分數門檻 | 8、6、4 |

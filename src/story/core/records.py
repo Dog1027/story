@@ -38,7 +38,7 @@ def memory_text(state: GameState) -> str:
         f"[已確立的事實]\n  {'、'.join(state.flags) or '無'}\n\n"
         f"[重大事件]\n{events}\n\n"
         f"[長期摘要]\n  {state.summary or '（尚無）'}\n\n"
-        f"[近期記憶] {len(state.recent)} 回合原文，{len(state.unsummarized)} 回合等待壓縮"
+        f"[劇情紀錄] {len(state.unsummarized) + len(state.recent)} 回合原文"
     )
 
 

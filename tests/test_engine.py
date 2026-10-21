@@ -276,24 +276,55 @@ def test_prompt_includes_unsummarized_turns_and_no_duplicate_action():
 
 def test_compaction_folds_old_events_and_flags_into_summary():
     engine, gemini = make_engine(summary="壓縮後的摘要")
+    turns = [Turn(narration=f"第{i}回合", action="a") for i in range(4)]
     state = GameState(
         premise="x",
-        unsummarized=[Turn(narration=f"第{i}回合", action="a") for i in range(4)],
+        unsummarized=turns[:2],  # 舊存檔留下的等待壓縮回合
+        recent=turns[2:],
         key_events=[f"事件{i}" for i in range(16)],
         flags=[f"事實{i}" for i in range(30)],
     )
     assert engine.needs_compaction(state)
     engine.compact_memory(state)
     assert state.summary == "壓縮後的摘要"
-    assert state.unsummarized == []
+    assert state.unsummarized == [] and state.recent == turns  # 劇情紀錄沒有超過預算：原文全部保留
     assert state.key_events == [f"事件{i}" for i in range(10, 16)]
     assert state.flags == [f"事實{i}" for i in range(18, 30)]
     assert "事件0" in gemini.prompts[-1] and "事件15" not in gemini.prompts[-1]
 
 
-def test_turns_beyond_recent_window_wait_for_compaction():
+def test_every_turn_is_kept_in_the_history():
     state, *_ = play(*[beat() for _ in range(7)])
-    assert len(state.recent) == 4 and len(state.unsummarized) == 2
+    assert len(state.recent) == 6 and state.unsummarized == []  # 開場之後的 6 回合全部保留原文
+
+
+def test_history_over_budget_compacts_the_oldest_half(monkeypatch):
+    import story.core.engine as engine_module
+
+    monkeypatch.setattr(engine_module, "HISTORY_BUDGET", 100)
+    engine, gemini = make_engine(summary="早期劇情的摘要")
+    turns = [Turn(narration=f"第{i}回合" + "。" * 16, action="a") for i in range(6)]  # 每回合 21 字，共 126 字
+    state = GameState(premise="x", recent=list(turns))
+    assert engine.needs_compaction(state)
+    engine.compact_memory(state)
+    assert state.summary == "早期劇情的摘要"
+    assert state.recent == turns[-2:]  # 壓到剩預算的一半以內（42 字）
+    assert "第0回合" in gemini.prompts[-1] and "第5回合" not in gemini.prompts[-1]
+    assert not engine.needs_compaction(state)
+
+
+def test_prompt_keeps_changing_sections_after_the_history():
+    """會隨劇情改變的區塊（重大事件、故事進度、狀態）放在劇情紀錄後面，前面的部分每回合都一樣，快取才命中得到。"""
+    engine, gemini = make_engine(beat())
+    state = GameState(
+        premise="燈塔", turn=3, minutes=0, arc=ARC, summary="早期的摘要", key_events=["找到鑰匙"],
+        current_narration="上一段", recent=[Turn(narration="第一段", action="開門")],
+    )
+    engine.act(state, "往上爬")
+    prompt = gemini.prompts[-1]
+    order = ["# 故事前提", "# 先前劇情摘要", "# 劇情紀錄", "# 重大事件", "# 故事進度", "# 遊戲狀態", "# 玩家本回合的行動"]
+    positions = [prompt.index(title) for title in order]
+    assert positions == sorted(positions)
 
 
 def test_turn_log_is_written(isolated):

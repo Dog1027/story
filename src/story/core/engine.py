@@ -10,8 +10,7 @@ from google.genai import types
 from story.core.models import Character, Condition, Epilogue, GameState, StoryArc, StoryBeat, Turn
 
 MODEL = "gemini-3.5-flash-lite"
-RECENT_WINDOW = 4  # 近期記憶保留幾回合原文
-SUMMARIZE_EVERY = 4  # 累積幾回合擠出的內容就壓縮一次摘要
+HISTORY_BUDGET = 20_000  # 劇情紀錄保留原文的字數上限；超過才把最舊的部分壓縮進摘要，一次壓到剩一半
 KEEP_EVENTS, KEEP_FLAGS = 6, 12  # 重大事件、已確立的事實各保留最近幾條原文，較舊的在壓縮時併入摘要
 TARGET_TURNS = 40  # 故事預定長度（回合）；超過時只提醒 AI 收尾，不強制結束
 ACT_TURNS = TARGET_TURNS // 4  # 每一幕預計幾回合，待太久就提醒 AI 推進
@@ -202,12 +201,32 @@ PREMISE_SETTINGS = ["深夜", "暴風雨中", "一場葬禮上", "逃亡途中",
 SUMMARY_SYSTEM = "你負責壓縮文字冒險遊戲的劇情紀錄。用繁體中文純文字（不要用 Markdown 或 LaTeX），保留人物、地點、承諾、恩怨、伏筆等之後可能用到的資訊，捨棄修辭。"
 
 
+def history(state: GameState) -> list[Turn]:
+    """完整的劇情紀錄（由舊到新）。舊存檔可能還有等待壓縮的回合（unsummarized），一起算進來。"""
+    return state.unsummarized + state.recent
+
+
+def history_size(turns: list[Turn]) -> int:
+    return sum(len(t.narration) + len(t.action) for t in turns)
+
+
+def oldest_turns_to_compact(turns: list[Turn]) -> list[Turn]:
+    """劇情紀錄超過預算時，要壓縮掉的最舊回合：壓到剩下不超過預算的一半。沒超過就不壓縮。"""
+    if history_size(turns) <= HISTORY_BUDGET:
+        return []
+    size, cut = history_size(turns), 0
+    while cut < len(turns) - 1 and size > HISTORY_BUDGET // 2:
+        size -= len(turns[cut].narration) + len(turns[cut].action)
+        cut += 1
+    return turns[:cut]
+
+
 class Engine:
     """單人模式的 engine。多人模式（story.core.party.PartyEngine）繼承它，只覆寫下面這些掛勾。"""
 
     system_prompt = SYSTEM_PROMPT  # 給 AI 的寫作與遊戲規則
     beat_schema = StoryBeat  # 每回合強制 AI 回傳的格式
-    turn_label = "玩家"  # 「最近幾回合」裡行動那一行的標籤
+    turn_label = "玩家"  # 「劇情紀錄」裡行動那一行的標籤
     epilogue_look_back = "回顧主角做過的關鍵抉擇與付出的代價；若主角死去，寫出主角留下的痕跡。"
 
     def __init__(self, api_key: str | None = None, client: genai.Client | None = None, log_path: Path = LOG_PATH):
@@ -264,9 +283,7 @@ class Engine:
         """玩家做出行動，推進一回合。單人模式的 action 是一句話，多人模式是 {角色名字: 行動}。"""
         if state.arc is None:
             self.plan_arc(state)
-        state.recent.append(Turn(narration=state.current_narration, action=self._action_text(action)))
-        while len(state.recent) > RECENT_WINDOW:  # 擠出的回合先原文保留，等背景壓縮時再併入摘要
-            state.unsummarized.append(state.recent.pop(0))
+        state.recent.append(Turn(narration=state.current_narration, action=self._action_text(action)))  # 只往後追加
         self._advance(state, action=action)
 
     def suggest_premise(self, avoid: str = "") -> str:
@@ -351,7 +368,8 @@ class Engine:
     def _build_prompt(self, state: GameState, action: str | None) -> str:
         """把程式記得的所有東西組成本回合的輸入。每次呼叫都是無狀態的，記憶全靠這裡。
 
-        順序：不常變的（前提、模式、摘要）在前，每回合都變的（狀態、行動）在後，讓 Gemini 的自動快取比較容易命中。
+        順序：不常變的在前、會變的在後，讓 Gemini 的自動快取（只認開頭完全相同的部分）命中得越多越好：
+        前提、模式 → 摘要（很少變）→ 劇情紀錄（只往後追加）→ 重大事件、故事進度、狀態、本回合行動（隨劇情改變）。
         """
         mode = (
             f"限時模式：緊迫時用 time_limit 給玩家 {MIN_TIME_LIMIT}-{MAX_TIME_LIMIT} 秒反應時間。"
@@ -359,22 +377,20 @@ class Engine:
             else "一般模式：time_limit 一律為 0。"
         )
         sections = [f"# 故事前提\n{state.premise}", f"# 模式\n{mode}"]
-        if progress := self._progress_section(state):
-            sections.append(progress)
-
         if state.summary:
             sections.append(f"# 先前劇情摘要\n{state.summary}")
-        if state.key_events:
-            sections.append("# 重大事件\n" + "\n".join(f"- {e}" for e in state.key_events))
 
-        # 還沒壓縮進摘要的回合也要放進來，否則 AI 會暫時看不到它們
-        turns = state.unsummarized + state.recent
+        turns = history(state)
         if turns:
             lines = [f"[敘述] {t.narration}\n[{self.turn_label}] {t.action}" for t in turns]
             if action is not None:  # 最後一筆的行動就是本回合行動，下面另外列出，不重複
                 lines[-1] = f"[敘述] {turns[-1].narration}"
-            sections.append("# 最近幾回合\n" + "\n\n".join(lines))
+            sections.append("# 劇情紀錄（由舊到新）\n" + "\n\n".join(lines))
 
+        if state.key_events:
+            sections.append("# 重大事件\n" + "\n".join(f"- {e}" for e in state.key_events))
+        if progress := self._progress_section(state):
+            sections.append(progress)
         sections.append(self._status_section(state))
         sections += self._instruction_sections(state, action)
         return "\n\n".join(sections)
@@ -386,7 +402,7 @@ class Engine:
         return ""
 
     def _action_text(self, action) -> str:
-        """記在「最近幾回合」裡的行動文字。"""
+        """記在「劇情紀錄」裡的行動文字。"""
         return action
 
     def _status_section(self, state: GameState) -> str:
@@ -460,16 +476,17 @@ class Engine:
 
     def needs_compaction(self, state: GameState) -> bool:
         return (
-            len(state.unsummarized) >= SUMMARIZE_EVERY
+            history_size(history(state)) > HISTORY_BUDGET
             or len(state.key_events) > KEEP_EVENTS * 2
             or len(state.flags) > KEEP_FLAGS * 2
         )
 
     def compact_memory(self, state: GameState) -> None:
-        """把待壓縮的回合、較舊的重大事件與事實併入長期摘要。由介面在背景呼叫，玩家讀劇情時順便完成。"""
+        """劇情紀錄太長時，把最舊的回合（壓到剩一半）、較舊的重大事件與事實併入長期摘要。
+        由介面在背景呼叫，玩家讀劇情時順便完成。很少發生：40 回合的故事大約只有一萬字。"""
         if not self.needs_compaction(state):
             return
-        turns = list(state.unsummarized)
+        turns = oldest_turns_to_compact(history(state))
         old_events = state.key_events[:-KEEP_EVENTS]
         old_flags = state.flags[:-KEEP_FLAGS]
 
@@ -493,6 +510,7 @@ class Engine:
             return  # 失敗就先保留原樣，下次再試
         # 只移除這次確實併入摘要的部分（壓縮期間不會有新回合，但仍以數量為準比較保險）
         state.summary = text
-        del state.unsummarized[: len(turns)]
+        remaining = history(state)[len(turns):]
+        state.unsummarized, state.recent = [], remaining
         del state.key_events[: len(old_events)]
         del state.flags[: len(old_flags)]

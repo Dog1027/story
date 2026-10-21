@@ -95,7 +95,7 @@ class Epilogue(BaseModel):
 
 
 class Turn(BaseModel):
-    """一回合的原文紀錄，用於近期記憶。"""
+    """一回合的原文紀錄（劇情與玩家行動）。"""
 
     narration: str
     action: str  # 玩家在看完 narration 之後做的事
@@ -129,8 +129,8 @@ class GameState(BaseModel):
     # 分層記憶
     summary: str = ""  # 長期：較早劇情的壓縮摘要
     key_events: list[str] = Field(default_factory=list)  # 長期：重大事件清單
-    recent: list[Turn] = Field(default_factory=list)  # 近期：最近幾回合原文
-    unsummarized: list[Turn] = Field(default_factory=list)  # 擠出近期、等待併入摘要的回合
+    recent: list[Turn] = Field(default_factory=list)  # 劇情紀錄：每回合的原文，只往後追加，太長時最舊的才壓縮進摘要
+    unsummarized: list[Turn] = Field(default_factory=list)  # 舊存檔用：以前擠出近期、等待壓縮的回合（新的遊戲不會用到）
 
     # 目前畫面（讀檔後能接續顯示）
     current_narration: str = ""
