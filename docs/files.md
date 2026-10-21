@@ -112,7 +112,7 @@ src/story/
 | `plan_arc()` | 請 AI 規劃隱藏大綱；舊存檔沒有大綱時依摘要補一份 |
 | `suggest_premise()` | 「幫我想」按鈕：程式隨機挑題材與情境，請 AI 想一個故事前提 |
 | `write_epilogue()` | 故事結束後請 AI 寫尾聲 |
-| `needs_compaction()`、`compact_memory()` | 劇情紀錄超過 `HISTORY_BUDGET` 時，把最舊的回合壓縮進長期摘要；舊事件與事實太多時也一併併入（由核心在背景執行緒呼叫）。40 回合的故事大約只有一萬字，通常不會觸發 |
+| `needs_compaction()`、`compact_memory()` | 劇情紀錄超過 `HISTORY_BUDGET` 時，把最舊的回合壓縮進長期摘要；舊事件與事實太多時也一併併入（由核心在背景執行緒呼叫）。30 回合的故事大約只有七、八千字，通常不會觸發 |
 
 **內部流程**
 
@@ -137,7 +137,9 @@ src/story/
 | 常數 | 意義 | 目前值 |
 |---|---|---|
 | `MODEL` | 使用的 Gemini 模型 | `gemini-3.5-flash-lite` |
-| `TARGET_TURNS` | 故事預定長度，超過只提醒收尾 | 40 回合 |
+| `TARGET_TURNS` | 故事預定長度，超過只提醒收尾 | 30 回合 |
+| `MIN_ACT_TURNS` | 每一幕至少幾回合；還沒到時 AI 說里程碑達成也不推進 | 5 回合 |
+| `MIN_ENDING_TURN` | 最早第幾回合才接受 AI 宣告的結局（還要進到最後一幕；超過 `TARGET_TURNS` 一律接受）。太早寫出結局時請 AI 重寫一次，還是結局就忽略。因傷死亡不受限制 | 20 回合 |
 | `HISTORY_BUDGET` | 劇情紀錄保留原文的字數上限，超過才把最舊的部分壓縮進摘要（一次壓到剩一半） | 20,000 字 |
 | `KEEP_EVENTS`、`KEEP_FLAGS` | 重大事件、事實各保留幾條原文 | 6、12 |
 | `SEVERITY_POINTS` | 輕／中／重各幾分 | 1／2／4 |

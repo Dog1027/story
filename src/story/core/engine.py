@@ -12,8 +12,10 @@ from story.core.models import Character, Condition, Epilogue, GameState, StoryAr
 MODEL = "gemini-3.5-flash-lite"
 HISTORY_BUDGET = 20_000  # 劇情紀錄保留原文的字數上限；超過才把最舊的部分壓縮進摘要，一次壓到剩一半
 KEEP_EVENTS, KEEP_FLAGS = 6, 12  # 重大事件、已確立的事實各保留最近幾條原文，較舊的在壓縮時併入摘要
-TARGET_TURNS = 40  # 故事預定長度（回合）；超過時只提醒 AI 收尾，不強制結束
+TARGET_TURNS = 30  # 故事預定長度（回合）；超過時只提醒 AI 收尾，不強制結束
 ACT_TURNS = TARGET_TURNS // 4  # 每一幕預計幾回合，待太久就提醒 AI 推進
+MIN_ACT_TURNS = 5  # 每一幕至少幾回合；還沒到時 AI 說里程碑達成也不推進，避免故事一下子就跑完
+MIN_ENDING_TURN = 20  # 最早第幾回合才接受 AI 宣告的結局（還要進到最後一幕）；因傷死亡不受限制
 MIN_TIME_LIMIT, MAX_TIME_LIMIT = 8, 60  # 限時模式的反應時間範圍（秒）
 MAX_CONDITION_LEN = 12  # 單一狀態最多幾個字，避免 LLM 寫成一整句
 
@@ -46,7 +48,7 @@ SYSTEM_PROMPT = """你是一個互動式文字冒險遊戲的敘事者。
 - 每回合根據玩家的行動推進劇情，行動要有合理的後果，好壞都可能。
 - 「遊戲狀態」區塊是唯一的事實來源。不要讓玩家使用不在背包裡的物品；若玩家嘗試，描述他們發現自己沒有。
 - 尊重已確立的劇情事實與重大事件，不要自相矛盾。
-- 提供 2-4 個彼此有明顯差異的選項，其中至少一個能推進「故事進度」中目前的里程碑；不要每次都只有逃跑、躲藏、戰鬥。玩家也可能不照選項自由行動。
+- 提供 2-4 個彼此有明顯差異的選項；可以有一個朝「故事進度」中目前的里程碑前進，但不要每回合都急著達成，先讓劇情鋪陳開來。不要每次都只有逃跑、躲藏、戰鬥。玩家也可能不照選項自由行動。
 - 依照「故事進度」的大綱推進劇情。節奏要張弛有度：危機過後給主角喘息、整理線索、與人互動的空間，並帶出新的發展；同一類場景（追逐、躲藏、戰鬥）不要連續超過三回合。
 - 主角沒有生命值，而是用狀態描述，並標上程度（輕、中、重）與類別：身體（受傷、疲勞、中毒、疾病）或精神（恐懼、驚慌、絕望、憤怒）。
   精神狀態不會致命，但要影響主角的判斷與表現，例如恐懼時手抖、驚慌時聽不進別人的話；危機解除後可以直接移除。痊癒或消失時移除；惡化或好轉時用相同名稱回報新的程度。
@@ -181,8 +183,24 @@ def apply_story_progress(state: GameState, flags: list[str], key_event: str, mil
         state.key_events.append(key_event.strip())
     if state.arc is not None and not is_opening_turn:
         state.act_turns += 1
-        if milestone_reached and state.act < len(state.arc.acts) - 1:
+        # 節奏由程式把關：這一幕至少要演 MIN_ACT_TURNS 回合，AI 太早說達成也不推進
+        if milestone_reached and state.act_turns >= MIN_ACT_TURNS and state.act < len(state.arc.acts) - 1:
             state.act, state.act_turns = state.act + 1, 0
+
+
+def ending_allowed(state: GameState, turn: int) -> bool:
+    """第 turn 回合能不能結束故事：進到最後一幕、而且到了 MIN_ENDING_TURN 回合；超過預定長度一律可以。
+    只管 AI 宣告的結局，因傷死亡由程式另外判定，不受限制。"""
+    if turn >= TARGET_TURNS:
+        return True
+    final = state.arc is None or state.act == len(state.arc.acts) - 1
+    return final and turn >= MIN_ENDING_TURN
+
+
+EARLY_ENDING_RETRY = (
+    "# 注意\n上一次的回覆太早結束了故事。故事還不能結束：重寫這一回合，不要寫出結局，"
+    "game_over 設為 false，帶出新的發展並給出選項。"
+)
 
 
 def clamp_time_limit(state: GameState, given: int) -> int:
@@ -328,8 +346,16 @@ class Engine:
 
     # ---------- 生成劇情 ----------
 
+    def _next_beat(self, state: GameState, action) -> StoryBeat:
+        """請 AI 寫這一回合。太早寫出結局時請它重寫一次；重寫後還是結局的話，_apply() 會忽略結局的宣告。"""
+        prompt = self._build_prompt(state, action)
+        beat = self._call(prompt)
+        if beat.game_over and not ending_allowed(state, state.turn + 1):
+            beat = self._call(prompt + "\n\n" + EARLY_ENDING_RETRY)
+        return beat
+
     def _advance(self, state: GameState, action: str | None) -> None:
-        beat = self._call(self._build_prompt(state, action))
+        beat = self._next_beat(state, action)
         before = [f"{c.name}({c.severity})" for c in state.conditions]
         self._apply(state, beat)
         self._log_turn(state, action, beat, before)
@@ -434,6 +460,11 @@ class Engine:
         lines.append("可能的結局：" + "；".join(arc.endings))
 
         final = state.act == len(arc.acts) - 1
+        if not final and state.act_turns + 1 < MIN_ACT_TURNS:
+            left = MIN_ACT_TURNS - state.act_turns - 1
+            lines.append(f"節奏提醒：這一幕剛開始，至少還要鋪陳 {left} 回合；這回合不要達成里程碑，milestone_reached 設為 false。")
+        if not ending_allowed(state, state.turn + 1):
+            lines.append(f"結局限制：故事最早要到第 {MIN_ENDING_TURN} 回合、進入最後一幕之後才能結束；在那之前 game_over 一律設為 false，也不要寫出結局。")
         if state.turn >= TARGET_TURNS:
             lines.append(f"收尾提醒：故事已經超過預定的 {TARGET_TURNS} 回合。這一兩回合內就要寫出高潮與結局，達成時設 game_over 為 true。不要再開啟新的支線或危機。")
         elif final:
@@ -463,13 +494,14 @@ class Engine:
     def _apply(self, state: GameState, beat: StoryBeat) -> None:
         """LLM 只能「提議」狀態變化，由程式決定接受多少。"""
         elapsed, is_opening_turn = advance_clock(state, beat.time_passed, beat.start_time_of_day)
+        may_end = ending_allowed(state, state.turn)  # 在推進幕數之前判斷：剛進最後一幕的那回合還不能結束
         apply_condition_changes(state, beat.conditions_changed, beat.conditions_removed, elapsed)
         apply_items(state, beat.items_gained, beat.items_lost)
         apply_story_progress(state, beat.flags_set, beat.key_event, beat.milestone_reached, is_opening_turn)
 
         state.current_narration = beat.narration
         state.current_choices = beat.choices[:4]
-        state.game_over = beat.game_over or body_score(state) >= DEATH_SCORE
+        state.game_over = (beat.game_over and may_end) or body_score(state) >= DEATH_SCORE
         state.current_time_limit = clamp_time_limit(state, beat.time_limit)
 
     # ---------- 記憶壓縮 ----------
@@ -483,7 +515,7 @@ class Engine:
 
     def compact_memory(self, state: GameState) -> None:
         """劇情紀錄太長時，把最舊的回合（壓到剩一半）、較舊的重大事件與事實併入長期摘要。
-        由介面在背景呼叫，玩家讀劇情時順便完成。很少發生：40 回合的故事大約只有一萬字。"""
+        由介面在背景呼叫，玩家讀劇情時順便完成。很少發生：30 回合的故事大約只有七、八千字。"""
         if not self.needs_compaction(state):
             return
         turns = oldest_turns_to_compact(history(state))

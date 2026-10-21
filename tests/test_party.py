@@ -92,6 +92,14 @@ def test_dead_characters_get_no_updates():
     assert by_name(state)["阿明"].inventory == []
 
 
+def test_party_early_ending_is_ignored():
+    """多人模式也一樣：AI 太早宣告結局時請它重寫，重寫後還是結局就忽略。"""
+    engine, gemini = make_party_engine(pbeat(upd("阿明"), upd("小華"), game_over=True), pbeat(upd("阿明"), upd("小華"), game_over=True))
+    state = party_state(turn=5, minutes=0, arc=ARC, act=1)
+    engine.act(state, {"阿明": "a", "小華": "b"})
+    assert not state.game_over and len(gemini.prompts) == 2
+
+
 def test_party_prompt_contents():
     engine, gemini = make_party_engine(pbeat(upd("阿明"), upd("小華")), pbeat(upd("阿明"), upd("小華")))
     state = party_state()

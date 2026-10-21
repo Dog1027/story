@@ -32,6 +32,7 @@ from story.core.engine import (
     body_score,
     clamp_time_limit,
     clock_text,
+    ending_allowed,
     mind_conditions,
 )
 from story.core.models import Character, GameState, PartyBeat
@@ -47,7 +48,7 @@ PARTY_SYSTEM_PROMPT = """你是一個多人互動式文字冒險遊戲的敘事�
 - 「焦點」區塊指定的角色本回合要多一些描寫與抉擇的分量，但其他角色也要有交代。
 - 「隊伍」區塊是唯一的事實來源。不要讓角色使用不在自己背包裡的物品；物品屬於個人，交給別人時用 items_lost／items_gained 分別記錄。
 - 尊重已確立的劇情事實與重大事件，不要自相矛盾。
-- 為每位還活著的角色提供 2-4 個彼此有明顯差異的選項，其中至少一個能推進「故事進度」中目前的里程碑；不要每次都只有逃跑、躲藏、戰鬥。已死亡的角色不要給選項。
+- 為每位還活著的角色提供 2-4 個彼此有明顯差異的選項；可以有一個朝「故事進度」中目前的里程碑前進，但不要每回合都急著達成，先讓劇情鋪陳開來。不要每次都只有逃跑、躲藏、戰鬥。已死亡的角色不要給選項。
 - 依照「故事進度」的大綱推進劇情。節奏要張弛有度：危機過後給角色喘息、整理線索、互相交談的空間，並帶出新的發展；同一類場景（追逐、躲藏、戰鬥）不要連續超過三回合。
 - 角色沒有生命值，而是用狀態描述，並標上程度（輕、中、重）與類別：身體（受傷、疲勞、中毒、疾病）或精神（恐懼、驚慌、絕望、憤怒）。痊癒或消失時移除；惡化或好轉時用相同名稱回報新的程度。
   已有的狀態一律沿用「隊伍」裡的原名，不要改名或換個說法重新新增。名稱只描述是什麼狀態，不要包含程度詞，程度只用 severity 表示。狀態要影響後續劇情與行動的成敗。
@@ -104,7 +105,7 @@ class PartyEngine(Engine):
     # ---------- 套用：每位角色各自套用單人的規則 ----------
 
     def _advance(self, state: GameState, action: dict[str, str] | None) -> None:
-        beat = self._call(self._build_prompt(state, action))
+        beat = self._next_beat(state, action)
         newly_dead = self._apply(state, beat)
         self._log_turn(state, action, beat)
         if newly_dead:
@@ -113,6 +114,7 @@ class PartyEngine(Engine):
     def _apply(self, state: GameState, beat: PartyBeat) -> list[str]:
         """套用多人回合。回傳這回合傷重死亡的角色名字。"""
         elapsed, is_opening_turn = advance_clock(state, beat.time_passed, beat.start_time_of_day)
+        may_end = ending_allowed(state, state.turn)  # 在推進幕數之前判斷：剛進最後一幕的那回合還不能結束
         updates = {u.name.strip(): u for u in beat.character_updates}  # 不在隊伍裡的名字自然被忽略
         newly_dead = []
         for c in state.party:
@@ -133,7 +135,7 @@ class PartyEngine(Engine):
 
         state.current_narration = beat.narration
         state.current_choices = []
-        state.game_over = beat.game_over or not any(c.alive for c in state.party)
+        state.game_over = (beat.game_over and may_end) or not any(c.alive for c in state.party)
         state.current_time_limit = clamp_time_limit(state, beat.time_limit)
         return newly_dead
 

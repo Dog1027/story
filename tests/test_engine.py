@@ -9,6 +9,8 @@ from story.core.engine import (
     DEATH_SCORE,
     HOUR,
     MAX_TIME_LIMIT,
+    MIN_ACT_TURNS,
+    MIN_ENDING_TURN,
     MIN_TIME_LIMIT,
     TARGET_TURNS,
     body_level,
@@ -191,8 +193,10 @@ def test_time_limit_is_ignored_in_normal_mode():
 
 
 def test_no_time_limit_when_game_over():
-    state, *_ = play(beat(time_limit=20, game_over=True), timed=True)
-    assert state.current_time_limit == 0
+    engine, _ = make_engine(beat(time_limit=20, game_over=True))
+    state = GameState(premise="x", turn=TARGET_TURNS, minutes=0, arc=ARC, act=3, timed_mode=True)
+    engine.act(state, "a")
+    assert state.game_over and state.current_time_limit == 0
 
 
 # ---------- 背包、事實、事件 ----------
@@ -225,8 +229,51 @@ def test_start_plans_arc_before_opening():
 
 
 def test_milestone_advances_act():
-    state, *_ = play(beat(), beat(milestone_reached=True))
+    engine, _ = make_engine(beat(milestone_reached=True))
+    state = GameState(premise="x", turn=8, minutes=0, arc=ARC, act=0, act_turns=MIN_ACT_TURNS - 1)
+    engine.act(state, "a")
     assert (state.act, state.act_turns) == (1, 0)
+
+
+def test_milestone_too_early_in_an_act_is_ignored():
+    """這一幕還沒演滿 MIN_ACT_TURNS 回合：AI 說達成也不推進，提示詞也會叫它先鋪陳。"""
+    engine, gemini = make_engine(beat(milestone_reached=True))
+    state = GameState(premise="x", turn=2, minutes=0, arc=ARC, act=0, act_turns=1)
+    engine.act(state, "a")
+    assert (state.act, state.act_turns) == (0, 2)
+    assert "這回合不要達成里程碑" in gemini.prompts[-1]
+
+
+def test_early_ending_is_rewritten_then_ignored():
+    """太早寫出結局：先請 AI 重寫一次；重寫後還是結局就忽略，故事繼續。"""
+    engine, gemini = make_engine(beat(game_over=True, narration="全劇終"), beat(narration="新的發展", choices=["追上去"]))
+    state = GameState(premise="x", turn=5, minutes=0, arc=ARC, act=1)
+    engine.act(state, "a")
+    assert not state.game_over and state.current_narration == "新的發展"
+    assert "結局限制" in gemini.prompts[0] and "太早結束了故事" in gemini.prompts[1]
+
+    engine, _ = make_engine(beat(game_over=True), beat(game_over=True, choices=["繼續"]))
+    state = GameState(premise="x", turn=5, minutes=0, arc=ARC, act=1)
+    engine.act(state, "a")
+    assert not state.game_over and state.current_choices == ["繼續"]
+
+
+def test_ending_needs_the_final_act_and_enough_turns():
+    for turn, act, allowed in ((MIN_ENDING_TURN - 1, 3, True), (MIN_ENDING_TURN - 2, 3, False), (25, 2, False), (TARGET_TURNS - 1, 1, True)):
+        engine, gemini = make_engine(beat(game_over=True), beat(game_over=True))
+        state = GameState(premise="x", turn=turn, minutes=0, arc=ARC, act=act)
+        engine.act(state, "a")
+        assert state.game_over is allowed, (turn, act)
+        assert len(gemini.prompts) == (1 if allowed else 2)  # 不能結束時會請 AI 重寫一次
+
+
+def test_death_ends_the_story_at_any_time():
+    """因傷死亡由程式判定，不受最早結局回合的限制。"""
+    lethal = [cond("失血", "重"), cond("骨折", "重")]
+    engine, _ = make_engine(beat(conditions_changed=lethal), beat(narration="主角倒下了。", game_over=True))
+    state = GameState(premise="x", turn=3, minutes=0, arc=ARC, act=0)
+    engine.act(state, "a")
+    assert state.game_over
 
 
 def test_final_act_does_not_advance_further():
