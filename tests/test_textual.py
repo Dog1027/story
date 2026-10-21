@@ -1,6 +1,7 @@
 """Textual 外殼：用 Textual 的測試工具模擬按鍵，確認畫面流程正確。核心用真的 StoryCore，engine 用假的。"""
 
 import asyncio
+import io
 import time
 from pathlib import Path
 
@@ -31,7 +32,12 @@ def log_lines(app):
 
 
 def status_text(app):
-    return str(app.query_one("#status", Static).render())
+    """狀態列的純文字（多人模式是表格，要實際排版才拿得到文字）。"""
+    from rich.console import Console
+
+    console = Console(width=app.size.width, record=True, file=io.StringIO())
+    console.print(app.query_one("#status", Static).content)
+    return console.export_text()
 
 
 async def wait_until(pilot, condition, timeout=5.0):
@@ -404,3 +410,70 @@ def test_every_builtin_theme_gives_valid_status_colors():
     for theme in BUILTIN_THEMES.values():
         for color in palette(theme).values():
             Style.parse(f"bold {color}")  # 認不得會拋出錯誤
+
+
+async def test_online_opening_shows_busy_line(isolated):
+    """線上多人：房間先送「新故事」（清空畫面）再送「生成中」，生成中的提示不能被清空畫面一起清掉。"""
+    import tempfile
+
+    from conftest import FakePartyEngine
+    from story.core import PartyCore
+    from story.shells.room import Room, RoomConnection
+    from story.shells.textual.dialogs import NameDialog
+
+    class SlowOpening(FakePartyEngine):
+        def start(self, state):
+            self.stage = "規劃故事大綱"
+            time.sleep(1)
+            self.stage = ""
+            super().start(state)
+
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=SlowOpening()))
+    path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
+    await room.start(path)
+    try:
+        app = StoryApp(web=True, party=True, room=path)
+        async with app.run_test(size=(110, 32)) as pilot:
+            await wait_until(pilot, lambda: isinstance(app.screen, NameDialog) and app.screen.query("#name"))
+            app.screen.query_one("#name", Input).value = "阿明"
+            await pilot.press("enter")
+            guest = await RoomConnection.open(path)
+            await guest.send({"type": "join", "name": "小華"})
+            await wait_until(pilot, lambda: app.choices == ["開始遊戲"])
+            await pilot.press("1", "enter")
+            await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog))
+            app.screen.query_one("#ok", Button).press()
+            await wait_until(pilot, lambda: any("規劃故事大綱" in line for line in log_lines(app)))
+            await wait_until(pilot, lambda: app.actor == "阿明" and not app.typing)
+            guest.close()
+    finally:
+        await room.stop()
+
+
+async def test_party_status_columns_line_up():
+    """多人模式的狀態列：名字長短、傷勢多寡不同，各欄仍然對齊；手機上小區塊（背包 空）不會被拆開。"""
+    from rich.cells import cell_len
+
+    from story.core.session import Status
+
+    party = [
+        Status(turn=7, level="受傷", body=[("右臂撕裂傷", "中")], mind=[], inventory=["鑰匙"], name="阿民"),
+        Status(turn=7, level="良好", body=[], mind=[], inventory=[], name="10快快俠"),
+    ]
+
+    def column(line: str, word: str) -> int:  # 在畫面上的第幾格（中文字佔兩格）
+        return cell_len(line[: line.index(word)])
+
+    for width in (100, 40):
+        app = StoryApp()
+        async with app.run_test(size=(width, 30)) as pilot:
+            await pilot.pause()
+            app.set_status(None, party)
+            await pilot.pause()
+            lines = status_text(app).splitlines()
+            first, second = lines[1], next(line for line in lines[2:] if line.startswith("10快快俠"))
+            assert column(first, "受傷") == column(second, "良好")  # 狀態欄對齊
+            if width >= 60:
+                assert column(first, "背包") == column(second, "背包")  # 背包欄對齊
+            else:
+                assert any("背包 空" in line for line in lines)  # 不會拆成「背包」和「空」兩行

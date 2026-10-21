@@ -7,6 +7,9 @@
 import asyncio
 import time
 
+from rich.cells import cell_len
+from rich.console import Group
+from rich.table import Table
 from rich.text import Text
 from textual import events, on, work
 from textual.app import App, ComposeResult, SystemCommand
@@ -40,6 +43,21 @@ def describe_changes(groups: ChangeGroups, colors: dict[str, str]) -> Text | Non
         for i, (text, tone) in enumerate(items):
             parts += [(" · ", "dim")] * bool(i) + [(text, colors[tone])]
     return Text.assemble(*parts) if parts else None
+
+
+def pack(groups: list[Text], width: int) -> Text:
+    """把幾個不該拆開的小區塊（「受傷 右臂撕裂傷」「背包 空」）排進指定寬度：一行放得下就並排，放不下才換行。
+    Rich 會在任何空白處換行，直接交給它排會把「背包」和「空」拆到兩行。"""
+    lines: list[list[Text]] = [[]]
+    used = 0
+    for group in (g for g in groups if g.plain):
+        size = cell_len(group.plain) + (2 if lines[-1] else 0)
+        if lines[-1] and used + size > width:
+            lines.append([])
+            used, size = 0, cell_len(group.plain)
+        lines[-1].append(group)
+        used += size
+    return Text("\n").join(Text("  ").join(line) for line in lines)
 
 
 # ---------- 主畫面 ----------
@@ -321,9 +339,7 @@ class StoryApp(App):
                 await self.room.send({"type": "send", "text": command})
             else:
                 await asyncio.to_thread(self.core.send, command)
-        self.query_one("#log", VerticalScroll).remove_children()
-        self.set_choices([])
-        self.set_status(None)
+        self.clear_story()
         await self.send(premise)
 
     # ---------- 線上多人：和房間對話 ----------
@@ -364,6 +380,8 @@ class StoryApp(App):
                 self.update_waiting(message["names"])
             elif kind == "notice":
                 self.notify(message["text"])
+            elif kind == "new_story":  # 立刻清空，不排隊：緊接著的「故事生成中」才不會被一起清掉
+                self.clear_story()
             elif kind == "suggestion" and self.suggestion:
                 self.suggestion.set_result((message["text"], message["error"]))
             else:
@@ -388,10 +406,6 @@ class StoryApp(App):
                 await self.handle(Reply.from_dict(message["reply"]))
             elif kind == "lobby":
                 self.show_lobby(message["members"], message["host"])
-            elif kind == "new_story":
-                self.query_one("#log", VerticalScroll).remove_children()
-                self.set_choices([])
-                self.set_status(None)
 
     async def ask_room_suggestion(self) -> tuple[str, str]:
         self.suggestion = asyncio.get_running_loop().create_future()
@@ -422,8 +436,7 @@ class StoryApp(App):
         self.set_status(*self.shown_status)
 
     def on_resize(self, event: events.Resize) -> None:
-        if self.inventory_open is None:  # 依畫面寬度決定的話，轉向或改變視窗大小時重畫
-            self.set_status(*self.shown_status)
+        self.set_status(*self.shown_status)  # 狀態列的排版和背包預設展開與否都跟畫面寬度有關，轉向或改變視窗大小時重畫
 
     def inventory_expanded(self) -> bool:
         if self.inventory_open is None:
@@ -433,10 +446,10 @@ class StoryApp(App):
     def inventory_parts(self, items: list[str]) -> list[tuple[str, str]]:
         """狀態列的背包：展開時列出物品，收合時只顯示件數。"""
         if not items:
-            return [("     背包 ", "dim"), ("空", "")]
+            return [("背包 ", "dim"), ("空", "")]
         if self.inventory_expanded():
-            return [("     背包 ▾ ", "dim"), (" · ".join(items), "")]
-        return [("     背包 ", "dim"), (f"{len(items)} 件", ""), (" ▸", "dim")]
+            return [("背包 ▾ ", "dim"), (" · ".join(items), "")]
+        return [("背包 ", "dim"), (f"{len(items)} 件", ""), (" ▸", "dim")]
 
     def set_status(self, status: Status | None, party: list[Status] | None = None) -> None:
         self.shown_status = (status, party)
@@ -449,17 +462,30 @@ class StoryApp(App):
             return parts
 
         if party:
-            lines = [Text.assemble(("回合 ", muted), (str(party[0].turn), "bold"))]
+            # 每位角色一列、欄位對齊，名字和傷勢長短不同也不會錯開。
+            # 電腦：名字、狀態、精神、背包各一欄；手機放不下四欄：名字一欄，其他合成一欄自動換行
+            narrow = self.size.width < NARROW_WIDTH
+            table = Table.grid(padding=(0, 2 if narrow else 3))
+            table.add_column(no_wrap=True)
+            for _ in range(1 if narrow else 3):
+                table.add_column()
             for st in party:
+                name = Text(st.name, style="bold dim" if not st.alive else "bold")
                 if not st.alive:
-                    lines.append(Text.assemble((st.name, "bold dim"), ("  已倒下", muted)))
-                    continue
-                lines.append(Text.assemble(
-                    (st.name, "bold"), ("  ", ""), (st.level, f"bold {self.colors[st.level]}"), *listed(st.body, "  "),
-                    *([("     精神 ", muted)] + listed(st.mind, "") if st.mind else []),
-                    *self.inventory_parts(st.inventory),
-                ))
-            self.query_one("#status", Static).update(Text("\n").join(lines))
+                    cells = [Text("已倒下", style=muted), Text(""), Text("")]
+                else:
+                    cells = [
+                        Text.assemble((st.level, f"bold {self.colors[st.level]}"), *listed(st.body, "  ")),
+                        Text.assemble(("精神 ", muted), *listed(st.mind, "")) if st.mind else Text(""),
+                        Text.assemble(*self.inventory_parts(st.inventory)),
+                    ]
+                if narrow:
+                    width = self.query_one("#status", Static).content_region.width or self.size.width - 11
+                    name_width = max(cell_len(s.name) for s in party) + 2
+                    cells = [pack(cells, width - name_width)]
+                table.add_row(name, *cells)
+            turn = Text.assemble(("回合 ", muted), (str(party[0].turn), "bold"))
+            self.query_one("#status", Static).update(Group(turn, table))
             return
         if status is None:
             self.query_one("#status", Static).update(Text("Story", style="dim"))
@@ -469,9 +495,16 @@ class StoryApp(App):
             ("回合 ", muted), (str(status.turn), "bold"),
             ("     狀態 ", muted), (status.level, f"bold {self.colors[status.level]}"), *listed(status.body, "  "),
             *([("     精神 ", muted)] + listed(status.mind, "") if status.mind else []),
-            *self.inventory_parts(status.inventory),
+            ("     ", ""), *self.inventory_parts(status.inventory),
         )
         self.query_one("#status", Static).update(bar)
+
+    def clear_story(self) -> None:
+        """新故事開始：清空故事區、選項與狀態列。"""
+        self.query_one("#log", VerticalScroll).remove_children()
+        self.busy_line = None  # 已經跟著被移除了，之後要重新顯示
+        self.set_choices([])
+        self.set_status(None)
 
     def log_message(self, text: str | Text | Marked, kind: str) -> Static:
         log = self.query_one("#log", VerticalScroll)
