@@ -218,6 +218,26 @@ class PremiseArea(TextArea):
             self.screen.action_move_between_rows(step)
 
 
+class GenreSelect(Select, inherit_bindings=False):
+    """題材選單。內建的 Select 把上下鍵用來打開選單，焦點到這裡就走不到下面的按鈕；
+    這裡改成：上下鍵照常在各列之間移動，Enter 或空白鍵打開選單，左右鍵直接切換題材。"""
+
+    BINDINGS = [
+        Binding("enter,space", "show_overlay", "選擇題材", show=False),
+        Binding("up", "screen.move_between_rows(-1)", show=False),
+        Binding("down", "screen.move_between_rows(1)", show=False),
+        Binding("left", "cycle(-1)", show=False),
+        Binding("right", "cycle(1)", show=False),
+    ]
+
+    def __init__(self, options: list[tuple[str, str]], **kwargs):
+        super().__init__(options, **kwargs)
+        self.values = [value for _, value in options]
+
+    def action_cycle(self, step: int) -> None:
+        self.value = self.values[(self.values.index(self.value) + step) % len(self.values)]
+
+
 class PremiseDialog(Dialog):
     """輸入故事前提並選擇模式與題材。回傳 (前提, 是否限時, 題材)；前提空白就用預設值。"""
 
@@ -255,7 +275,7 @@ class PremiseDialog(Dialog):
                 options = [("題材：自動（依故事前提挑選）", GENRE_AUTO), ("題材：不套用", GENRE_NONE)]
                 options += [(f"題材：{name}", name) for name in self.genres]
                 value = self.genre if self.genre in (GENRE_AUTO, GENRE_NONE, *self.genres) else GENRE_AUTO
-                yield Select(options, value=value, allow_blank=False, compact=True, id="genre")
+                yield GenreSelect(options, value=value, allow_blank=False, compact=True, id="genre")
                 yield Static(self.genre_hint(value), id="genre-hint", classes="hint")
             with Horizontal():
                 yield Button("幫我想", id="suggest", compact=True)

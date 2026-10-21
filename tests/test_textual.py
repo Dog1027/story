@@ -498,3 +498,27 @@ async def test_premise_dialog_lets_you_pick_a_genre(monkeypatch):
         app.screen.query_one("#ok", Button).press()
         await wait_until(pilot, lambda: app.choices and not app.typing)
         assert app.core.state.genre == "武俠"
+
+
+async def test_premise_dialog_works_with_arrow_keys_only(monkeypatch):
+    """只用方向鍵：從前提輸入框一路往下走到「開始」，題材選單不會把上下鍵攔走；左右鍵可以切換題材。"""
+    from textual.widgets import Select
+
+    from story.core.genres import Genre
+
+    class GenreEngine(FakeEngine):
+        genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}
+
+    monkeypatch.setattr(app_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=GenreEngine(), **kw))
+    app = StoryApp()
+    async with app.run_test(size=SIZE) as pilot:
+        await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))
+        await pilot.press("down", "down")  # 前提輸入框 → 限時模式 → 題材選單
+        assert app.focused.id == "genre"
+        await pilot.press("right", "right")  # 自動 → 不套用 → 武俠
+        assert app.screen.query_one("#genre", Select).value == "武俠"
+        await pilot.press("down")  # 題材選單 → 按鈕列（停在「開始」）
+        assert app.focused.id == "ok"
+        await pilot.press("enter")
+        await wait_until(pilot, lambda: app.choices and not app.typing)
+        assert app.core.state.genre == "武俠"
