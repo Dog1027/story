@@ -325,20 +325,22 @@ class StoryApp(App):
         timed = reply.timed
         loop = asyncio.get_running_loop()
 
-        def suggest(_: str) -> str:
+        def suggest(_: str, genre: str) -> str:
             if self.room:  # 對話框在背景執行緒呼叫這裡，請房間代問後等結果
-                text, error = asyncio.run_coroutine_threadsafe(self.ask_room_suggestion(), loop).result()
+                text, error = asyncio.run_coroutine_threadsafe(self.ask_room_suggestion(genre), loop).result()
                 if error:
                     raise RuntimeError(error)
                 return text
+            self.core.send(f"/genre {genre}")  # 依對話框裡選的題材想開頭
             suggestion = self.core.send("/suggest")
             if suggestion.error:
                 raise RuntimeError(suggestion.notice)
             return suggestion.suggestion
 
-        premise, want_timed = await self.push_screen_wait(PremiseDialog(reply.premise_default, timed, suggest))
-        if want_timed != timed:
-            command = f"/timed {'on' if want_timed else 'off'}"
+        dialog = PremiseDialog(reply.premise_default, timed, suggest, genre=reply.genre, genres=reply.genres)
+        premise, want_timed, genre = await self.push_screen_wait(dialog)
+        commands = [f"/timed {'on' if want_timed else 'off'}"] * (want_timed != timed) + [f"/genre {genre}"]
+        for command in commands:  # 模式與題材的選擇送給核心（回覆不需要顯示）
             if self.room:
                 await self.room.send({"type": "send", "text": command})
             else:
@@ -411,8 +413,9 @@ class StoryApp(App):
             elif kind == "lobby":
                 self.show_lobby(message["members"], message["host"])
 
-    async def ask_room_suggestion(self) -> tuple[str, str]:
+    async def ask_room_suggestion(self, genre: str) -> tuple[str, str]:
         self.suggestion = asyncio.get_running_loop().create_future()
+        await self.room.send({"type": "send", "text": f"/genre {genre}"})
         await self.room.send({"type": "send", "text": "/suggest"})
         try:
             return await self.suggestion

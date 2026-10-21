@@ -38,8 +38,12 @@ HELP_TEXT = """\
 直接送出空白        使用預設的故事前提
 /suggest           讓 AI 幫你想一個開頭
 /timed on|off      開啟或關閉限時模式（情勢緊迫時要在時間內做出決定）
+/genre 名稱         選擇題材（題材包），或 /genre 自動、/genre 不套用
 
 限時模式的倒數由外殼負責，時間到時送出 /timeout。"""
+
+
+GENRE_AUTO, GENRE_NONE = "自動", "不套用"  # 題材的兩個特別選項：依前提由 AI 挑、不套用題材
 
 
 @dataclass
@@ -76,6 +80,8 @@ class Reply:
     resumed: bool = False  # 這次是讀取存檔、重新顯示上次的劇情
     info: tuple[str, str] | None = None  # 要另外顯示的內容：(標題, 內容)，例如記憶、說明
     premise_default: str = ""  # ask_premise：留白時使用的前提
+    genre: str = ""  # ask_premise：開新局會用的題材選擇（GENRE_AUTO、GENRE_NONE 或題材名稱）
+    genres: list[tuple[str, str]] = field(default_factory=list)  # ask_premise：可選的題材（名稱, 描述）
     suggestion: str = ""  # ask_premise：/suggest 想出來的前提
     ending: Ending | None = None  # ended：尾聲與旅程紀錄
     error: Literal["api_key", "api"] | None = None  # api_key：key 無效，外殼換 key 後可以重送同一句
@@ -107,6 +113,7 @@ class StoryCore:
         self.state: GameState | None = None
         self._phase: Phase = "ask_premise"
         self.timed = False  # 開新局時的模式，沿用上一局的選擇
+        self.genre = GENRE_AUTO  # 開新局時的題材選擇，沿用上一局的選擇
         self.last_premise = ""
         self.suggested = ""  # /suggest 想出來的前提，留白送出時優先使用
         self._compaction: threading.Thread | None = None
@@ -183,7 +190,8 @@ class StoryCore:
     def _on_ask_premise(self, raw: str) -> Reply:
         if raw == "/suggest":
             try:
-                suggestion = self.engine.suggest_premise(self.last_premise or DEFAULT_PREMISE)
+                chosen = self.genre if self.genre in self._genres() else ""
+                suggestion = self.engine.suggest_premise(self.last_premise or DEFAULT_PREMISE, genre=chosen)
             except (errors.APIError, RuntimeError) as e:
                 return self._failed(e, self._ask_premise)
             self.suggested = suggestion
@@ -192,6 +200,13 @@ class StoryCore:
             arg = raw.removeprefix("/timed").strip()
             self.timed = {"on": True, "off": False}.get(arg, not self.timed)
             return self._ask_premise(notice=f"已切換為{'限時' if self.timed else '一般'}模式。")
+        if raw.startswith("/genre"):
+            choice = raw.removeprefix("/genre").strip()
+            if choice not in (GENRE_AUTO, GENRE_NONE, *self._genres()):
+                options = "、".join([GENRE_AUTO, GENRE_NONE, *self._genres()])
+                return self._ask_premise(notice=f"沒有「{choice}」這個題材，可以選：{options}")
+            self.genre = choice
+            return self._ask_premise(notice=f"題材：{choice}")
         if raw.startswith("/"):
             return self._ask_premise(notice=f"沒有 {raw} 這個指令，輸入 /help 查看說明。")
 
@@ -275,6 +290,8 @@ class StoryCore:
         self._phase = "ask_premise"
         return self._reply(
             premise_default=self._default_premise(),
+            genre=self.genre,
+            genres=[(g.name, g.description) for g in self._genres().values()],
             suggestion=suggestion,
             notice=notice,
             error=error,
@@ -287,7 +304,16 @@ class StoryCore:
         return not state.game_over
 
     def _new_state(self, premise: str) -> GameState:
-        return GameState(premise=premise, timed_mode=self.timed)
+        return GameState(premise=premise, timed_mode=self.timed, **self._genre_fields())
+
+    def _genres(self) -> dict:
+        return getattr(self.engine, "genres", {})  # 測試用的假 engine 可能沒有題材包
+
+    def _genre_fields(self) -> dict:
+        """新局的題材欄位：指定題材就直接套用；選「自動」時，規劃大綱時由 AI 從目錄挑。"""
+        if self.genre in self._genres():
+            return {"genre": self.genre}
+        return {"genre_pending": self.genre == GENRE_AUTO and bool(self._genres())}
 
     def _current_choices(self) -> list[str]:
         """現在要輸入行動的人的選項。"""
@@ -420,9 +446,11 @@ def render_text(reply: Reply) -> str:
         if reply.suggestion:
             parts.append("想到一個開頭了，直接送出空白就用它開始，也可以自己修改後送出。")
         parts.append(
-            f"新的故事（{'限時' if reply.timed else '一般'}模式）。輸入故事前提，或直接送出空白使用：\n{reply.premise_default}\n"
-            "（/suggest 讓 AI 幫你想，/timed 切換限時模式）"
+            f"新的故事（{'限時' if reply.timed else '一般'}模式，題材：{reply.genre}）。輸入故事前提，或直接送出空白使用：\n{reply.premise_default}\n"
+            "（/suggest 讓 AI 幫你想，/timed 切換限時模式，/genre 選擇題材）"
         )
+        if reply.genres:
+            parts.append("可選的題材：" + "、".join([GENRE_AUTO, GENRE_NONE, *(name for name, _ in reply.genres)]))
     if reply.narration:
         parts.append(reply.narration)
     if reply.changes:

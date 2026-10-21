@@ -10,9 +10,9 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.events import Key
 from textual.message import Message
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Input, Static, TextArea
+from textual.widgets import Button, Checkbox, Input, Select, Static, TextArea
 
-from story.core import MAX_PLAYERS
+from story.core import GENRE_AUTO, GENRE_NONE, MAX_PLAYERS
 from story.shells.apikey import KEY_PATH
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 
@@ -219,7 +219,7 @@ class PremiseArea(TextArea):
 
 
 class PremiseDialog(Dialog):
-    """輸入故事前提並選擇模式。回傳 (前提, 是否限時)；前提空白就用預設值。"""
+    """輸入故事前提並選擇模式與題材。回傳 (前提, 是否限時, 題材)；前提空白就用預設值。"""
 
     DEFAULT_CSS = """
     PremiseDialog > Vertical { width: 84; }
@@ -228,12 +228,22 @@ class PremiseDialog(Dialog):
         border: round $panel-lighten-2;
     }
     PremiseDialog TextArea:focus { border: round $primary; background-tint: $foreground 0%; }
+    PremiseDialog Select { margin-bottom: 0; }
+    PremiseDialog #genre-hint { margin: 0 0 0 2; }
     """
 
-    def __init__(self, default: str, timed: bool, suggest: Callable[[str], str]):
+    def __init__(
+        self,
+        default: str,
+        timed: bool,
+        suggest: Callable[[str, str], str],
+        genre: str = GENRE_AUTO,
+        genres: list[tuple[str, str]] = (),
+    ):
         super().__init__()
         self.default, self.timed = default, timed
-        self.suggest = suggest  # 請 AI 想一個開頭（會在背景執行緒呼叫）
+        self.suggest = suggest  # 請 AI 依題材想一個開頭：suggest(目前的前提, 題材)，會在背景執行緒呼叫
+        self.genre, self.genres = genre, dict(genres)  # 目前的題材選擇；可選的題材（名稱 → 描述）
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -241,6 +251,12 @@ class PremiseDialog(Dialog):
             yield Static(f"輸入故事前提，留白則使用：\n{self.default}", classes="hint")
             yield PremiseArea(placeholder="例如：你是一名在末日城市送信的郵差……", id="premise", highlight_cursor_line=False)
             yield Checkbox("限時模式：情勢緊迫時，要在時間內做出決定", value=self.timed, id="timed")
+            if self.genres:  # 有題材包才顯示題材選單
+                options = [("題材：自動（依故事前提挑選）", GENRE_AUTO), ("題材：不套用", GENRE_NONE)]
+                options += [(f"題材：{name}", name) for name in self.genres]
+                value = self.genre if self.genre in (GENRE_AUTO, GENRE_NONE, *self.genres) else GENRE_AUTO
+                yield Select(options, value=value, allow_blank=False, compact=True, id="genre")
+                yield Static(self.genre_hint(value), id="genre-hint", classes="hint")
             with Horizontal():
                 yield Button("幫我想", id="suggest", compact=True)
                 yield Button("開始", variant="primary", id="ok", compact=True)
@@ -251,7 +267,7 @@ class PremiseDialog(Dialog):
         button, field = self.query_one("#suggest", Button), self.query_one("#premise", PremiseArea)
         button.disabled, button.label = True, "構思中…"
         try:
-            field.text = await asyncio.to_thread(self.suggest, field.text.strip() or self.default)
+            field.text = await asyncio.to_thread(self.suggest, field.text.strip() or self.default, self.chosen_genre())
             field.move_cursor(field.document.end)
             field.focus()
         except Exception as e:  # 網路、key、額度等錯誤都只提示，不中斷開新局
@@ -259,14 +275,28 @@ class PremiseDialog(Dialog):
         finally:
             button.disabled, button.label = False, "幫我想"
 
+    @on(Select.Changed, "#genre")
+    def show_genre(self, event: Select.Changed) -> None:
+        self.query_one("#genre-hint", Static).update(self.genre_hint(event.value))
+
+    def genre_hint(self, choice: str) -> str:
+        if choice == GENRE_AUTO:
+            return "依故事前提自動挑一個題材包，都不適合就不套用。"
+        if choice == GENRE_NONE:
+            return "不套用題材，照一般的方式寫。"
+        return self.genres.get(choice, "")
+
+    def chosen_genre(self) -> str:
+        return self.query_one("#genre", Select).value if self.genres else self.genre
+
     @on(PremiseArea.Submitted)
     @on(Button.Pressed, "#ok")
     def submit(self) -> None:
         premise = " ".join(self.query_one("#premise", PremiseArea).text.split()) or self.default
-        self.dismiss((premise, self.query_one("#timed", Checkbox).value))
+        self.dismiss((premise, self.query_one("#timed", Checkbox).value, self.chosen_genre()))
 
     def action_cancel(self) -> None:
-        self.dismiss((self.default, self.query_one("#timed", Checkbox).value))
+        self.dismiss((self.default, self.query_one("#timed", Checkbox).value, self.chosen_genre()))
 
 
 class ConfirmDialog(Dialog):

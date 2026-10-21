@@ -478,3 +478,23 @@ async def test_party_status_columns_line_up():
                 assert column(first, "背包") == column(second, "背包")  # 背包欄對齊
             else:
                 assert any("背包 空" in line for line in lines)  # 不會拆成「背包」和「空」兩行
+
+
+async def test_premise_dialog_lets_you_pick_a_genre(monkeypatch):
+    from textual.widgets import Select
+
+    from story.core.genres import Genre
+
+    class GenreEngine(FakeEngine):
+        genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}
+
+    monkeypatch.setattr(app_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=GenreEngine(), **kw))
+    app = StoryApp()
+    async with app.run_test(size=SIZE) as pilot:
+        await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))
+        app.screen.query_one("#genre", Select).value = "武俠"
+        await pilot.pause()
+        assert "江湖恩怨" in str(app.screen.query_one("#genre-hint").render())  # 選了題材就顯示它的描述
+        app.screen.query_one("#ok", Button).press()
+        await wait_until(pilot, lambda: app.choices and not app.typing)
+        assert app.core.state.genre == "武俠"

@@ -194,8 +194,8 @@ class Room:
         elif text == "/suggest":
             reply = await self._call(lambda: self.core.send(text))
             await write(self.members[name].writer, {"type": "suggestion", "text": reply.suggestion, "error": reply.notice if reply.error else ""})
-        elif text.startswith("/timed"):
-            await self._call(lambda: self.core.send(text))  # 前提對話框裡的勾選，不需要回覆
+        elif text.startswith(("/timed", "/genre")):
+            await self._call(lambda: self.core.send(text))  # 前提對話框裡的模式與題材，不需要回覆
         else:
             starting = self.core.phase == "ask_premise" and not text.startswith("/")
             if starting:

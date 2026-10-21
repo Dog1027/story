@@ -31,10 +31,12 @@ API key、玩家名字、倒數計時、打字效果屬於外殼。核心只告�
 src/story/
 ├── __init__.py          main()：依參數選外殼
 ├── __main__.py          python -m story
+├── genres/              題材包（每個題材一個資料夾，見 docs/genres.md）
 ├── core/                核心：完全不知道有任何介面，也不 import shells/
 │   ├── __init__.py      對外只匯出 StoryCore、Reply、Status 等
 │   ├── session.py       StoryCore（單人）
 │   ├── party.py         多人模式：PartyEngine（繼承 Engine）、PartyCore（繼承 StoryCore）
+│   ├── genres.py        題材包的讀取與檢查
 │   ├── engine.py        遊戲規則與 AI
 │   ├── models.py        資料結構
 │   └── records.py       存讀檔、回合變化、結局紀錄
@@ -237,6 +239,18 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 
 接續存檔只看玩家名字是否相同，不看順序。`Reply` 可以用 `to_dict()`／`Reply.from_dict()` 轉成 JSON，在程序之間傳送。
 
+### `core/genres.py`：題材包
+
+讀取 `genres/` 底下的題材包。結構仿照 Agent Skills：每個題材一個資料夾，`GENRE.md` 開頭是設定欄位（`name`、`description`），後面是寫作指引；可以附 `premises.md`、`names.md`。寫法見 [docs/genres.md](genres.md)。
+
+| 名稱 | 做什麼 |
+|---|---|
+| `load_genres()` | 讀取內建（`story/genres/`）與個人（`~/.config/story/genres/`）的題材包，同名時個人的優先。回傳題材與被略過的題材及原因 |
+| `parse_genre()` | 讀一個題材資料夾並檢查格式與長度上限（描述 200 字、指引與附屬檔案各 2,000 字） |
+| `Genre` | 一個題材：名稱、描述、指引、開頭靈感、命名素材 |
+
+engine 用題材的方式：玩家選「自動」時，規劃大綱的提示詞附上題材目錄，AI 把挑中的名稱填在 `StoryArc.genre`；選定的題材指引整局放在每回合提示詞的前段；`names.md` 給大綱與開場；`premises.md` 給「幫我想」。核心用 `/genre` 指令接收玩家的選擇（`GENRE_AUTO`、`GENRE_NONE` 或題材名稱），題材記在存檔的 `GameState.genre`。
+
 ### `core/records.py`：紀錄工具
 
 | 名稱 | 做什麼 |
@@ -381,6 +395,7 @@ uv run pytest -m "not slow"    # 略過會啟動真的伺服器的測試（約 1
 | `test_engine.py` | 遊戲規則：狀態增減與好轉限制、身體／精神、整體狀態與死亡、時間與痊癒、限時秒數、背包與事實、大綱與節奏提醒、提示詞內容、記憶壓縮 |
 | `test_records.py` | 存讀檔、舊存檔相容、回合變化的語氣、結局紀錄 |
 | `test_core.py` | 核心的文字協定：開新局、幫我想、限時切換、`action_for()`、各種指令、key 失效與重送、重新開始、結局、讀檔接續 |
+| `test_genres.py` | 題材包：內建題材都通過檢查、資料夾解析、格式錯誤會略過並說明原因、個人覆蓋內建、指引在提示詞的位置、AI 自動挑選、「幫我想」、`/genre` 指令 |
 | `test_party.py` | 多人模式：每位角色各自的規則、未知角色與漏掉的角色、單人倒下與全員倒下、焦點輪替、輪流輸入、時間到、失敗重試、讀檔；線上多人的 `send_as()`、`view()`、回覆轉 JSON；以及接上真的 engine 的整合測試 |
 | `test_room.py` | 線上多人的房間（真的 Unix socket）：不照順序行動、名字檢查與人數上限、遊戲中只有隊員能回來、只有房主能回答與重來、斷線重連與替離線的人行動、換房主、大家看完才倒數、結局回到大廳 |
 | `test_players.py` | 名字檢查、同名鎖定、接手異常中斷的鎖 |

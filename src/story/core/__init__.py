@@ -2,6 +2,6 @@
 
 from story.core.records import ChangeGroups, Tone
 from story.core.party import MAX_PLAYERS, PartyCore
-from story.core.session import Ending, Phase, Reply, Status, StoryCore
+from story.core.session import GENRE_AUTO, GENRE_NONE, Ending, Phase, Reply, Status, StoryCore
 
-__all__ = ["MAX_PLAYERS", "ChangeGroups", "Ending", "PartyCore", "Phase", "Reply", "Status", "StoryCore", "Tone"]
+__all__ = ["GENRE_AUTO", "GENRE_NONE", "MAX_PLAYERS", "ChangeGroups", "Ending", "PartyCore", "Phase", "Reply", "Status", "StoryCore", "Tone"]

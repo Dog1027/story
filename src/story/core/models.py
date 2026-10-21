@@ -85,6 +85,7 @@ class StoryArc(BaseModel):
     goal: str = Field(description="主角在這個故事裡的核心目標或要解開的謎團，一句話")
     acts: list[Act] = Field(description="剛好四幕：起（建立處境）、承（深入與阻礙）、轉（重大轉折）、合（高潮與結局）")
     endings: list[str] = Field(description="2-3 種可能的結局方向，依玩家的抉擇而定，各一句話")
+    genre: str = Field(default="", description="若有「題材目錄」：照抄最適合這個故事前提的題材名稱；都不適合或沒有目錄時留空")
 
 
 class Epilogue(BaseModel):
@@ -118,6 +119,8 @@ class GameState(BaseModel):
     turn: int = 0
     conditions: list[Condition] = Field(default_factory=list)  # 身體與精神狀態，空的代表狀況良好
     timed_mode: bool = False  # 限時模式：緊急情況要在時間內做出決定
+    genre: str = ""  # 題材包的名稱（genres/ 裡的資料夾）；空的代表不套用題材
+    genre_pending: bool = False  # 玩家選「自動」：規劃大綱時由 AI 依前提從題材目錄挑一個
     party: list[Character] = Field(default_factory=list)  # 多人模式的隊伍；空的代表單人模式（主角用下面的 conditions、inventory）
     arc: StoryArc | None = None  # 隱藏的故事大綱（舊存檔沒有，會在下回合補上）
     act: int = 0  # 目前在第幾幕（0-3）

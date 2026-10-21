@@ -16,6 +16,7 @@ def isolated(tmp_path, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr("story.shells.apikey.KEY_PATH", tmp_path / "api_key")
     monkeypatch.setattr("story.shells.prefs.THEME_PATH", tmp_path / "theme")
+    monkeypatch.setattr("story.core.genres.PERSONAL_DIR", tmp_path / "genres")  # 看不到你個人的題材包
     return tmp_path
 
 
@@ -89,10 +90,11 @@ class FakeGemini:
         return SimpleNamespace(text=self.summary)
 
 
-def make_engine(*beats, engine_class=Engine, **kwargs) -> tuple[Engine, FakeGemini]:
-    """用假的 Gemini 建立真的 Engine（多人模式傳 engine_class=PartyEngine），所以 engine 的規則都會實際執行。"""
+def make_engine(*beats, engine_class=Engine, genres=None, **kwargs) -> tuple[Engine, FakeGemini]:
+    """用假的 Gemini 建立真的 Engine（多人模式傳 engine_class=PartyEngine），所以 engine 的規則都會實際執行。
+    預設不載入題材包（結果才固定），要測題材時傳 genres。"""
     gemini = FakeGemini(beats, **kwargs)
-    return engine_class(client=gemini), gemini
+    return engine_class(client=gemini, genres=genres or {}), gemini
 
 
 # ---------- 給核心與外殼用的假 engine（不跑規則，直接改狀態） ----------
@@ -110,7 +112,7 @@ class FakeEngine:
         self.keys.append(key)
         self.fail_with = None
 
-    def suggest_premise(self, avoid=""):
+    def suggest_premise(self, avoid="", genre=""):
         return "你是月球礦坑的夜班工程師。"
 
     def needs_compaction(self, state):
@@ -156,7 +158,7 @@ class FakePartyEngine:
     def needs_compaction(self, state):
         return False
 
-    def suggest_premise(self, avoid=""):
+    def suggest_premise(self, avoid="", genre=""):
         return "AI 想的開頭"
 
     def start(self, state):

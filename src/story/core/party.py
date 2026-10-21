@@ -211,7 +211,7 @@ class PartyCore(StoryCore):
 
     def _new_state(self, premise: str) -> GameState:
         self.pending = {}
-        return GameState(premise=premise, timed_mode=self.timed, party=[Character(name=n) for n in self._players])
+        return GameState(premise=premise, timed_mode=self.timed, party=[Character(name=n) for n in self._players], **self._genre_fields())
 
     def _current_choices(self) -> list[str]:
         actor = self._actor()

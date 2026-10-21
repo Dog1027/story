@@ -7,6 +7,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 
+from story.core.genres import Genre, load_genres
 from story.core.models import Character, Condition, Epilogue, GameState, StoryArc, StoryBeat, Turn
 
 MODEL = "gemini-3.5-flash-lite"
@@ -247,8 +248,15 @@ class Engine:
     turn_label = "玩家"  # 「劇情紀錄」裡行動那一行的標籤
     epilogue_look_back = "回顧主角做過的關鍵抉擇與付出的代價；若主角死去，寫出主角留下的痕跡。"
 
-    def __init__(self, api_key: str | None = None, client: genai.Client | None = None, log_path: Path = LOG_PATH):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        client: genai.Client | None = None,
+        log_path: Path = LOG_PATH,
+        genres: dict[str, Genre] | None = None,
+    ):
         self.client = client or genai.Client(api_key=api_key)
+        self.genres = load_genres()[0] if genres is None else genres  # 題材包（見 genres.py）
         self.log_path = log_path  # 網頁版每個玩家各自一份紀錄
         self.stage = ""  # 開新故事時目前在做什麼，外殼顯示在等待畫面上（例如「規劃故事大綱」）
 
@@ -281,6 +289,13 @@ class Engine:
             f"為這個互動文字冒險故事規劃大綱，預定約 {TARGET_TURNS} 回合。\n# 故事前提\n{state.premise}\n{cast}{situation}\n"
             "里程碑要具體、可以判斷是否達成。結局方向要依玩家的抉擇而不同，不要只有逃脫成功。"
         )
+        if genre := self.genres.get(state.genre):  # 玩家指定了題材：大綱要符合題材
+            prompt += f"\n\n# 題材：{genre.name}\n{genre.guide}"
+            if genre.names:
+                prompt += f"\n\n# 命名素材（可以參考，不必全用）\n{genre.names}"
+        elif state.genre_pending and self.genres:  # 玩家選「自動」：給 AI 目錄，請它依前提挑一個
+            catalog = "\n".join(f"- {g.name}：{g.description}" for g in self.genres.values())
+            prompt += f"\n\n# 題材目錄\n{catalog}\n挑一個最適合故事前提的題材，把名稱照抄在 genre；都不適合就留空。"
         response = self.client.models.generate_content(
             model=MODEL,
             contents=prompt,
@@ -294,6 +309,9 @@ class Engine:
             return  # 規劃失敗就先不用大綱，下回合再試
         state.arc = response.parsed
         state.arc.acts = state.arc.acts[:4]
+        if state.genre_pending:  # AI 挑的題材不在目錄裡（或留空）就不套用
+            picked = state.arc.genre.strip()
+            state.genre, state.genre_pending = (picked if picked in self.genres else ""), False
         # 已經進行很久的故事：依回合數推估目前在哪一幕
         state.act, state.act_turns = min(3, state.turn // ACT_TURNS), 0
 
@@ -304,11 +322,19 @@ class Engine:
         state.recent.append(Turn(narration=state.current_narration, action=self._action_text(action)))  # 只往後追加
         self._advance(state, action=action)
 
-    def suggest_premise(self, avoid: str = "") -> str:
-        """請 AI 想一個新的故事開頭。題材由程式隨機挑選，AI 負責發揮。"""
-        genre, setting = random.choice(PREMISE_GENRES), random.choice(PREMISE_SETTINGS)
-        prompt = (
-            f"為互動文字冒險遊戲想一個原創的故事前提。題材：{genre}；故事開始於：{setting}。\n"
+    def suggest_premise(self, avoid: str = "", genre: str = "") -> str:
+        """請 AI 想一個新的故事開頭。題材由程式隨機挑選（玩家指定了題材就用那個），AI 負責發揮。
+        挑到題材包時，附上它的描述與幾則開頭靈感（premises.md）。"""
+        if genre not in self.genres:
+            genre = random.choice([*self.genres, *(g for g in PREMISE_GENRES if g not in self.genres)])
+        setting = random.choice(PREMISE_SETTINGS)
+        prompt = f"為互動文字冒險遊戲想一個原創的故事前提。題材：{genre}；故事開始於：{setting}。\n"
+        if pack := self.genres.get(genre):
+            prompt += f"題材說明：{pack.description}\n"
+            if pack.premises:
+                ideas = "\n".join(f"- {p}" for p in random.sample(pack.premises, min(3, len(pack.premises))))
+                prompt += f"靈感（不要照抄，寫出新的）：\n{ideas}\n"
+        prompt += (
             "用繁體中文、第二人稱（「你」），一到兩句、80 字以內。交代主角身分、所在處境，並留下一個引人好奇的謎團或危機。"
             "只輸出前提本身，不要標題或其他說明。"
         )
@@ -403,6 +429,9 @@ class Engine:
             else "一般模式：time_limit 一律為 0。"
         )
         sections = [f"# 故事前提\n{state.premise}", f"# 模式\n{mode}"]
+        genre = self.genres.get(state.genre)
+        if genre:  # 整局固定，放在前段不影響快取
+            sections.append(f"# 題材：{genre.name}（寫作指引）\n{genre.guide}")
         if state.summary:
             sections.append(f"# 先前劇情摘要\n{state.summary}")
 
@@ -417,6 +446,8 @@ class Engine:
             sections.append("# 重大事件\n" + "\n".join(f"- {e}" for e in state.key_events))
         if progress := self._progress_section(state):
             sections.append(progress)
+        if genre and genre.names and action is None and state.turn == 0:  # 開場要介紹人物與地點：附上命名素材
+            sections.append(f"# 命名素材（可以參考，不必全用）\n{genre.names}")
         sections.append(self._status_section(state))
         sections += self._instruction_sections(state, action)
         return "\n\n".join(sections)

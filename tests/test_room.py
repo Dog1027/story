@@ -216,3 +216,25 @@ async def test_everyone_sees_the_opening_progress(isolated):
         await guest.reply(lambda r: bool(r.narration))
     finally:
         await room.stop()
+
+
+async def test_host_genre_choice_reaches_the_core(isolated):
+    from story.core.genres import Genre
+
+    class GenreEngine(FakePartyEngine):
+        genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}
+
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=GenreEngine()))
+    room.path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
+    await room.start(room.path)
+    try:
+        host, guest = await join(room, "阿明"), await join(room, "小華")
+        await host.send("1")
+        premise_reply = await host.reply()
+        assert premise_reply.genres == [["武俠", "江湖恩怨"]]  # 經過 JSON，tuple 變成 list
+        await host.send("/genre 武俠")  # 前提對話框裡的選擇：不需要回覆
+        await host.send("鏢局")
+        await guest.reply(lambda r: bool(r.narration))
+        assert room.core.state.genre == "武俠"
+    finally:
+        await room.stop()

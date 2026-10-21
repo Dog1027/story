@@ -1,0 +1,133 @@
+"""題材包：讀取與檢查格式、個人的覆蓋內建的、AI 依前提挑選、提示詞裡的位置、「幫我想」與 /genre 指令。"""
+
+from conftest import ARC, FakeEngine, beat, make_engine
+
+from story.core import GENRE_AUTO, GENRE_NONE, StoryCore
+from story.core.genres import BUILTIN_DIR, MAX_GUIDE, load_genres
+from story.core.models import GameState, Turn
+
+
+def write_genre(root, folder, name="武俠", description="江湖恩怨", guide="用古白話。", premises="", names=""):
+    path = root / folder
+    path.mkdir(parents=True)
+    (path / "GENRE.md").write_text(f"---\nname: {name}\ndescription: {description}\n---\n\n{guide}\n", encoding="utf-8")
+    if premises:
+        (path / "premises.md").write_text(premises, encoding="utf-8")
+    if names:
+        (path / "names.md").write_text(names, encoding="utf-8")
+    return path
+
+
+def pack(**fields):
+    from story.core.genres import Genre
+
+    base = dict(name="武俠", description="江湖恩怨", guide="用古白話，人物用名號稱呼。", premises=["你是鏢師。"], names="人名：沈青衣")
+    return {"武俠": Genre(**{**base, **fields})}
+
+
+# ---------- 讀取與檢查 ----------
+
+
+def test_builtin_genres_are_all_valid():
+    """內建的題材包都要通過檢查：改了內建題材包卻寫錯格式時，這裡會提醒。"""
+    genres, problems = load_genres([BUILTIN_DIR])
+    assert problems == [] and len(genres) >= 3
+
+
+def test_genre_folder_is_parsed(tmp_path):
+    write_genre(tmp_path, "wuxia", premises="- 你是鏢師。\n- 你是捕快。\n", names="人名：沈青衣")
+    genres, problems = load_genres([tmp_path])
+    genre = genres["武俠"]
+    assert problems == []
+    assert genre.description == "江湖恩怨" and genre.guide == "用古白話。"
+    assert genre.premises == ["你是鏢師。", "你是捕快。"] and genre.names == "人名：沈青衣"
+
+
+def test_broken_genres_are_skipped_with_a_reason(tmp_path):
+    (tmp_path / "沒有檔案").mkdir()
+    write_genre(tmp_path, "沒有描述", name="甲", description="")
+    write_genre(tmp_path, "太長", name="乙", guide="字" * (MAX_GUIDE + 1))
+    bad = tmp_path / "沒有設定欄位"
+    bad.mkdir()
+    (bad / "GENRE.md").write_text("只有內文", encoding="utf-8")
+    genres, problems = load_genres([tmp_path])
+    assert genres == {}
+    assert len(problems) == 4
+    assert any("description" in p for p in problems) and any("超過" in p for p in problems)
+
+
+def test_personal_genre_overrides_builtin_with_same_name(tmp_path):
+    write_genre(tmp_path / "builtin", "武俠", guide="內建的指引")
+    write_genre(tmp_path / "personal", "我的武俠", guide="自己改的指引")
+    genres, _ = load_genres([tmp_path / "builtin", tmp_path / "personal"])
+    assert genres["武俠"].guide == "自己改的指引"
+
+
+# ---------- engine：題材怎麼進到提示詞 ----------
+
+
+def test_chosen_genre_guide_sits_in_the_stable_part_of_the_prompt():
+    """指引整局固定，放在劇情紀錄前面不影響快取；命名素材只在開場給。"""
+    engine, gemini = make_engine(beat(), beat(), genres=pack())
+    state = GameState(premise="鏢局", genre="武俠")
+    engine.start(state)
+    arc_prompt, opening = gemini.prompts[0], gemini.prompts[1]
+    assert "用古白話" in arc_prompt and "題材目錄" not in arc_prompt  # 已經指定題材：大綱照題材規劃
+    assert "命名素材" in opening and "沈青衣" in opening
+    engine.act(state, "上路")
+    prompt = gemini.prompts[-1]
+    assert prompt.index("# 題材：武俠") < prompt.index("# 劇情紀錄")
+    assert "命名素材" not in prompt
+
+
+def test_auto_genre_is_picked_by_ai_from_the_catalog():
+    engine, gemini = make_engine(beat(), arc=ARC.model_copy(update={"genre": "武俠"}), genres=pack())
+    state = GameState(premise="鏢局", genre_pending=True)
+    engine.start(state)
+    assert "# 題材目錄\n- 武俠：江湖恩怨" in gemini.prompts[0]
+    assert state.genre == "武俠" and not state.genre_pending
+    assert "用古白話" in gemini.prompts[1]  # 挑好之後，開場就用這個題材寫
+
+
+def test_auto_genre_not_in_catalog_means_no_genre():
+    engine, gemini = make_engine(beat(), arc=ARC.model_copy(update={"genre": "太空歌劇"}), genres=pack())
+    state = GameState(premise="太空站", genre_pending=True)
+    engine.start(state)
+    assert state.genre == "" and not state.genre_pending
+    assert "# 題材：" not in gemini.prompts[1]
+
+
+def test_suggest_premise_uses_the_genre_pack():
+    engine, gemini = make_engine(genres=pack())
+    engine.suggest_premise(genre="武俠")
+    prompt = gemini.prompts[-1]
+    assert "題材：武俠" in prompt and "題材說明：江湖恩怨" in prompt and "你是鏢師。" in prompt
+
+
+# ---------- 核心：/genre 指令 ----------
+
+
+class GenreEngine(FakeEngine):
+    genres = pack()
+
+
+def test_genre_command_and_new_story_fields(isolated):
+    core = StoryCore("test", engine=GenreEngine(), save_path=isolated / "save.json")
+    reply = core.start()
+    assert reply.genre == GENRE_AUTO and reply.genres == [("武俠", "江湖恩怨")]
+    assert "沒有「太空」這個題材" in core.send("/genre 太空").notice
+    assert core.send("/genre 武俠").genre == "武俠"
+    core.send("鏢局的故事")
+    assert core.state.genre == "武俠" and not core.state.genre_pending
+
+    core.send("/restart")
+    core.send("1")
+    core.send(f"/genre {GENRE_NONE}")
+    core.send("另一個故事")
+    assert core.state.genre == "" and not core.state.genre_pending
+
+    core.send("/restart")
+    core.send("1")
+    core.send(f"/genre {GENRE_AUTO}")
+    core.send("第三個故事")
+    assert core.state.genre_pending  # 規劃大綱時由 AI 挑
