@@ -5,6 +5,7 @@ from conftest import ARC, FakeEngine, beat, make_engine
 from story.core import GENRE_AUTO, GENRE_NONE, StoryCore
 from story.core.genres import BUILTIN_DIR, MAX_GUIDE, load_genres
 from story.core.models import GameState, Turn
+from story.core.records import DEFAULT_PREMISE
 
 
 def write_genre(root, folder, name="武俠", description="江湖恩怨", guide="用古白話。", premises="", names=""):
@@ -131,3 +132,54 @@ def test_genre_command_and_new_story_fields(isolated):
     core.send(f"/genre {GENRE_AUTO}")
     core.send("第三個故事")
     assert core.state.genre_pending  # 規劃大綱時由 AI 挑
+
+
+# ---------- 隨機前提 ----------
+
+
+def two_packs():
+    from story.core.genres import Genre
+
+    return {
+        "武俠": Genre(name="武俠", description="江湖", guide="古白話。", premises=["你是鏢師。", "你是捕快。"]),
+        "克蘇魯": Genre(name="克蘇魯", description="恐怖", guide="暗示。", premises=["你收到舅舅的包裹。"]),
+    }
+
+
+class PackEngine(FakeEngine):
+    genres = two_packs()
+
+
+def test_first_new_story_draws_a_premise_from_the_packs(isolated):
+    core = StoryCore("test", engine=PackEngine(), save_path=isolated / "save.json")
+    reply = core.start()
+    assert reply.premise_default in ("你是鏢師。", "你是捕快。", "你收到舅舅的包裹。", DEFAULT_PREMISE)
+    core.send("")  # 留白：用抽到的那個開始
+    assert core.state.premise == reply.premise_default
+
+
+def test_random_draws_a_different_premise_and_genre_change_redraws(isolated):
+    core = StoryCore("test", engine=PackEngine(), save_path=isolated / "save.json")
+    core.start()
+    reply = core.send("/genre 武俠")
+    assert reply.premise_default in ("你是鏢師。", "你是捕快。")  # 換題材：抽到的開頭跟著換
+    other = core.send("/random").premise_default
+    assert other in ("你是鏢師。", "你是捕快。") and other != reply.premise_default  # 換一個：不會抽到同一個
+    assert core.send("/genre 克蘇魯").premise_default == "你收到舅舅的包裹。"
+
+
+def test_play_again_keeps_the_last_premise_unless_rerolled(isolated):
+    core = StoryCore("test", engine=PackEngine(), save_path=isolated / "save.json")
+    core.start()
+    core.send("自己寫的前提")
+    core.send("/restart")
+    reply = core.send("1")
+    assert reply.premise_default == "自己寫的前提"  # 再玩一次：延續上一局的前提
+    assert core.send("/genre 武俠").premise_default == "自己寫的前提"  # 換題材也不換掉
+    assert core.send("/random").premise_default in ("你是鏢師。", "你是捕快。")
+
+
+def test_ai_suggestion_wins_over_drawn_premise(isolated):
+    core = StoryCore("test", engine=PackEngine(), save_path=isolated / "save.json")
+    core.start()
+    assert core.send("/suggest").premise_default == "你是月球礦坑的夜班工程師。"

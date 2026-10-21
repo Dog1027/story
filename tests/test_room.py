@@ -238,3 +238,14 @@ async def test_host_genre_choice_reaches_the_core(isolated):
         assert room.core.state.genre == "武俠"
     finally:
         await room.stop()
+
+
+async def test_only_commands_asking_for_an_answer_get_one(room):
+    host, guest = await join(room, "阿明"), await join(room, "小華")
+    await host.send("1")
+    await host.reply()
+    await host.send("/timed on")  # 沒有要求回覆
+    await host.conn.send({"type": "send", "text": "/random", "answer": True})
+    answer = await host.expect(lambda m: m["type"] == "premise")
+    assert Reply.from_dict(answer["reply"]).phase == "ask_premise"
+    assert not any(m["type"] == "premise" for m in host.messages)  # 只有一個回覆

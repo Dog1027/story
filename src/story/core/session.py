@@ -7,6 +7,7 @@
 API key、玩家名字、倒數計時、打字效果屬於外殼，不在這裡處理。
 """
 
+import random
 import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -37,6 +38,7 @@ HELP_TEXT = """\
 開新故事時：
 直接送出空白        使用預設的故事前提
 /suggest           讓 AI 幫你想一個開頭
+/random            從題材包的開頭靈感裡換一個（不用等 AI）
 /timed on|off      開啟或關閉限時模式（情勢緊迫時要在時間內做出決定）
 /genre 名稱         選擇題材（題材包），或 /genre 自動、/genre 不套用
 
@@ -116,6 +118,7 @@ class StoryCore:
         self.genre = GENRE_AUTO  # 開新局時的題材選擇，沿用上一局的選擇
         self.last_premise = ""
         self.suggested = ""  # /suggest 想出來的前提，留白送出時優先使用
+        self.drawn = ""  # 從題材包的開頭靈感隨機抽到的前提；再玩一次時不抽，延續上一局的前提
         self._compaction: threading.Thread | None = None
 
     def set_api_key(self, api_key: str) -> None:
@@ -196,6 +199,9 @@ class StoryCore:
                 return self._failed(e, self._ask_premise)
             self.suggested = suggestion
             return self._ask_premise(suggestion=suggestion)
+        if raw == "/random":
+            self.suggested, self.drawn = "", self._draw_premise(avoid=self._default_premise())
+            return self._ask_premise(notice="換了一個開頭。")
         if raw.startswith("/timed"):
             arg = raw.removeprefix("/timed").strip()
             self.timed = {"on": True, "off": False}.get(arg, not self.timed)
@@ -206,6 +212,8 @@ class StoryCore:
                 options = "、".join([GENRE_AUTO, GENRE_NONE, *self._genres()])
                 return self._ask_premise(notice=f"沒有「{choice}」這個題材，可以選：{options}")
             self.genre = choice
+            if self.drawn and not self.suggested and self.drawn not in self._premise_pool():
+                self.drawn = self._draw_premise()  # 抽到的開頭跟著換成新題材的
             return self._ask_premise(notice=f"題材：{choice}")
         if raw.startswith("/"):
             return self._ask_premise(notice=f"沒有 {raw} 這個指令，輸入 /help 查看說明。")
@@ -216,7 +224,7 @@ class StoryCore:
             self.engine.start(state)
         except (errors.APIError, RuntimeError) as e:
             return self._failed(e, self._ask_premise)
-        self.state, self._phase, self.last_premise, self.suggested = state, "playing", premise, ""
+        self.state, self._phase, self.last_premise, self.suggested, self.drawn = state, "playing", premise, "", ""
         save(state, self.save_path)
         return self._turn_reply(before=None)
 
@@ -288,6 +296,8 @@ class StoryCore:
 
     def _ask_premise(self, suggestion: str = "", notice: str = "", error=None) -> Reply:
         self._phase = "ask_premise"
+        if not (self.suggested or self.drawn or self.last_premise):  # 第一次開新故事：隨機抽一個開頭
+            self.drawn = self._draw_premise()
         return self._reply(
             premise_default=self._default_premise(),
             genre=self.genre,
@@ -327,7 +337,19 @@ class StoryCore:
         """推進回合失敗、已從存檔還原之後要做的事。"""
 
     def _default_premise(self) -> str:
-        return self.suggested or self.last_premise or DEFAULT_PREMISE
+        """留白時使用的前提：AI 想的 → 隨機抽的 → 上一局的（再玩一次）→ 預設的。"""
+        return self.suggested or self.drawn or self.last_premise or DEFAULT_PREMISE
+
+    def _premise_pool(self) -> list[str]:
+        """可以隨機抽的開頭：指定了題材就用那個題材包的，否則用所有題材包的，再加上預設的前提。"""
+        genres = self._genres()
+        if self.genre in genres and genres[self.genre].premises:
+            return list(genres[self.genre].premises)
+        return [p for g in genres.values() for p in g.premises] + [DEFAULT_PREMISE]
+
+    def _draw_premise(self, avoid: str = "") -> str:
+        pool = self._premise_pool()
+        return random.choice([p for p in pool if p != avoid] or pool)
 
     def _resume(self) -> Reply:
         self._phase = "playing"
@@ -447,7 +469,7 @@ def render_text(reply: Reply) -> str:
             parts.append("想到一個開頭了，直接送出空白就用它開始，也可以自己修改後送出。")
         parts.append(
             f"新的故事（{'限時' if reply.timed else '一般'}模式，題材：{reply.genre}）。輸入故事前提，或直接送出空白使用：\n{reply.premise_default}\n"
-            "（/suggest 讓 AI 幫你想，/timed 切換限時模式，/genre 選擇題材）"
+            "（/random 換一個，/suggest 讓 AI 幫你想，/timed 切換限時模式，/genre 選擇題材）"
         )
         if reply.genres:
             parts.append("可選的題材：" + "、".join([GENRE_AUTO, GENRE_NONE, *(name for name, _ in reply.genres)]))

@@ -522,3 +522,58 @@ async def test_premise_dialog_works_with_arrow_keys_only(monkeypatch):
         await pilot.press("enter")
         await wait_until(pilot, lambda: app.choices and not app.typing)
         assert app.core.state.genre == "武俠"
+
+
+async def test_premise_dialog_reroll_and_genre_change_update_the_default(monkeypatch):
+    from textual.widgets import Select
+
+    from story.core.genres import Genre
+
+    class PackEngine(FakeEngine):
+        genres = {
+            "武俠": Genre(name="武俠", description="江湖", guide="古白話。", premises=["你是鏢師。", "你是捕快。"]),
+            "克蘇魯": Genre(name="克蘇魯", description="恐怖", guide="暗示。", premises=["你收到舅舅的包裹。"]),
+        }
+
+    monkeypatch.setattr(app_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=PackEngine(), **kw))
+    app = StoryApp()
+    async with app.run_test(size=SIZE) as pilot:
+        await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))
+        dialog = app.screen
+        dialog.query_one("#genre", Select).value = "克蘇魯"
+        await wait_until(pilot, lambda: dialog.default == "你收到舅舅的包裹。")
+        assert "你收到舅舅的包裹。" in str(dialog.query_one("#default-hint").render())
+        dialog.query_one("#genre", Select).value = "武俠"
+        await wait_until(pilot, lambda: dialog.default in ("你是鏢師。", "你是捕快。"))
+        before = dialog.default
+        dialog.query_one("#reroll", Button).press()
+        await wait_until(pilot, lambda: dialog.default != before)  # 換一個
+        chosen = dialog.default
+        dialog.query_one("#ok", Button).press()
+        await wait_until(pilot, lambda: app.choices and not app.typing)
+        assert app.core.state.premise == chosen and app.core.state.genre == "武俠"
+
+
+async def test_rapid_genre_switching_shows_the_last_genres_premise(monkeypatch):
+    """用左右鍵快速連續切換題材：請求排隊、舊的結果丟掉，最後顯示的前提一定屬於最後選的題材。"""
+    from story.core.genres import Genre
+
+    class PackEngine(FakeEngine):
+        genres = {
+            "武俠": Genre(name="武俠", description="江湖", guide="古白話。", premises=["你是鏢師。", "你是捕快。"]),
+            "克蘇魯": Genre(name="克蘇魯", description="恐怖", guide="暗示。", premises=["你收到舅舅的包裹。"]),
+        }
+
+    monkeypatch.setattr(app_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=PackEngine(), **kw))
+    app = StoryApp()
+    async with app.run_test(size=SIZE) as pilot:
+        await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))
+        dialog = app.screen
+        dialog.query_one("#genre").focus()
+        # 選項順序：自動、不套用、武俠、克蘇魯（循環）。右 5 次停在「不套用」，再左 3 次停在「武俠」
+        await pilot.press("right", "right", "right", "right", "right")
+        await pilot.press("left", "left", "left")
+        await wait_until(pilot, lambda: not dialog.asking.locked())
+        await pilot.pause(0.3)
+        assert dialog.chosen_genre() == "武俠"
+        assert dialog.default in ("你是鏢師。", "你是捕快。")

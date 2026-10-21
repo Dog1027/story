@@ -12,7 +12,7 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Select, Static, TextArea
 
-from story.core import GENRE_AUTO, GENRE_NONE, MAX_PLAYERS
+from story.core import GENRE_AUTO, GENRE_NONE, MAX_PLAYERS, Reply
 from story.shells.apikey import KEY_PATH
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 
@@ -252,23 +252,19 @@ class PremiseDialog(Dialog):
     PremiseDialog #genre-hint { margin: 0 0 0 2; }
     """
 
-    def __init__(
-        self,
-        default: str,
-        timed: bool,
-        suggest: Callable[[str, str], str],
-        genre: str = GENRE_AUTO,
-        genres: list[tuple[str, str]] = (),
-    ):
+    def __init__(self, reply: Reply, ask: Callable[..., Reply]):
         super().__init__()
-        self.default, self.timed = default, timed
-        self.suggest = suggest  # 請 AI 依題材想一個開頭：suggest(目前的前提, 題材)，會在背景執行緒呼叫
-        self.genre, self.genres = genre, dict(genres)  # 目前的題材選擇；可選的題材（名稱 → 描述）
+        self.default, self.timed = reply.premise_default, reply.timed
+        self.genre, self.genres = reply.genre, dict(reply.genres)  # 目前的題材選擇；可選的題材（名稱 → 描述）
+        # 把指令送給核心並拿回最後一個回覆，例如 ask("/genre 武俠", "/random")；會在背景執行緒呼叫
+        self.ask = ask
+        self.asking = asyncio.Lock()  # 一次只送一個請求：核心不能同時被兩個執行緒呼叫
+        self.latest = 0  # 最新一次操作的編號；被後面的操作取代的舊結果就不用了
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static("新的故事", classes="title")
-            yield Static(f"輸入故事前提，留白則使用：\n{self.default}", classes="hint")
+            yield Static(self.default_hint(), id="default-hint", classes="hint")
             yield PremiseArea(placeholder="例如：你是一名在末日城市送信的郵差……", id="premise", highlight_cursor_line=False)
             yield Checkbox("限時模式：情勢緊迫時，要在時間內做出決定", value=self.timed, id="timed")
             if self.genres:  # 有題材包才顯示題材選單
@@ -278,8 +274,24 @@ class PremiseDialog(Dialog):
                 yield GenreSelect(options, value=value, allow_blank=False, compact=True, id="genre")
                 yield Static(self.genre_hint(value), id="genre-hint", classes="hint")
             with Horizontal():
+                yield Button("換一個", id="reroll", compact=True)
                 yield Button("幫我想", id="suggest", compact=True)
                 yield Button("開始", variant="primary", id="ok", compact=True)
+
+    async def request(self, *commands: str, latest_only: bool = True) -> Reply | None:
+        """排隊把指令送給核心。latest_only 時，如果等待期間又有新的操作（例如快速切換題材），回傳 None。"""
+        self.latest += 1
+        mine = self.latest
+        async with self.asking:
+            reply = await asyncio.to_thread(self.ask, *commands)
+        return reply if not latest_only or mine == self.latest else None
+
+    def default_hint(self) -> str:
+        return f"輸入故事前提，留白則使用：\n{self.default}"
+
+    def set_default(self, premise: str) -> None:
+        self.default = premise
+        self.query_one("#default-hint", Static).update(self.default_hint())
 
     @on(Button.Pressed, "#suggest")
     @work
@@ -287,7 +299,10 @@ class PremiseDialog(Dialog):
         button, field = self.query_one("#suggest", Button), self.query_one("#premise", PremiseArea)
         button.disabled, button.label = True, "構思中…"
         try:
-            field.text = await asyncio.to_thread(self.suggest, field.text.strip() or self.default, self.chosen_genre())
+            reply = await self.request(f"/genre {self.chosen_genre()}", "/suggest", latest_only=False)
+            if reply.error:
+                raise RuntimeError(reply.notice)
+            field.text = reply.suggestion
             field.move_cursor(field.document.end)
             field.focus()
         except Exception as e:  # 網路、key、額度等錯誤都只提示，不中斷開新局
@@ -295,9 +310,20 @@ class PremiseDialog(Dialog):
         finally:
             button.disabled, button.label = False, "幫我想"
 
+    @on(Button.Pressed, "#reroll")
+    @work
+    async def reroll(self) -> None:
+        """換一個：從題材包的開頭靈感裡重抽，不用等 AI。"""
+        if reply := await self.request(f"/genre {self.chosen_genre()}", "/random"):
+            self.set_default(reply.premise_default)
+
     @on(Select.Changed, "#genre")
-    def show_genre(self, event: Select.Changed) -> None:
+    @work
+    async def show_genre(self, event: Select.Changed) -> None:
+        """換題材：顯示題材的描述；隨機抽到的開頭也換成新題材的。"""
         self.query_one("#genre-hint", Static).update(self.genre_hint(event.value))
+        if reply := await self.request(f"/genre {event.value}"):
+            self.set_default(reply.premise_default)
 
     def genre_hint(self, choice: str) -> str:
         if choice == GENRE_AUTO:

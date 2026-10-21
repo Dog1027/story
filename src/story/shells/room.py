@@ -11,12 +11,13 @@ API key 用伺服器的，玩家不用輸入。
 玩家 → 房間
   {"type": "join", "name": "阿明"}        第一則訊息
   {"type": "send", "text": "1"}           玩家的輸入：行動、指令，或房主回答對話框
+                                          房主在前提對話框送的指令可以加 "answer": true，要求回傳結果
   {"type": "ready"}                       新劇情顯示完了（大家都顯示完才開始限時倒數）
 房間 → 玩家
   {"type": "joined"} 或 {"type": "rejected", "reason": "..."}
   {"type": "lobby", "members": [...], "host": "阿明"}
   {"type": "reply", "reply": {...}}       核心的回覆（Reply.to_dict()，已換成這位玩家的選項）
-  {"type": "suggestion", "text": "...", "error": "..."}   房主按「幫我想」的結果
+  {"type": "premise", "reply": {...}}     前提對話框的指令（幫我想、換一個、換題材）的結果，只回給要求 answer 的房主
   {"type": "new_story", "premise": "..."}  新故事開始：清空畫面，先顯示故事前提
   {"type": "busy", "on": true, "progress": "規劃故事大綱"}   故事生成中（progress 變了會再送一次）
   {"type": "waiting", "names": [...]}     這回合還沒行動的人
@@ -182,20 +183,19 @@ class Room:
             self.ready.add(name)
             await self._maybe_start_countdown()
         elif kind == "send":
-            await self._on_send(name, str(message.get("text", "")).strip())
+            await self._on_send(name, str(message.get("text", "")).strip(), bool(message.get("answer")))
 
-    async def _on_send(self, name: str, text: str) -> None:
+    async def _on_send(self, name: str, text: str, answer: bool = False) -> None:
         if self.core is None:
             await self._on_lobby(name, text)
         elif self.core.phase == "playing":
             await self._on_playing(name, text)
         elif name != self.host:
             await self._send_notice(name, f"等房主 {self.host} 設定好故事。")
-        elif text == "/suggest":
+        elif text.startswith(("/suggest", "/random", "/timed", "/genre")):  # 前提對話框裡的操作，不用推給其他人
             reply = await self._call(lambda: self.core.send(text))
-            await write(self.members[name].writer, {"type": "suggestion", "text": reply.suggestion, "error": reply.notice if reply.error else ""})
-        elif text.startswith(("/timed", "/genre")):
-            await self._call(lambda: self.core.send(text))  # 前提對話框裡的模式與題材，不需要回覆
+            if answer:
+                await write(self.members[name].writer, {"type": "premise", "reply": reply.to_dict()})
         else:
             starting = self.core.phase == "ask_premise" and not text.startswith("/")
             if starting:

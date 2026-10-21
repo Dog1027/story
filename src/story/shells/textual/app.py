@@ -131,7 +131,7 @@ class StoryApp(App):
         self.room_path = room  # 線上多人：房間的 socket；這時不建立自己的核心
         self.room: RoomConnection | None = None
         self.inbox: asyncio.Queue[dict] = asyncio.Queue()  # 房間推來、要依序處理的訊息
-        self.suggestion: asyncio.Future | None = None
+        self.premise_answer: asyncio.Future | None = None  # 線上多人：前提對話框在等房間回覆
         self.waiting: list[str] = []  # 線上多人：這回合還沒行動的人
         self.my_name = ""  # 線上多人：自己的名字
         self.actor = ""  # 多人模式：現在輪到誰（線上多人：輪到自己時是自己的名字）
@@ -325,20 +325,15 @@ class StoryApp(App):
         timed = reply.timed
         loop = asyncio.get_running_loop()
 
-        def suggest(_: str, genre: str) -> str:
-            if self.room:  # 對話框在背景執行緒呼叫這裡，請房間代問後等結果
-                text, error = asyncio.run_coroutine_threadsafe(self.ask_room_suggestion(genre), loop).result()
-                if error:
-                    raise RuntimeError(error)
-                return text
-            self.core.send(f"/genre {genre}")  # 依對話框裡選的題材想開頭
-            suggestion = self.core.send("/suggest")
-            if suggestion.error:
-                raise RuntimeError(suggestion.notice)
-            return suggestion.suggestion
+        def ask(*commands: str) -> Reply:
+            """對話框在背景執行緒呼叫：把指令送給核心，回傳最後一個回覆（換題材、換一個、幫我想）。"""
+            if self.room:  # 請房間代問後等結果
+                return asyncio.run_coroutine_threadsafe(self.ask_room(list(commands)), loop).result()
+            for command in commands:
+                answer = self.core.send(command)
+            return answer
 
-        dialog = PremiseDialog(reply.premise_default, timed, suggest, genre=reply.genre, genres=reply.genres)
-        premise, want_timed, genre = await self.push_screen_wait(dialog)
+        premise, want_timed, genre = await self.push_screen_wait(PremiseDialog(reply, ask))
         commands = [f"/timed {'on' if want_timed else 'off'}"] * (want_timed != timed) + [f"/genre {genre}"]
         for command in commands:  # 模式與題材的選擇送給核心（回覆不需要顯示）
             if self.room:
@@ -388,8 +383,8 @@ class StoryApp(App):
                 self.notify(message["text"])
             elif kind == "new_story":  # 立刻清空，不排隊：緊接著的「故事生成中」才不會被一起清掉
                 self.clear_story(message.get("premise", ""))
-            elif kind == "suggestion" and self.suggestion:
-                self.suggestion.set_result((message["text"], message["error"]))
+            elif kind == "premise" and self.premise_answer:
+                self.premise_answer.set_result(Reply.from_dict(message["reply"]))
             else:
                 self.inbox.put_nowait(message)
         self.set_busy(False)
@@ -413,14 +408,15 @@ class StoryApp(App):
             elif kind == "lobby":
                 self.show_lobby(message["members"], message["host"])
 
-    async def ask_room_suggestion(self, genre: str) -> tuple[str, str]:
-        self.suggestion = asyncio.get_running_loop().create_future()
-        await self.room.send({"type": "send", "text": f"/genre {genre}"})
-        await self.room.send({"type": "send", "text": "/suggest"})
+    async def ask_room(self, commands: list[str]) -> Reply:
+        """依序送出指令，只有最後一個要求房間回覆（answer），收到的一定是這一個的結果。"""
+        self.premise_answer = asyncio.get_running_loop().create_future()
+        for i, command in enumerate(commands):
+            await self.room.send({"type": "send", "text": command, "answer": i == len(commands) - 1})
         try:
-            return await self.suggestion
+            return await self.premise_answer
         finally:
-            self.suggestion = None
+            self.premise_answer = None
 
     def show_lobby(self, members: list[str], host: str) -> None:
         names = [f"{n}（房主）" if n == host else n for n in members]
