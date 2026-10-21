@@ -165,11 +165,12 @@ print(reply.text)                        # 只會印文字的外殼，這樣就�
 core.action_for("2")                     # → "躲起來"：這句輸入代表的行動，讓外殼送出前先顯示
 core.set_api_key("…")                    # key 失效時換一個
 core.progress                            # send() 執行中目前在做什麼，例如「規劃故事大綱」（可在另一個執行緒讀）
+core.phase                               # 目前的遊戲階段（唯讀），和最近一次回覆的 reply.phase 相同
 ```
 
 開新故事要呼叫兩次 AI（先規劃大綱、再寫開場），比一般回合久，所以 engine 會把目前的階段記在 `stage`，外殼讀 `core.progress` 顯示在「故事生成中」那一行；線上多人由房間把進度推給所有人。
 
-外殼只能用這幾個方法與屬性，以及讀 `Reply` 的欄位，不直接讀核心的屬性，也不 import engine。這樣核心內部怎麼改都不會影響外殼。
+外殼只能用這幾個方法與屬性（多人模式另外有 `send_as()`、`view()`、`waiting()` 與唯讀的 `players`，見 `core/party.py`），以及讀 `Reply` 的欄位，不直接讀核心的其他屬性（例如 `core.state`），也不 import engine。這樣核心內部怎麼改都不會影響外殼。`test_shells.py` 的 `test_shells_only_use_the_public_core_interface` 會掃描所有外殼的原始碼，確認這條規則沒有被打破。
 
 **`Reply` 的欄位**
 
@@ -230,6 +231,7 @@ core.progress                            # send() 執行中目前在做什麼，
 | 方法 | 做什麼 |
 |---|---|
 | `send_as(名字, 文字)` | 以某位角色的身分送出輸入，誰先送誰先記；已經行動或倒下的人會收到提示 |
+| `players` | 隊伍裡的玩家名字（唯讀） |
 | `view(名字, reply=None)` | 某位玩家眼中的畫面：`actor`、`choices` 換成這位角色的。沒給 reply 時是目前這回合的畫面（重新連線用） |
 | `waiting()` | 這回合還沒行動的角色名字 |
 

@@ -199,7 +199,7 @@ class PartyCore(StoryCore):
         if not 2 <= len(names) <= MAX_PLAYERS or len(set(names)) != len(names):
             raise ValueError(f"多人模式需要 2 到 {MAX_PLAYERS} 位不重複的玩家。")
         super().__init__(api_key, save_path=save_path, log_path=log_path, engine=engine or PartyEngine(api_key=api_key, log_path=log_path))
-        self.players = names
+        self._players = names
         self.pending: dict[str, str] = {}  # 這一回合已經輸入的行動
         self._last_actor: str | None = None  # 最後輸入行動的人（推進失敗時讓他重送）
         self._as: str | None = None  # send_as() 指定的角色
@@ -207,11 +207,11 @@ class PartyCore(StoryCore):
     # ---------- 覆寫 StoryCore 的掛勾 ----------
 
     def _resumable(self, state: GameState) -> bool:
-        return not state.game_over and sorted(c.name for c in state.party) == sorted(self.players)  # 玩家不同就開新局
+        return not state.game_over and sorted(c.name for c in state.party) == sorted(self._players)  # 玩家不同就開新局
 
     def _new_state(self, premise: str) -> GameState:
         self.pending = {}
-        return GameState(premise=premise, timed_mode=self.timed, party=[Character(name=n) for n in self.players])
+        return GameState(premise=premise, timed_mode=self.timed, party=[Character(name=n) for n in self._players])
 
     def _current_choices(self) -> list[str]:
         actor = self._actor()
@@ -251,9 +251,9 @@ class PartyCore(StoryCore):
         return self._reply(narration=s.current_narration, party_changes=party_changes, **self._screen())
 
     def _screen(self) -> dict:
-        if self.state is None or self.phase not in ("playing", "ending"):
+        if self.state is None or self._phase not in ("playing", "ending"):
             return {}
-        actor = self._actor() if self.phase == "playing" else None
+        actor = self._actor() if self._phase == "playing" else None
         return {
             "actor": actor.name if actor else "",
             "choices": list(actor.choices) if actor else [],
@@ -264,15 +264,20 @@ class PartyCore(StoryCore):
         return None  # 多人模式的狀態放在 reply.party
 
     def _reply(self, **fields) -> Reply:
-        if self.state is not None and self.phase != "ask_premise":
+        if self.state is not None and self._phase != "ask_premise":
             fields.setdefault("party", [_character_status(self.state.turn, c) for c in self.state.party])
         return super()._reply(**fields)
 
     # ---------- 線上多人：每位玩家各自送行動 ----------
 
+    @property
+    def players(self) -> list[str]:
+        """隊伍裡的玩家名字（唯讀），依建立時的順序。"""
+        return list(self._players)
+
     def send_as(self, name: str, text: str) -> Reply:
         """以某位角色的身分送出輸入，不用照隊伍順序。遊戲中以外的階段（前提、確認……）等同 send()。"""
-        if self.phase == "playing" and not text.strip().startswith("/"):
+        if self._phase == "playing" and not text.strip().startswith("/"):
             character = next((c for c in self.state.party if c.name == name), None)
             if character is None or not character.alive:
                 return self._reply(notice="你的角色已經倒下了。", **self._screen())
@@ -289,9 +294,9 @@ class PartyCore(StoryCore):
         給了 reply 就沿用它的其他欄位，否則是目前這一回合的畫面（重新連線時用）。"""
         if reply is None:
             reply = self._reply(**self._screen())
-            if self.phase == "playing":
+            if self._phase == "playing":
                 reply.narration, reply.resumed = self.state.current_narration, True
-        if self.phase != "playing":
+        if self._phase != "playing":
             mine = replace(reply, actor="", choices=[] if reply.actor else reply.choices)
         else:
             actor = next((c for c in self._waiting() if c.name == name), None)
@@ -301,7 +306,7 @@ class PartyCore(StoryCore):
 
     def waiting(self) -> list[str]:
         """這回合還沒行動的角色名字。"""
-        return [c.name for c in self._waiting()] if self.state and self.phase == "playing" else []
+        return [c.name for c in self._waiting()] if self.state and self._phase == "playing" else []
 
     # ---------- 輪到誰 ----------
 

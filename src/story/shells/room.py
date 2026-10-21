@@ -72,6 +72,7 @@ class Room:
         self.countdown: asyncio.Task | None = None
         self.waiting_ready = False  # 倒數還沒開始，在等大家看完劇情
         self.deadline = 0.0  # 倒數結束的時間（loop.time()），給中途連線的人接著倒數
+        self.time_limit = 0  # 這回合的限時秒數（從核心的回覆記下來）
         self.server: asyncio.AbstractServer | None = None
 
     @staticmethod
@@ -283,7 +284,7 @@ class Room:
         if phase == "playing":
             await self._broadcast_waiting()
             if reply.time_limit:
-                self.ready, self.waiting_ready = set(), True
+                self.ready, self.waiting_ready, self.time_limit = set(), True, reply.time_limit
                 self.countdown = asyncio.create_task(self._countdown(reply.time_limit, wait_first=True))
         elif phase == "ending":
             await self._route(await self._call(lambda: self.core.send(""), busy=True))  # 接著寫尾聲
@@ -303,9 +304,8 @@ class Room:
 
     async def _maybe_start_countdown(self) -> None:
         if self.waiting_ready and self.ready >= set(self._online()):
-            seconds = self.core.state.current_time_limit
             self.countdown.cancel()
-            self.countdown = asyncio.create_task(self._countdown(seconds, wait_first=False))
+            self.countdown = asyncio.create_task(self._countdown(self.time_limit, wait_first=False))
 
     async def _countdown(self, seconds: int, wait_first: bool) -> None:
         if wait_first:  # 等大家看完劇情（_maybe_start_countdown 會提早換成正式倒數）

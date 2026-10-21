@@ -105,7 +105,7 @@ class StoryCore:
         self.engine = engine or Engine(api_key=api_key, log_path=log_path)
         self.save_path = save_path
         self.state: GameState | None = None
-        self.phase: Phase = "ask_premise"
+        self._phase: Phase = "ask_premise"
         self.timed = False  # 開新局時的模式，沿用上一局的選擇
         self.last_premise = ""
         self.suggested = ""  # /suggest 想出來的前提，留白送出時優先使用
@@ -113,6 +113,11 @@ class StoryCore:
 
     def set_api_key(self, api_key: str) -> None:
         self.engine.set_api_key(api_key)
+
+    @property
+    def phase(self) -> Phase:
+        """目前的遊戲階段（唯讀），和最近一次回覆的 reply.phase 相同。線上多人的房間用它決定輸入要交給誰。"""
+        return self._phase
 
     @property
     def progress(self) -> str:
@@ -126,7 +131,7 @@ class StoryCore:
         """第一個回覆：有存檔就問要不要繼續，否則請玩家輸入故事前提。"""
         state = load(self.save_path)
         if state and self._resumable(state):
-            self.state, self.timed, self.phase = state, state.timed_mode, "ask_continue"
+            self.state, self.timed, self._phase = state, state.timed_mode, "ask_continue"
             return self._reply(
                 choices=["繼續", "開新遊戲"],
                 notice=f"找到存檔（第 {state.turn} 回合）：{state.premise}",
@@ -137,7 +142,7 @@ class StoryCore:
         """這句輸入在遊戲中代表的行動文字（例如「2」→ 第二個選項），讓外殼可以在等待回覆前先顯示。
         不是行動（指令、空白、不在遊戲中）時回傳 None。"""
         raw = text.strip()
-        if self.phase != "playing" or not raw:
+        if self._phase != "playing" or not raw:
             return None
         if raw == "/timeout":
             return TIMEOUT_ACTION
@@ -162,7 +167,7 @@ class StoryCore:
             "confirm_restart": self._on_confirm_restart,
             "ending": self._on_ending,
             "ended": self._on_ended,
-        }[self.phase]
+        }[self._phase]
         return handler(raw)
 
     # ---------- 各階段 ----------
@@ -196,13 +201,13 @@ class StoryCore:
             self.engine.start(state)
         except (errors.APIError, RuntimeError) as e:
             return self._failed(e, self._ask_premise)
-        self.state, self.phase, self.last_premise, self.suggested = state, "playing", premise, ""
+        self.state, self._phase, self.last_premise, self.suggested = state, "playing", premise, ""
         save(state, self.save_path)
         return self._turn_reply(before=None)
 
     def _on_playing(self, raw: str) -> Reply:
         if raw == "/restart":
-            self.phase = "confirm_restart"
+            self._phase = "confirm_restart"
             return self._reply(choices=["確定", "取消"], notice="確定要放棄目前進度、重新開始嗎？")
         action = self.action_for(raw)
         if action is None:
@@ -226,7 +231,7 @@ class StoryCore:
             return self._failed(e, lambda **kw: self._reply(**self._screen(), **kw))
         save(self.state, self.save_path)
         if self.state.game_over:
-            self.phase = "ending"
+            self._phase = "ending"
         else:
             self._start_compaction()
         return self._turn_reply(before)
@@ -237,7 +242,7 @@ class StoryCore:
             self.last_premise = self.state.premise
             return self._ask_premise()
         if answer == "取消":
-            self.phase = "playing"
+            self._phase = "playing"
             return self._reply(**self._screen())
         return self._reply(choices=["確定", "取消"], notice="請輸入 1（確定）或 2（取消）。")
 
@@ -251,7 +256,7 @@ class StoryCore:
                 save(s, self.save_path)
             except (errors.APIError, RuntimeError) as e:
                 notice = f"尾聲生成失敗：{str(e)[:200]}"
-        self.phase = "ended"
+        self._phase = "ended"
         return self._reply(
             choices=["再玩一次"],
             notice=notice,
@@ -267,7 +272,7 @@ class StoryCore:
     # ---------- 共用 ----------
 
     def _ask_premise(self, suggestion: str = "", notice: str = "", error=None) -> Reply:
-        self.phase = "ask_premise"
+        self._phase = "ask_premise"
         return self._reply(
             premise_default=self._default_premise(),
             suggestion=suggestion,
@@ -299,7 +304,7 @@ class StoryCore:
         return self.suggested or self.last_premise or DEFAULT_PREMISE
 
     def _resume(self) -> Reply:
-        self.phase = "playing"
+        self._phase = "playing"
         s = self.state
         return self._reply(narration=s.current_narration, notice=f"讀取存檔：{s.premise}", resumed=True, **self._screen())
 
@@ -313,7 +318,7 @@ class StoryCore:
 
     def _screen(self) -> dict:
         """遊戲中畫面的固定部分：選項與限時。"""
-        if self.state is None or self.phase not in ("playing", "ending"):
+        if self.state is None or self._phase not in ("playing", "ending"):
             return {}
         return {"choices": list(self.state.current_choices), "time_limit": self.state.current_time_limit}
 
@@ -343,8 +348,8 @@ class StoryCore:
         )
 
     def _reply(self, **fields) -> Reply:
-        timed = self.state.timed_mode if self.state and self.phase != "ask_premise" else self.timed
-        reply = Reply(phase=self.phase, timed=timed, status=self._status() if self.phase != "ask_premise" else None, **fields)
+        timed = self.state.timed_mode if self.state and self._phase != "ask_premise" else self.timed
+        reply = Reply(phase=self._phase, timed=timed, status=self._status() if self._phase != "ask_premise" else None, **fields)
         reply.text = render_text(reply)
         return reply
 
