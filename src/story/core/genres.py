@@ -4,7 +4,7 @@
 開頭是設定欄位（name、description），後面是給 AI 的寫作指引；可以另外附 premises.md、names.md。
 
     genres/
-    └── 武俠/
+    └── wuxia/            資料夾用英文名稱；顯示的題材名稱是 GENRE.md 的 name（例如「武俠」）
         ├── GENRE.md      必要：設定欄位＋寫作指引
         ├── premises.md   選用：「幫我想」用的開頭靈感，一行一個
         └── names.md      選用：人名、地名、組織名的素材，規劃大綱時參考
@@ -14,7 +14,7 @@
 - 指引（GENRE.md 的內文）：選定後整局放在每回合的提示詞前段（固定不變，不影響快取）
 - 附屬檔案：只在特定那次呼叫載入，premises.md 給「幫我想」、names.md 給規劃大綱
 
-題材包放在兩個地方：內建的在 story/genres/（跟著專案），個人的在 ~/.config/story/genres/。名稱相同時個人的優先。
+題材包放在兩個地方：內建的在 story/genres/（跟著專案），個人的在 ~/.config/story/genres/。name 相同時個人的優先。
 """
 
 import re

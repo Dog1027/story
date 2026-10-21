@@ -119,7 +119,7 @@ class GameState(BaseModel):
     turn: int = 0
     conditions: list[Condition] = Field(default_factory=list)  # 身體與精神狀態，空的代表狀況良好
     timed_mode: bool = False  # 限時模式：緊急情況要在時間內做出決定
-    genre: str = ""  # 題材包的名稱（genres/ 裡的資料夾）；空的代表不套用題材
+    genre: str = ""  # 題材包的名稱（GENRE.md 的 name）；空的代表不套用題材
     genre_pending: bool = False  # 玩家選「自動」：規劃大綱時由 AI 依前提從題材目錄挑一個
     party: list[Character] = Field(default_factory=list)  # 多人模式的隊伍；空的代表單人模式（主角用下面的 conditions、inventory）
     arc: StoryArc | None = None  # 隱藏的故事大綱（舊存檔沒有，會在下回合補上）
