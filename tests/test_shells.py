@@ -73,7 +73,9 @@ async def test_web_shell_runs_separate_games_and_limits_sessions(monkeypatch):
 
 
 @pytest.mark.slow
-async def test_web_party_mode_puts_every_tab_in_one_lobby():
+async def test_web_party_mode_puts_phone_and_desktop_tabs_in_one_lobby():
+    """線上多人：每個分頁都進到同一個大廳。第一個分頁是手機，用手機輸入列的送法輸入名字
+    （終端機失焦後，送 focus、用「貼上」送整段文字、再送 Enter），中文不會重複；第二個分頁照一般方式打字。"""
     import tempfile
     from pathlib import Path
 
@@ -82,32 +84,21 @@ async def test_web_party_mode_puts_every_tab_in_one_lobby():
     room_path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
     server = web.LimitedServer(web.game_command(room_path), host="127.0.0.1", port=0, title="Story", room=Room.for_server("test"), room_path=room_path)
     async with TestClient(TestServer(await server._make_app())) as client:
-        tabs = []
-        for name in ("阿明", "小華"):
-            ws = await client.ws_connect("/ws?width=100&height=30")
-            assert "大家在同一局裡" in await read_screen(ws, 10)
-            await ws.send_str(json.dumps(["stdin", f"{name}\r"]))
-            tabs.append(ws)
-        screen = await read_screen(tabs[0], 5)
-        assert "阿明（房主）" in screen and "小華" in screen
-        for ws in tabs:
-            await ws.close()
-
-
-@pytest.mark.slow
-async def test_mobile_input_bar_pastes_text_into_the_game():
-    """手機輸入列的送法：終端機失焦後，送 focus、用「貼上」送整段文字、再送 Enter。中文不會重複。"""
-    server = web.LimitedServer(web.game_command(), host="127.0.0.1", port=0, title="Story")
-    async with TestClient(TestServer(await server._make_app())) as client:
-        ws = await client.ws_connect("/ws?width=40&height=30")
-        assert "你的名字" in await read_screen(ws, 10)
-        await ws.send_str(json.dumps(["blur"]))  # 點了頁面下方的輸入列
+        phone = await client.ws_connect("/ws?width=40&height=30")
+        assert "你的名字" in await read_screen(phone, 10)
+        await phone.send_str(json.dumps(["blur"]))  # 點了頁面下方的輸入列
         for message in (["focus"], ["stdin", "\x1b[200~阿明\x1b[201~"], ["stdin", "\r"]):
-            await ws.send_str(json.dumps(message))
-        screen = await read_screen(ws, 5)
-        assert "阿明，請輸入你的 Gemini API key" in screen
-        assert "阿明阿明" not in screen
-        await ws.close()
+            await phone.send_str(json.dumps(message))
+
+        desktop = await client.ws_connect("/ws?width=100&height=30")
+        assert "大家在同一局裡" in await read_screen(desktop, 10)
+        await desktop.send_str(json.dumps(["stdin", "小華\r"]))
+
+        screen = await read_screen(desktop, 5)
+        assert "阿明（房主）" in screen and "小華" in screen
+        assert "阿明阿明" not in await read_screen(phone, 1) + screen
+        for ws in (phone, desktop):
+            await ws.close()
 
 
 async def test_web_page_supports_phones():
