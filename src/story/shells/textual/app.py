@@ -86,6 +86,10 @@ class StoryApp(App):
     #log .ending { color: $warning; text-style: bold; text-align: center; margin: 1 0; }
     #log .changes { margin-bottom: 1; }
     #log .busy { color: $text-muted; margin-bottom: 1; }
+    #log .premise {
+        color: $text-muted; text-style: italic;
+        border-left: outer $panel-lighten-2; padding: 0 1; margin-bottom: 1;
+    }
     #timer { height: 1; margin: 0 3; padding: 0 1; display: none; }
     #timer.show { display: block; }
     #choices {
@@ -339,7 +343,7 @@ class StoryApp(App):
                 await self.room.send({"type": "send", "text": command})
             else:
                 await asyncio.to_thread(self.core.send, command)
-        self.clear_story()
+        self.clear_story(premise)
         await self.send(premise)
 
     # ---------- 線上多人：和房間對話 ----------
@@ -381,7 +385,7 @@ class StoryApp(App):
             elif kind == "notice":
                 self.notify(message["text"])
             elif kind == "new_story":  # 立刻清空，不排隊：緊接著的「故事生成中」才不會被一起清掉
-                self.clear_story()
+                self.clear_story(message.get("premise", ""))
             elif kind == "suggestion" and self.suggestion:
                 self.suggestion.set_result((message["text"], message["error"]))
             else:
@@ -499,10 +503,13 @@ class StoryApp(App):
         )
         self.query_one("#status", Static).update(bar)
 
-    def clear_story(self) -> None:
-        """新故事開始：清空故事區、選項與狀態列。"""
-        self.query_one("#log", VerticalScroll).remove_children()
+    def clear_story(self, premise: str = "") -> None:
+        """新故事開始：清空故事區、選項與狀態列，並先顯示故事前提（等 AI 寫開場時可以先讀，線上多人的其他人也知道要玩什麼）。"""
+        log = self.query_one("#log", VerticalScroll)
+        log.remove_children()
         self.busy_line = None  # 已經跟著被移除了，之後要重新顯示
+        if premise:
+            log.mount(Prose(f"故事前提：{premise}", classes="premise"))
         self.set_choices([])
         self.set_status(None)
 

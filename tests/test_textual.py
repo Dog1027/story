@@ -11,6 +11,7 @@ from textual.widgets import Button, Checkbox, Input, Static
 
 import story.shells.textual.app as app_module
 from story.core import StoryCore
+from story.core.records import DEFAULT_PREMISE
 from story.shells.textual import StoryApp
 from story.shells.textual.prose import Prose
 from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, NameDialog, PremiseDialog
@@ -58,7 +59,7 @@ async def test_new_game_turn_and_status_update():
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
         await start_game(pilot, app)
-        assert log_lines(app) == ["你在燈塔醒來。"]
+        assert log_lines(app) == [f"故事前提：{DEFAULT_PREMISE}", "你在燈塔醒來。"]  # 前提先顯示，等 AI 寫開場時可以先讀
         assert "回合 1" in status_text(app)
         await pilot.press("1", "enter")
         await wait_until(pilot, lambda: app.choices == ["點亮油燈", "躲起來"])
@@ -286,7 +287,7 @@ async def test_online_party_through_a_room(isolated):
             await start_game(pilot, app)
             await wait_until(pilot, lambda: app.actor == "阿明" and not app.typing)
             assert app.choices == ["阿明往上爬", "阿明躲起來"]
-            assert log_lines(app) == ["兩人在燈塔醒來。"]
+            assert log_lines(app) == [f"故事前提：{DEFAULT_PREMISE}", "兩人在燈塔醒來。"]
 
             await pilot.press("2", "enter")
             await wait_until(pilot, lambda: app.waiting == ["小華"])

@@ -75,7 +75,7 @@ async def start_story(room) -> tuple[Player, Player]:
 
 async def test_two_players_play_a_round_in_any_order(room):
     host, guest = await start_story(room)
-    await guest.expect(lambda m: m["type"] == "new_story")
+    await guest.expect(lambda m: m["type"] == "new_story" and m["premise"] == "燈塔")  # 其他人也先看到故事前提
     mine, theirs = await host.reply(), await guest.reply()
     assert mine.narration == theirs.narration == "兩人在燈塔醒來。"
     assert mine.actor == "阿明" and mine.choices == ["阿明往上爬", "阿明躲起來"]

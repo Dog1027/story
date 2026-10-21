@@ -17,7 +17,7 @@ API key 用伺服器的，玩家不用輸入。
   {"type": "lobby", "members": [...], "host": "阿明"}
   {"type": "reply", "reply": {...}}       核心的回覆（Reply.to_dict()，已換成這位玩家的選項）
   {"type": "suggestion", "text": "...", "error": "..."}   房主按「幫我想」的結果
-  {"type": "new_story"}                   新故事開始：清空畫面
+  {"type": "new_story", "premise": "..."}  新故事開始：清空畫面，先顯示故事前提
   {"type": "busy", "on": true, "progress": "規劃故事大綱"}   故事生成中（progress 變了會再送一次）
   {"type": "waiting", "names": [...]}     這回合還沒行動的人
   {"type": "timer", "seconds": 12}        開始限時倒數（時間到由房間送出 /timeout）
@@ -198,7 +198,7 @@ class Room:
         else:
             starting = self.core.phase == "ask_premise" and not text.startswith("/")
             if starting:
-                await self._broadcast({"type": "new_story"})
+                await self._broadcast({"type": "new_story", "premise": text})
             await self._route(await self._call(lambda: self.core.send(text), busy=starting))
 
     async def _on_lobby(self, name: str, text: str) -> None:
