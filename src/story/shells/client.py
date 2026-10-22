@@ -48,22 +48,16 @@ class StatusLine:
 
 
 def character_line(status: Status) -> CharacterLine:
-    """背包不放在狀態列：每回合的「獲得／失去」會顯示在故事裡，完整內容用 /state 看。"""
-    items = [(name, severity) for name, severity in status.body + status.mind]
-    return CharacterLine(
-        name=status.name,
-        alive=status.alive,
-        warning=status.warning,  # 哪些程度要警告是遊戲規則，由核心判斷
-        items=items or [("良好", "良好")],
-    )
+    # 哪些程度要警告是遊戲規則，由核心判斷（status.warning）
+    return CharacterLine(status.name, status.alive, status.warning, list(status.conditions) or [("良好", "良好")])
 
 
-def status_line(status: Status | None, party: list[Status], timed: bool) -> StatusLine | None:
+def status_line(turn: int, status: Status | None, party: list[Status], timed: bool) -> StatusLine | None:
     if party:
-        return StatusLine(party[0].turn, *_mode(timed), [character_line(s) for s in party], party=True)
+        return StatusLine(turn, *_mode(timed), [character_line(s) for s in party], party=True)
     if status is None:
         return None
-    return StatusLine(status.turn, *_mode(timed), [character_line(status)])
+    return StatusLine(turn, *_mode(timed), [character_line(status)])
 
 
 def _mode(timed: bool) -> tuple[str, bool]:
@@ -197,7 +191,7 @@ class Client:
         self.busy = False
         self.progress = ""  # 線上多人：房間推來的進度（單人直接讀核心的 progress）
         self.timed = False
-        self.shown: tuple[Status | None, list[Status]] = (None, [])  # 狀態列目前的內容（模式改變時重畫）
+        self.shown: tuple[int, Status | None, list[Status]] = (0, None, [])  # 狀態列目前的內容（模式改變時重畫）
         self.inbox: asyncio.Queue[dict] = asyncio.Queue()  # 房間推來、要依序處理的訊息
         self.premise_answer: asyncio.Future | None = None  # 線上多人：前提對話框在等房間回覆
 
@@ -413,7 +407,7 @@ class Client:
             self.view.show_choices(self.choices)
         else:
             self.set_choices(reply.choices)
-        self.set_status(reply.status, reply.party)
+        self.set_status(reply.turn, reply.status, reply.party)
         if reply.narration and reply.time_limit:
             if self.room:  # 線上多人：告訴房間看完了，大家都看完房間才開始倒數
                 await self.room.send({"type": "ready"})
@@ -436,7 +430,7 @@ class Client:
 
     def clear_story(self, premise: str = "") -> None:
         self.choices = []
-        self.shown = (None, [])
+        self.shown = (0, None, [])
         self.view.clear_story(premise)
         self.refresh_hint()
 
@@ -445,9 +439,9 @@ class Client:
         self.view.show_choices(self.choices)
         self.refresh_hint()
 
-    def set_status(self, status: Status | None, party: list[Status]) -> None:
-        self.shown = (status, party)
-        self.view.set_status(status_line(status, party, self.timed))
+    def set_status(self, turn: int, status: Status | None, party: list[Status]) -> None:
+        self.shown = (turn, status, party)
+        self.view.set_status(status_line(turn, status, party, self.timed))
 
     def refresh_hint(self) -> None:
         """選項區的標題與輸入框的提示：輪到誰；線上多人時還在等誰。"""

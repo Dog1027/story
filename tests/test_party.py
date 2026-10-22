@@ -313,7 +313,7 @@ def test_reply_survives_json_round_trip(core):
     core.send("1")
     reply = core.send("1")
     back = Reply.from_dict(json.loads(json.dumps(reply.to_dict(), ensure_ascii=False)))
-    assert back.party[0].name == "阿明" and back.party[0].inventory == ["油燈"]
+    assert back.party[0].name == "阿明" and back.party[0].alive and back.turn == reply.turn == 2
     assert back.party_changes[0][0] == "阿明"
     assert back.narration == reply.narration and back.choices == reply.choices
 

@@ -183,13 +183,13 @@ async def test_local_party_shows_whose_action_it_is(engine, monkeypatch):
     assert "stop_timer" not in view.names()  # 多人的倒數以整回合為單位，換人時繼續跑
 
 
-def test_status_line_warns_only_when_in_danger_and_hides_the_inventory():
-    fine = status_line(Status(turn=3, level="受傷", body=[("疲勞", "中")], mind=[("恐懼", "輕")], inventory=["鑰匙"]), [], timed=False)
+def test_status_line_lists_conditions_and_the_core_warning():
+    fine = status_line(3, Status(conditions=[("疲勞", "中"), ("恐懼", "輕")]), [], timed=False)
     assert fine.mode == "一般模式" and not fine.party
     assert fine.characters[0].warning == "" and fine.characters[0].items == [("疲勞", "中"), ("恐懼", "輕")]
-    danger = status_line(Status(turn=3, level="瀕死", body=[("失血", "重")], mind=[], inventory=[], warning="瀕死"), [], timed=True)
+    danger = status_line(3, Status(conditions=[("失血", "重")], warning="瀕死"), [], timed=True)
     assert danger.characters[0].warning == "瀕死" and danger.mode == "限時模式"
-    empty = status_line(Status(turn=1, level="良好", body=[], mind=[], inventory=[]), [], timed=False)
+    empty = status_line(1, Status(conditions=[]), [], timed=False)
     assert empty.characters[0].items == [("良好", "良好")]
-    party = status_line(None, [Status(turn=2, level="良好", body=[], mind=[], inventory=[], name="阿明", alive=False)], timed=False)
+    party = status_line(2, None, [Status(conditions=[], name="阿明", alive=False)], timed=False)
     assert party.party and party.characters[0].name == "阿明" and not party.characters[0].alive

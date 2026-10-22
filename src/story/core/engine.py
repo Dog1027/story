@@ -110,6 +110,11 @@ def body_score(who: Holder) -> int:
     return sum(SEVERITY_POINTS[c.severity] for c in body_conditions(who))
 
 
+def condition_list(who: Holder) -> list[tuple[str, str]]:
+    """給外殼顯示的狀態：(名稱, 程度)，身體在前、精神在後。"""
+    return [(c.name, c.severity) for c in body_conditions(who) + mind_conditions(who)]
+
+
 WARNING_LEVELS = ("重傷", "瀕死")  # 整體狀態到這個程度要警告玩家：再受傷就有生命危險
 
 

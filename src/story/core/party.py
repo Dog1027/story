@@ -35,6 +35,7 @@ from story.core.engine import (
     clock_text,
     ending_allowed,
     mind_conditions,
+    condition_list,
     warning_level,
 )
 from story.core.models import Character, GameState, PartyBeat
@@ -269,7 +270,7 @@ class PartyCore(StoryCore):
 
     def _reply(self, **fields) -> Reply:
         if self.state is not None and self._phase != "ask_premise":
-            fields.setdefault("party", [_character_status(self.state.turn, c) for c in self.state.party])
+            fields.setdefault("party", [_character_status(c) for c in self.state.party])
         return super()._reply(**fields)
 
     # ---------- 線上多人：每位玩家各自送行動 ----------
@@ -325,14 +326,5 @@ class PartyCore(StoryCore):
         return waiting[0] if waiting else None
 
 
-def _character_status(turn: int, c: Character) -> Status:
-    return Status(
-        turn=turn,
-        level=body_level(c) if c.alive else "死亡",
-        body=[(x.name, x.severity) for x in body_conditions(c)],
-        mind=[(x.name, x.severity) for x in mind_conditions(c)],
-        inventory=list(c.inventory),
-        name=c.name,
-        alive=c.alive,
-        warning=warning_level(c) if c.alive else "",
-    )
+def _character_status(c: Character) -> Status:
+    return Status(conditions=condition_list(c), warning=warning_level(c) if c.alive else "", name=c.name, alive=c.alive)

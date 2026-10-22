@@ -192,7 +192,8 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 | `text` | 完整的純文字 |
 | `narration` | 這次產生（或讀檔重新顯示）的劇情；沒有新劇情時是空字串 |
 | `choices` | 選項 |
-| `status` | 狀態列資料（`Status`）：回合、整體狀態、身體、精神、背包，以及要不要警告（`warning`：重傷、瀕死，由核心判斷） |
+| `turn` | 目前是第幾回合（還沒開始故事時是 0） |
+| `status` | 狀態列資料（`Status`）：目前的狀態 `conditions`（名稱, 程度），身體在前、精神在後；要不要警告 `warning`（重傷、瀕死，由核心判斷）。背包不在這裡：變化在 `changes`，完整內容用 `/state` 看 |
 | `changes` | 這回合的變化：新增、惡化、好轉、痊癒、獲得、失去 |
 | `time_limit` | 限時秒數，0 代表不限時 |
 | `notice` | 簡短的系統訊息 |
@@ -236,7 +237,7 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 | `_snapshot()`、`_turn_reply()` | 主角的變化 | 每位角色各自的變化 |
 | `_turn_failed()` | 不用做事 | 撤回這回合所有人的行動，大家重新選擇（時間到或替離線的人填入的行動失敗時，才不會每個人都「已行動」卻沒人能重送而卡住）。線上多人時房間把錯誤送給每個人，限時模式重新倒數 |
 
-回覆的差別：`reply.actor` 是現在輪到誰；`reply.party` 是每位角色的狀態（`Status` 多了 `name`、`alive`）；`reply.party_changes` 是每位角色這回合的變化。存檔是 `party_save.json`。
+回覆的差別：`reply.actor` 是現在輪到誰；`reply.party` 是每位角色的狀態（`Status` 的 `name`、`alive` 有值）；`reply.party_changes` 是每位角色這回合的變化。存檔是 `party_save.json`。
 
 同一台電腦輪流輸入時用 `send()`，照隊伍順序收行動。線上多人用另外三個方法：
 

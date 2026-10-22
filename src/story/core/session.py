@@ -16,7 +16,7 @@ from typing import Literal
 from google.genai import errors
 
 from story.core.records import DEFAULT_PREMISE, SAVE_PATH, ChangeGroups, change_groups, ending_record, load, memory_text, save, snapshot
-from story.core.engine import LOG_PATH, TIMEOUT_ACTION, Engine, body_conditions, body_level, is_key_error, mind_conditions, warning_level
+from story.core.engine import LOG_PATH, TIMEOUT_ACTION, Engine, condition_list, is_key_error, warning_level
 from story.core.models import GameState
 
 Phase = Literal[
@@ -50,16 +50,12 @@ GENRE_AUTO, GENRE_NONE = "自動", "不套用"  # 題材的兩個特別選項：
 
 @dataclass
 class Status:
-    """狀態列需要的資料。"""
+    """狀態列需要的資料：一位角色（單人模式是主角）。背包不在這裡，變化在 changes，完整內容用 /state 看。"""
 
-    turn: int
-    level: str  # 整體狀態：良好、輕傷、受傷、重傷、瀕死、死亡
-    body: list[tuple[str, str]]  # 身體狀態：(名稱, 程度)
-    mind: list[tuple[str, str]]  # 精神狀態：(名稱, 程度)
-    inventory: list[str]
+    conditions: list[tuple[str, str]]  # 目前的狀態：(名稱, 程度)，身體在前、精神在後
+    warning: str = ""  # 要警告玩家的整體狀態（重傷、瀕死：再受傷就有生命危險）；不危險時是空字串
     name: str = ""  # 多人模式：角色名字
     alive: bool = True  # 多人模式：角色是否還活著
-    warning: str = ""  # 要警告玩家的整體狀態（重傷、瀕死：再受傷就有生命危險）；不危險時是空字串
 
 
 @dataclass
@@ -72,6 +68,7 @@ class Ending:
 @dataclass
 class Reply:
     phase: Phase
+    turn: int = 0  # 目前是第幾回合；還沒開始故事時是 0
     timed: bool = False  # 目前是否為限時模式（遊戲中是這一局的模式，等前提時是開新局會用的模式）
     text: str = ""  # 完整的純文字，只會印文字的外殼直接顯示這個就好
     narration: str = ""  # 這次產生（或讀檔重新顯示）的劇情；沒有新劇情時是空字串
@@ -388,18 +385,15 @@ class StoryCore:
         s = self.state
         if s is None:
             return None
-        return Status(
-            turn=s.turn,
-            level=body_level(s),
-            body=[(c.name, c.severity) for c in body_conditions(s)],
-            mind=[(c.name, c.severity) for c in mind_conditions(s)],
-            inventory=list(s.inventory),
-            warning=warning_level(s),
-        )
+        return Status(conditions=condition_list(s), warning=warning_level(s))
 
     def _reply(self, **fields) -> Reply:
         timed = self.state.timed_mode if self.state and self._phase != "ask_premise" else self.timed
-        reply = Reply(phase=self._phase, timed=timed, status=self._status() if self._phase != "ask_premise" else None, **fields)
+        playing = self.state is not None and self._phase != "ask_premise"
+        reply = Reply(
+            phase=self._phase, turn=self.state.turn if playing else 0, timed=timed,
+            status=self._status() if playing else None, **fields,
+        )
         reply.text = render_text(reply)
         return reply
 
@@ -433,12 +427,12 @@ class StoryCore:
 
 def conditions_text(status: Status) -> str:
     """狀態直接列出，不分身體與精神；危險時先警告。背包的變化會寫在每回合的變化裡，完整內容用 /state 看。"""
-    items = "、".join(f"{n}（{v}）" for n, v in status.body + status.mind) or "良好"
+    items = "、".join(f"{n}（{v}）" for n, v in status.conditions) or "良好"
     return f"⚠ {status.warning}　{items}" if status.warning else items
 
 
-def status_line(status: Status, timed: bool) -> str:
-    return f"回合 {status.turn}{'（限時模式）' if timed else ''}｜狀態 {conditions_text(status)}"
+def status_line(turn: int, status: Status, timed: bool) -> str:
+    return f"回合 {turn}{'（限時模式）' if timed else ''}｜狀態 {conditions_text(status)}"
 
 
 def party_line(status: Status) -> str:
@@ -479,7 +473,7 @@ def render_text(reply: Reply) -> str:
             parts.append(e.epilogue)
         parts.append(e.record)
     if reply.status and reply.phase in ("playing", "ending") and reply.narration:
-        parts.append(status_line(reply.status, reply.timed))
+        parts.append(status_line(reply.turn, reply.status, reply.timed))
     if reply.party and reply.phase in ("playing", "ending") and reply.narration:
         parts.append("\n".join(party_line(st) for st in reply.party) + ("\n限時模式" if reply.timed else ""))
     if reply.phase == "ending":
