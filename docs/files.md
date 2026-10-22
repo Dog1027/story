@@ -126,7 +126,8 @@ src/story/
 | `_apply()` | **驗證並套用** AI 提議的變化：推進時鐘、處理狀態與背包、推進幕次、限制限時秒數 |
 | `_apply_conditions()` | 狀態規則：依時間自然痊癒、好轉一回合最多一級、身體的中重傷不能直接移除 |
 | `_write_death()` | 程式判定傷重死亡、但 AI 寫的劇情裡主角還活著時，請 AI 補寫死亡結局 |
-| `_log_turn()` | 把每回合的變化寫進 `story_log.jsonl` |
+| `_log_turn()` | 把每回合的變化寫進 `story_log.jsonl`，並附上這段期間的 AI 呼叫（`calls`） |
+| `_generate()` | 所有 AI 呼叫都經過這裡：記下種類、秒數與 token 用量（送出、命中快取、輸出、思考），由 `_write_log()` 寫進紀錄 |
 
 **給多人模式覆寫的掛勾**（這裡是單人的版本）：類別屬性 `system_prompt`、`beat_schema`、`turn_label`、`epilogue_look_back`，以及 `_cast_section()`（規劃大綱時的主角名單）、`_action_text()`（記在劇情紀錄裡的行動）、`_status_section()`（提示詞裡的狀態區塊）、`_instruction_sections()`（提示詞最後的行動與指示）。提示詞的其他部分、呼叫 AI（`_call()`）、尾聲、大綱、記憶壓縮都由單人與多人共用。
 

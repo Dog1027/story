@@ -2,6 +2,7 @@
 
 import json
 import random
+import time
 from pathlib import Path
 
 from google import genai
@@ -257,6 +258,7 @@ class Engine:
     ):
         self.client = client or genai.Client(api_key=api_key)
         self.genres = load_genres()[0] if genres is None else genres  # 題材包（見 genres.py）
+        self.calls: list[dict] = []  # 上次寫紀錄之後的 AI 呼叫：種類、秒數、token 用量（寫進紀錄後清空）
         self.log_path = log_path  # 網頁版每個玩家各自一份紀錄
         self.stage = ""  # 開新故事時目前在做什麼，外殼顯示在等待畫面上（例如「規劃故事大綱」）
 
@@ -296,7 +298,8 @@ class Engine:
         elif state.genre_pending and self.genres:  # 玩家選「自動」：給 AI 目錄，請它依前提挑一個
             catalog = "\n".join(f"- {g.name}：{g.description}" for g in self.genres.values())
             prompt += f"\n\n# 題材目錄\n{catalog}\n挑一個最適合故事前提的題材，把名稱照抄在 genre；都不適合就留空。"
-        response = self.client.models.generate_content(
+        response = self._generate(
+            "大綱",
             model=MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -340,7 +343,8 @@ class Engine:
         )
         if avoid:
             prompt += f"\n不要和這個前提相似：{avoid}"
-        response = self.client.models.generate_content(
+        response = self._generate(
+            "幫我想",
             model=MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(thinking_config=types.ThinkingConfig(thinking_level="low")),
@@ -357,7 +361,8 @@ class Engine:
             "# 指示\n故事已經結束。寫一段尾聲，為這趟旅程收尾，並為這個結局取一個名稱。"
             f"{self.epilogue_look_back}不要開啟新的劇情。"
         )
-        response = self.client.models.generate_content(
+        response = self._generate(
+            "尾聲",
             model=MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -369,6 +374,7 @@ class Engine:
         if not isinstance(response.parsed, Epilogue):
             raise RuntimeError("尾聲生成失敗。")
         state.ending_title, state.epilogue = response.parsed.title.strip(), response.parsed.text.strip()
+        self._write_log({"turn": state.turn, "epilogue": state.ending_title})
 
     # ---------- 生成劇情 ----------
 
@@ -377,7 +383,7 @@ class Engine:
         prompt = self._build_prompt(state, action)
         beat = self._call(prompt)
         if beat.game_over and not ending_allowed(state, state.turn + 1):
-            beat = self._call(prompt + "\n\n" + EARLY_ENDING_RETRY)
+            beat = self._call(prompt + "\n\n" + EARLY_ENDING_RETRY, kind="重寫")
         return beat
 
     def _advance(self, state: GameState, action: str | None) -> None:
@@ -399,11 +405,7 @@ class Engine:
             "level": body_level(state),
             "time": clock_text(state.minutes),
         }
-        try:
-            with self.log_path.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        except OSError:
-            pass  # 紀錄寫不進去不影響遊戲
+        self._write_log(record)
 
     def _write_death(self, state: GameState) -> None:
         """程式判定傷重死亡，但 LLM 寫的劇情裡主角還活著：請 LLM 接著寫死亡結局。"""
@@ -411,7 +413,7 @@ class Engine:
             f"# 剛才發生的事\n{state.current_narration}\n\n"
             "# 指示\n主角的傷勢已經致命。接續上面的敘述，寫出主角傷重死亡的結局，choices 留空，game_over 設為 true。"
         )
-        ending = self._call(prompt)
+        ending = self._call(prompt, kind="倒下")
         state.current_narration += "\n\n" + ending.narration
         state.current_choices = []
         state.current_time_limit = 0
@@ -504,9 +506,37 @@ class Engine:
             lines.append("節奏提醒：這一幕已經拖太久了。本回合就要出現轉折，明顯朝目前的里程碑推進。")
         return "# 故事進度（玩家看不到）\n" + "\n".join(lines)
 
-    def _call(self, prompt: str):
+    def _generate(self, kind: str, **request):
+        """所有 AI 呼叫都經過這裡：記下種類、花了幾秒與 Gemini 回報的 token 用量（送出、命中快取、輸出、思考），
+        寫進每回合的紀錄，方便查等待時間花在哪裡。"""
+        started = time.monotonic()
+        response = self.client.models.generate_content(**request)
+        call = {"kind": kind, "seconds": round(time.monotonic() - started, 2)}
+        usage = getattr(response, "usage_metadata", None)
+        for field, name in (
+            ("prompt_token_count", "prompt"),
+            ("cached_content_token_count", "cached"),
+            ("candidates_token_count", "output"),
+            ("thoughts_token_count", "thinking"),
+        ):
+            if (value := getattr(usage, field, None)) is not None:
+                call[name] = value
+        self.calls.append(call)
+        return response
+
+    def _write_log(self, record: dict) -> None:
+        """寫一行紀錄，附上這段期間的 AI 呼叫。"""
+        record["calls"], self.calls = self.calls, []
+        try:
+            with self.log_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError:
+            pass  # 紀錄寫不進去不影響遊戲
+
+    def _call(self, prompt: str, kind: str = "劇情"):
         """呼叫 Gemini，取得結構化的回傳（單人是 StoryBeat，多人是 PartyBeat）。"""
-        response = self.client.models.generate_content(
+        response = self._generate(
+            kind,
             model=MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -560,7 +590,8 @@ class Engine:
             parts.append("# 要併入的舊事件與事實\n" + "\n".join(f"- {x}" for x in old_events + old_flags))
         parts.append("把以上內容併入摘要，輸出更新後的完整摘要（500 字以內），只輸出摘要本身。")
 
-        response = self.client.models.generate_content(
+        response = self._generate(
+            "壓縮",
             model=MODEL,
             contents="\n\n".join(parts),
             config=types.GenerateContentConfig(

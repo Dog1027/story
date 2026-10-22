@@ -146,7 +146,8 @@ class PartyEngine(Engine):
             f"# 剛才發生的事\n{state.current_narration}\n\n"
             f"# 指示\n{who} 的傷勢已經致命。接續上面的敘述，寫一小段（100 字以內）{who} 傷重倒下的場景，只輸出敘述本身。"
         )
-        response = self.client.models.generate_content(
+        response = self._generate(
+            "倒下",
             model=MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(system_instruction=self.system_prompt),
@@ -162,11 +163,7 @@ class PartyEngine(Engine):
             "party": {c.name: {"conditions": [f"{x.name}({x.severity})" for x in c.conditions], "alive": c.alive} for c in state.party},
             "time": clock_text(state.minutes),
         }
-        try:
-            with self.log_path.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        except OSError:
-            pass  # 紀錄寫不進去不影響遊戲
+        self._write_log(record)
 
 
 def format_actions(actions: dict[str, str]) -> str:

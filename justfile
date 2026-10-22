@@ -35,3 +35,7 @@ test *args:
 # 略過會啟動真的伺服器的慢測試
 test-fast *args:
     uv run pytest -m "not slow" {{args}}
+
+# 刪除除錯紀錄（*.log.jsonl 等），不會動到存檔
+clean-logs:
+    rm -fv story_log.jsonl party_log.jsonl saves/*.log.jsonl

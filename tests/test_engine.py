@@ -384,6 +384,34 @@ def test_turn_log_is_written(isolated):
     assert len(lines) == 2 and "擦傷(輕)" in lines[-1]
 
 
+def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):
+    """每回合的紀錄附上這段期間的 AI 呼叫：種類、秒數，以及 Gemini 回報的 token 用量（查等待時間花在哪裡）。"""
+    import json
+    from types import SimpleNamespace
+
+    engine, gemini = make_engine(beat(), beat(game_over=True), beat())
+    generate = gemini.generate_content
+
+    def with_usage(**request):
+        response = generate(**request)
+        response.usage_metadata = SimpleNamespace(
+            prompt_token_count=1200, cached_content_token_count=800, candidates_token_count=300, thoughts_token_count=50,
+        )
+        return response
+
+    gemini.models.generate_content = with_usage
+    engine.log_path = isolated / "log.jsonl"
+    state = GameState(premise="x")
+    engine.start(state)
+    engine.act(state, "a")  # AI 太早寫出結局：請它重寫一次
+    opening, turn = [json.loads(line) for line in engine.log_path.read_text(encoding="utf-8").splitlines()]
+    assert [c["kind"] for c in opening["calls"]] == ["大綱", "劇情"]
+    assert [c["kind"] for c in turn["calls"]] == ["劇情", "重寫"]
+    call = turn["calls"][0]
+    assert call["seconds"] >= 0
+    assert (call["prompt"], call["cached"], call["output"], call["thinking"]) == (1200, 800, 300, 50)
+
+
 def test_is_key_error():
     assert is_key_error(InvalidKeyError())
     assert not is_key_error(RuntimeError("網路斷線"))

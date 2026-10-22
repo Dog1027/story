@@ -131,4 +131,8 @@ uv run pytest -m "not slow"    # 略過會啟動真的伺服器的測試
 
 ## 除錯
 
-每回合 AI 提議了什麼變化、程式實際套用了什麼，都會記錄下來（每行一回合）：終端機版在 `story_log.jsonl`，網頁版在 `saves/名字.log.jsonl`。遇到狀態變化不合理時，可以從這裡查原因。
+每回合 AI 提議了什麼變化、程式實際套用了什麼，都會記錄下來（每行一回合）：終端機版在 `story_log.jsonl`，網頁版在 `saves/名字.log.jsonl`，多人模式在 `party_log.jsonl`（線上多人在 `saves/party.log.jsonl`）。遇到狀態變化不合理時，可以從這裡查原因。
+
+每一行的 `calls` 列出這段期間的每次 AI 呼叫：種類（大綱、劇情、重寫、倒下、尾聲、幫我想、壓縮）、花了幾秒（`seconds`），以及 Gemini 回報的 token 用量：送出（`prompt`）、其中命中快取（`cached`）、輸出（`output`）、思考（`thinking`）。覺得等很久時，可以從這裡看時間花在哪裡。
+
+紀錄只會一直往後加、不會自動清除（一局 30 回合約 50 KB）。要清掉時執行 `just clean-logs`，只會刪除紀錄，不會動到存檔。
