@@ -145,6 +145,7 @@ class StoryApp(App):
         self.time_left = 0.0  # 限時模式的剩餘秒數，0 代表沒有在倒數
         self.last_tick = 0.0
         self.continue_event: asyncio.Event | None = None  # 等玩家按 Enter 繼續
+        self.follow = True  # 故事區有新內容時自動捲到最底；玩家往上捲就暫停，捲回最底再恢復
         self.typing = False
         self.speed = 1.0
         self.skip = False
@@ -171,6 +172,7 @@ class StoryApp(App):
         self.theme = saved if saved in self.available_themes else THEME
         self.theme_ready = True  # 之後的主題變更才是玩家選的，要記住
         self.set_status(None)
+        self.watch(self.query_one("#log", VerticalScroll), "scroll_y", self.follow_log, init=False)
         self.set_interval(0.1, self.tick)
         self.boot()
 
@@ -252,7 +254,7 @@ class StoryApp(App):
             self.stop_timer()
         if echo:
             self.set_choices([])
-            self.log_message(Marked("› ", echo), "action")
+            self.log_message(Marked("› ", echo), "action", follow=True)  # 自己剛行動：一定捲到最底看結果
         if self.room:  # 線上多人：回覆會由房間推回來
             await self.room.send({"type": "send", "text": text})
             return
@@ -472,17 +474,28 @@ class StoryApp(App):
         log = self.query_one("#log", VerticalScroll)
         log.remove_children()
         self.busy_line = None  # 已經跟著被移除了，之後要重新顯示
+        self.follow = True
         if premise:
             log.mount(Prose(f"故事前提：{premise}", classes="premise"))
         self.set_choices([])
         self.set_status(None)
 
-    def log_message(self, text: str | Text | Marked, kind: str) -> Static:
-        log = self.query_one("#log", VerticalScroll)
+    def log_message(self, text: str | Text | Marked, kind: str, follow: bool = False) -> Static:
         widget = Static(text, classes=kind, markup=False)
-        log.mount(widget)
-        log.scroll_end(animate=False)
+        self.query_one("#log", VerticalScroll).mount(widget)
+        self.scroll_log(follow)
         return widget
+
+    def follow_log(self, scroll_y: float) -> None:
+        """故事區捲動了：停在最底就繼續自動跟著新內容，往上捲就不跟，文字還在打的時候也能往回看。
+        內容變少時捲軸位置會被夾到新的最底，所以一樣算在最底。"""
+        self.follow = scroll_y >= self.query_one("#log", VerticalScroll).max_scroll_y - 1
+
+    def scroll_log(self, force: bool = False) -> None:
+        if force:
+            self.follow = True
+        if self.follow:
+            self.query_one("#log", VerticalScroll).scroll_end(animate=False)
 
     async def show_turn(self, reply: Reply) -> None:
         """有新劇情時逐字顯示，打完才顯示變化、選項與更新狀態列，避免先劇透。
@@ -512,8 +525,9 @@ class StoryApp(App):
 
     async def show_ending(self, reply: Reply) -> None:
         ending = reply.ending
-        if ending.epilogue:
-            self.log_message(f"─── {ending.title} ───", "ending")
+        if ending.epilogue:  # 一段一段來：先讀完最後的劇情，按 Enter 才出現尾聲，再按一次才看總結
+            await self.wait_for_enter("按 Enter 看尾聲")
+            self.log_message(f"─── {ending.title} ───", "ending", follow=True)
             await self.typewrite(ending.epilogue)
         else:
             self.log_message("─── 故事結束 ───", "ending")
@@ -524,11 +538,15 @@ class StoryApp(App):
             await self.send("1")
 
     async def wait_for_enter(self, hint: str) -> None:
+        """提示也寫在輸入框裡：玩家往上捲在看前面的劇情時，故事區最底的提示看不到。"""
         line = self.log_message(f"（{hint}）", "busy")
+        cmd = self.query_one("#cmd", Input)
+        placeholder, cmd.placeholder = cmd.placeholder, hint
         self.continue_event = asyncio.Event()
-        self.query_one("#cmd", Input).focus()
+        cmd.focus()
         await self.continue_event.wait()
         self.continue_event = None
+        cmd.placeholder = placeholder
         line.remove()
 
     async def typewrite(self, text: str) -> None:
@@ -542,11 +560,11 @@ class StoryApp(App):
                 if self.skip:
                     break
                 widget.set_text(text[:i])
-                log.scroll_end(animate=False)
+                self.scroll_log()
                 await asyncio.sleep((CHAR_DELAY + PAUSE_AFTER.get(ch, 0)) * self.speed)
         finally:
             widget.set_text(text)
-            log.scroll_end(animate=False)
+            self.scroll_log()
             self.typing = False
 
     def set_choices(self, choices: list[str], reveal: bool = True) -> None:

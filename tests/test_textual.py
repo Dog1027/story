@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import pytest
+from rich.text import Text
 from conftest import FakeEngine
 from textual.widgets import Button, Checkbox, Input, Static
 
@@ -159,12 +160,42 @@ async def test_ending_flow():
         await pilot.press("1", "enter")
         await wait_until(pilot, lambda: app.choices == ["點亮油燈", "躲起來"] and not app.typing)
         await pilot.press("2", "enter")
-        await wait_until(pilot, lambda: app.continue_event is not None)
-        assert "─── 燈塔守望者 ───" in log_lines(app)
+        await wait_until(pilot, lambda: app.continue_event is not None)  # 先讀完最後的劇情
+        assert "─── 燈塔守望者 ───" not in log_lines(app)
+        assert app.query_one("#cmd").placeholder == "按 Enter 看尾聲"
+        await pilot.press("enter")
+        await wait_until(pilot, lambda: "─── 燈塔守望者 ───" in log_lines(app) and app.continue_event is not None and not app.typing)
+        assert not isinstance(app.screen, EndingDialog)
         await pilot.press("enter")
         await wait_until(pilot, lambda: isinstance(app.screen, EndingDialog))
         app.screen.query_one("#yes", Button).press()
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog))
+
+
+async def test_scrolling_up_while_typing_stops_following():
+    """文字還在打的時候往上捲：不會被拉回最底，可以往回看；捲回最底就繼續跟著新內容。"""
+    app = StoryApp()
+    async with app.run_test(size=(60, 14)) as pilot:
+        await start_game(pilot, app)
+        log = app.query_one("#log")
+        for _ in range(6):  # 故事長到可以捲動
+            app.log_message("很長的一段劇情。" * 6, "narration")
+        await pilot.pause()
+        pulled = []
+        log.scroll_end = lambda **kw: pulled.append(1)  # 記下程式把故事區捲到最底的次數
+
+        app.follow_log(0)  # 玩家往上捲
+        assert not app.follow
+        await app.typewrite("新的劇情" * 5)
+        assert pulled == []  # 打字時不會把玩家拉回最底
+
+        app.follow_log(log.max_scroll_y)  # 玩家捲回最底
+        await app.typewrite("新的劇情" * 5)
+        assert pulled
+
+        app.follow_log(0)
+        app.log_message(Text("› 往上爬"), "action", follow=True)  # 自己行動了：一定捲到最底
+        assert app.follow
 
 
 async def test_resume_from_save():
