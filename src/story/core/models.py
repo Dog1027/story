@@ -83,8 +83,8 @@ class StoryArc(BaseModel):
     """隱藏的故事大綱：AI 依照它推進劇情，程式依照它控制節奏。不顯示給玩家。"""
 
     goal: str = Field(description="主角在這個故事裡的核心目標或要解開的謎團，一句話")
-    twist: str = Field(description="隱藏的真相：玩家一開始不知道、第三幕才揭露，會顛覆玩家對處境的理解。出人意料但合理，一句話")
-    clues: list[str] = Field(description="2-3 個伏筆：第一、二幕可以自然出現的細節，當下看似無關，事後回想都指向真相，各一句話")
+    twist: str = Field(description="隱藏的真相：玩家一開始不知道、第三幕才揭露，會顛覆玩家對處境的理解。出人意料但合理，不能決定玩家角色的生死，一句話")
+    clues: list[str] = Field(description="2-3 個伏筆：第一、二幕可以自然出現在環境、NPC、物品或文件上的細節，當下看似無關，事後回想都指向真相，各一句話")
     acts: list[Act] = Field(description="剛好四幕：起（建立處境）、承（深入與阻礙）、轉（揭露隱藏的真相，里程碑就是揭露它）、合（高潮與結局）")
     endings: list[str] = Field(description="2-3 種可能的結局方向，依玩家的抉擇而定，各一句話")
 
