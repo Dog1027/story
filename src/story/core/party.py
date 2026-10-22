@@ -6,7 +6,7 @@ PartyEngine 繼承單人的 Engine，PartyCore 繼承單人的 StoryCore，只�
 介面和單人一樣是 send(文字) → Reply。差別在遊戲中：
 - reply.actor 是現在輪到誰輸入；送進來的文字就算是那位角色的行動，reply.choices 是那位角色的選項
 - 所有還活著的角色都輸入後，才呼叫 AI 寫這一回合
-- reply.party 是每位角色的狀態，reply.party_changes 是每位角色這回合的變化
+- reply.characters 是每位角色的狀態，reply.changes 是每位角色這回合的變化（單人模式也用這兩個欄位，只是只有一位、沒有名字）
 - /timeout 會把還沒行動的人都當作「時間到」，直接推進這一回合
 - /away 是這位角色暫時離開（例如線上多人斷線），這回合不行動；給 AI 的文字是 AWAY_ACTION
 
@@ -248,12 +248,12 @@ class PartyCore(StoryCore):
     def _turn_reply(self, before) -> Reply:
         self.pending = {}  # 這一回合已經推進，下一回合從第一位重新輸入
         s = self.state
-        party_changes = []
+        changes = []
         if before is not None:
             for c in s.party:
                 if groups := change_groups(before[c.name], c):
-                    party_changes.append((c.name, groups))
-        return self._reply(narration=s.current_narration, party_changes=party_changes, **self._screen())
+                    changes.append((c.name, groups))
+        return self._reply(narration=s.current_narration, changes=changes, **self._screen())
 
     def _screen(self) -> dict:
         if self.state is None or self._phase not in ("playing", "ending"):
@@ -265,13 +265,8 @@ class PartyCore(StoryCore):
             "time_limit": self.state.current_time_limit,
         }
 
-    def _status(self) -> Status | None:
-        return None  # 多人模式的狀態放在 reply.party
-
-    def _reply(self, **fields) -> Reply:
-        if self.state is not None and self._phase != "ask_premise":
-            fields.setdefault("party", [_character_status(c) for c in self.state.party])
-        return super()._reply(**fields)
+    def _characters(self) -> list[Status]:
+        return [_character_status(c) for c in self.state.party]
 
     # ---------- 線上多人：每位玩家各自送行動 ----------
 

@@ -151,7 +151,7 @@ def test_players_take_turns_before_the_round_resolves(core, engine):
     reply = core.send("")
     assert reply.phase == "playing" and reply.actor == "阿明"
     assert reply.choices == ["阿明往上爬", "阿明躲起來"]
-    assert [s.name for s in reply.party] == NAMES
+    assert [s.name for s in reply.characters] == NAMES
 
     reply = core.send("1")
     assert reply.actor == "小華" and reply.narration == "" and "已記下 阿明 的行動" in reply.notice
@@ -160,7 +160,7 @@ def test_players_take_turns_before_the_round_resolves(core, engine):
     reply = core.send("自己想的行動")
     assert engine.rounds == [{"阿明": "阿明往上爬", "小華": "自己想的行動"}]
     assert reply.narration and reply.actor == "阿明"
-    assert reply.party_changes == [("阿明", [("獲得", [("油燈", "plain")])])]
+    assert reply.changes == [("阿明", [("獲得", [("油燈", "plain")])])]
     assert "輪到 阿明 行動" in reply.text
 
 
@@ -188,7 +188,7 @@ def test_dead_characters_are_skipped(core, engine):
     core.send("1")
     reply = core.send("1")  # 第 3 回合：阿明倒下
     assert reply.actor == "小華"
-    assert [s.alive for s in reply.party] == [False, True]
+    assert [s.alive for s in reply.characters] == [False, True]
     core.send("1")
     assert engine.rounds[-1] == {"小華": "小華往上爬"}
 
@@ -313,8 +313,8 @@ def test_reply_survives_json_round_trip(core):
     core.send("1")
     reply = core.send("1")
     back = Reply.from_dict(json.loads(json.dumps(reply.to_dict(), ensure_ascii=False)))
-    assert back.party[0].name == "阿明" and back.party[0].alive and back.turn == reply.turn == 2
-    assert back.party_changes[0][0] == "阿明"
+    assert back.characters[0].name == "阿明" and back.characters[0].alive and back.turn == reply.turn == 2
+    assert back.changes[0][0] == "阿明"
     assert back.narration == reply.narration and back.choices == reply.choices
 
 
@@ -334,6 +334,6 @@ def test_party_core_with_real_engine(isolated):
     assert "阿明：推門\n小華：搜索" in gemini.prompts[-2]
     assert "惡犬撲來。" in reply.narration and "（倒下的場景）" in reply.narration
     assert reply.actor == "小華" and reply.choices == ["逃走"]  # 阿明倒下了，只剩小華
-    assert [(s.name, s.alive) for s in reply.party] == [("阿明", False), ("小華", True)]
-    assert ("小華", [("獲得", [("鑰匙", "plain")])]) in reply.party_changes
+    assert [(s.name, s.alive) for s in reply.characters] == [("阿明", False), ("小華", True)]
+    assert ("小華", [("獲得", [("鑰匙", "plain")])]) in reply.changes
     assert load(isolated / "party.json").party[0].alive is False

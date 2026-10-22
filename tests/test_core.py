@@ -79,8 +79,8 @@ def test_choosing_by_number_and_reply_fields(core):
     new_game(core)
     reply = core.send("1")
     assert reply.narration == "你選擇了「往上爬」。"
-    assert reply.turn == 2 and reply.status.conditions == [("小腿挫傷", "中")]
-    assert reply.changes == [("新增", [("小腿挫傷（中）", "中")]), ("獲得", [("油燈", "plain")])]
+    assert reply.turn == 2 and reply.characters[0].conditions == [("小腿挫傷", "中")]
+    assert reply.changes == [("", [("新增", [("小腿挫傷（中）", "中")]), ("獲得", [("油燈", "plain")])])]  # 單人模式：名字是空的
     assert "回合 2｜狀態 小腿挫傷（中）" in reply.text
 
 
@@ -123,12 +123,12 @@ def test_status_warns_only_when_the_next_wound_could_kill(core):
     from story.core.models import Condition
 
     new_game(core)
-    assert core.send("/state").status.warning == ""
+    assert core.send("/state").characters[0].warning == ""
     core.state.conditions = [Condition(name="失血", kind="身體", severity="重")]
     reply = core.send("/state")
-    assert reply.status.warning == "重傷"
+    assert reply.characters[0].warning == "重傷"
     core.state.conditions = [Condition(name="疲勞", kind="身體", severity="中"), Condition(name="恐懼", kind="精神", severity="重")]
-    assert core.send("/state").status.warning == ""  # 中度的疲勞、精神狀態都不會致命
+    assert core.send("/state").characters[0].warning == ""  # 中度的疲勞、精神狀態都不會致命
 
 
 def test_unknown_command_and_empty_input_while_playing(core):

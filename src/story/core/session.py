@@ -73,8 +73,8 @@ class Reply:
     text: str = ""  # 完整的純文字，只會印文字的外殼直接顯示這個就好
     narration: str = ""  # 這次產生（或讀檔重新顯示）的劇情；沒有新劇情時是空字串
     choices: list[str] = field(default_factory=list)
-    status: Status | None = None
-    changes: ChangeGroups = field(default_factory=list)  # 這回合的變化：新增、惡化、痊癒、獲得……
+    characters: list[Status] = field(default_factory=list)  # 每位角色的狀態；單人模式只有主角一位（名字是空的）
+    changes: list[tuple[str, ChangeGroups]] = field(default_factory=list)  # 這回合有變化的角色：(名字, 新增、痊癒、獲得……)；單人模式名字是空的
     time_limit: int = 0  # 限時秒數；0 代表不限時
     notice: str = ""  # 簡短的系統訊息，例如「讀取存檔」「沒有這個指令」
     resumed: bool = False  # 這次是讀取存檔、重新顯示上次的劇情
@@ -85,10 +85,7 @@ class Reply:
     suggestion: str = ""  # ask_premise：/suggest 想出來的前提
     ending: Ending | None = None  # ended：尾聲與旅程紀錄
     error: Literal["api_key", "api"] | None = None  # api_key：key 無效，外殼換 key 後可以重送同一句
-    # 以下只有多人模式（PartyCore）會用到，單人模式都是空的
-    actor: str = ""  # 現在輪到哪位角色輸入行動；choices 就是這位角色的選項
-    party: list[Status] = field(default_factory=list)  # 每位角色的狀態
-    party_changes: list[tuple[str, ChangeGroups]] = field(default_factory=list)  # 每位角色這回合的變化
+    actor: str = ""  # 多人模式：現在輪到哪位角色輸入行動；choices 就是這位角色的選項（單人模式是空的）
 
     def to_dict(self) -> dict:
         """轉成可以存成 JSON 的 dict（線上多人在程序之間傳送回覆用）。"""
@@ -98,11 +95,9 @@ class Reply:
     def from_dict(cls, data: dict) -> "Reply":
         """to_dict() 的反向。JSON 沒有 tuple，tuple 會變成 list，外殼拆開使用時沒有差別。"""
         data = dict(data)
-        if data.get("status"):
-            data["status"] = Status(**data["status"])
         if data.get("ending"):
             data["ending"] = Ending(**data["ending"])
-        data["party"] = [Status(**s) for s in data.get("party", [])]
+        data["characters"] = [Status(**s) for s in data.get("characters", [])]
         return cls(**data)
 
 
@@ -358,7 +353,7 @@ class StoryCore:
         s = self.state
         return self._reply(
             narration=s.current_narration,
-            changes=change_groups(before, s) if before is not None else [],
+            changes=[("", groups)] if before is not None and (groups := change_groups(before, s)) else [],
             **self._screen(),
         )
 
@@ -381,18 +376,16 @@ class StoryCore:
             return options[int(raw) - 1]
         return raw if raw in options else None
 
-    def _status(self) -> Status | None:
-        s = self.state
-        if s is None:
-            return None
-        return Status(conditions=condition_list(s), warning=warning_level(s))
+    def _characters(self) -> list[Status]:
+        """回覆裡每位角色的狀態：單人模式只有主角一位、沒有名字，外殼跟多人模式用同一套顯示。"""
+        return [Status(conditions=condition_list(self.state), warning=warning_level(self.state))]
 
     def _reply(self, **fields) -> Reply:
         timed = self.state.timed_mode if self.state and self._phase != "ask_premise" else self.timed
         playing = self.state is not None and self._phase != "ask_premise"
         reply = Reply(
             phase=self._phase, turn=self.state.turn if playing else 0, timed=timed,
-            status=self._status() if playing else None, **fields,
+            characters=self._characters() if playing else [], **fields,
         )
         reply.text = render_text(reply)
         return reply
@@ -462,20 +455,19 @@ def render_text(reply: Reply) -> str:
             parts.append("可選的題材：" + "、".join([GENRE_AUTO, GENRE_NONE, *(name for name, _ in reply.genres)]))
     if reply.narration:
         parts.append(reply.narration)
-    if reply.changes:
-        parts.append(changes_line(reply.changes))
-    for name, groups in reply.party_changes:
-        parts.append(f"{name}　{changes_line(groups)}")
+    for name, groups in reply.changes:
+        parts.append(f"{name}　{changes_line(groups)}" if name else changes_line(groups))
     if reply.ending:
         e = reply.ending
         parts.append(f"─── {e.title or '故事結束'} ───")
         if e.epilogue:
             parts.append(e.epilogue)
         parts.append(e.record)
-    if reply.status and reply.phase in ("playing", "ending") and reply.narration:
-        parts.append(status_line(reply.turn, reply.status, reply.timed))
-    if reply.party and reply.phase in ("playing", "ending") and reply.narration:
-        parts.append("\n".join(party_line(st) for st in reply.party) + ("\n限時模式" if reply.timed else ""))
+    if reply.characters and reply.phase in ("playing", "ending") and reply.narration:
+        if reply.characters[0].name:  # 多人：每位角色一行
+            parts.append("\n".join(party_line(st) for st in reply.characters) + ("\n限時模式" if reply.timed else ""))
+        else:
+            parts.append(status_line(reply.turn, reply.characters[0], reply.timed))
     if reply.phase == "ending":
         parts.append("（故事結束了。送出任何文字查看尾聲。）")
     if reply.actor:

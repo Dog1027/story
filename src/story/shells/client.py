@@ -52,12 +52,11 @@ def character_line(status: Status) -> CharacterLine:
     return CharacterLine(status.name, status.alive, status.warning, list(status.conditions) or [("良好", "良好")])
 
 
-def status_line(turn: int, status: Status | None, party: list[Status], timed: bool) -> StatusLine | None:
-    if party:
-        return StatusLine(turn, *_mode(timed), [character_line(s) for s in party], party=True)
-    if status is None:
+def status_line(turn: int, characters: list[Status], timed: bool) -> StatusLine | None:
+    """單人模式只有主角一位、沒有名字；多人模式每位角色一列。"""
+    if not characters:
         return None
-    return StatusLine(turn, *_mode(timed), [character_line(status)])
+    return StatusLine(turn, *_mode(timed), [character_line(s) for s in characters], party=bool(characters[0].name))
 
 
 def _mode(timed: bool) -> tuple[str, bool]:
@@ -191,7 +190,7 @@ class Client:
         self.busy = False
         self.progress = ""  # 線上多人：房間推來的進度（單人直接讀核心的 progress）
         self.timed = False
-        self.shown: tuple[int, Status | None, list[Status]] = (0, None, [])  # 狀態列目前的內容（模式改變時重畫）
+        self.shown: tuple[int, list[Status]] = (0, [])  # 狀態列目前的內容：(回合, 每位角色)，模式改變時重畫
         self.inbox: asyncio.Queue[dict] = asyncio.Queue()  # 房間推來、要依序處理的訊息
         self.premise_answer: asyncio.Future | None = None  # 線上多人：前提對話框在等房間回覆
 
@@ -399,15 +398,12 @@ class Client:
             if reply.resumed:
                 self.view.show_note(reply.notice)
             await self.view.show_narration(reply.narration)
-            if reply.changes:
-                self.view.show_changes(reply.changes)
-            for name, groups in reply.party_changes:
-                if groups:
-                    self.view.show_changes(groups, name)
+            for name, groups in reply.changes:
+                self.view.show_changes(groups, name)
             self.view.show_choices(self.choices)
         else:
             self.set_choices(reply.choices)
-        self.set_status(reply.turn, reply.status, reply.party)
+        self.set_status(reply.turn, reply.characters)
         if reply.narration and reply.time_limit:
             if self.room:  # 線上多人：告訴房間看完了，大家都看完房間才開始倒數
                 await self.room.send({"type": "ready"})
@@ -430,7 +426,7 @@ class Client:
 
     def clear_story(self, premise: str = "") -> None:
         self.choices = []
-        self.shown = (0, None, [])
+        self.shown = (0, [])
         self.view.clear_story(premise)
         self.refresh_hint()
 
@@ -439,9 +435,9 @@ class Client:
         self.view.show_choices(self.choices)
         self.refresh_hint()
 
-    def set_status(self, turn: int, status: Status | None, party: list[Status]) -> None:
-        self.shown = (turn, status, party)
-        self.view.set_status(status_line(turn, status, party, self.timed))
+    def set_status(self, turn: int, characters: list[Status]) -> None:
+        self.shown = (turn, characters)
+        self.view.set_status(status_line(turn, characters, self.timed))
 
     def refresh_hint(self) -> None:
         """選項區的標題與輸入框的提示：輪到誰；線上多人時還在等誰。"""

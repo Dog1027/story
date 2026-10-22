@@ -395,12 +395,12 @@ async def test_status_lists_conditions_and_warns_only_when_in_danger():
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
         await pilot.pause()
-        app.set_status(status_line(3, Status(conditions=[("疲勞", "中"), ("恐懼", "輕")]), [], timed=False))
+        app.set_status(status_line(3, [Status(conditions=[("疲勞", "中"), ("恐懼", "輕")])], timed=False))
         line = status_text(app)
         assert "疲勞 · 恐懼" in line and "受傷" not in line and "⚠" not in line and "鑰匙" not in line
-        app.set_status(status_line(3, Status(conditions=[("失血", "重")], warning="瀕死"), [], timed=False))
+        app.set_status(status_line(3, [Status(conditions=[("失血", "重")], warning="瀕死")], timed=False))
         assert "⚠ 瀕死 · 失血" in status_text(app)
-        app.set_status(status_line(3, Status(conditions=[]), [], timed=False))
+        app.set_status(status_line(3, [Status(conditions=[])], timed=False))
         assert "狀態 良好" in status_text(app)
 
 
@@ -504,7 +504,7 @@ async def test_party_status_columns_line_up():
         app = StoryApp()
         async with app.run_test(size=(width, 30)) as pilot:
             await pilot.pause()
-            app.set_status(status_line(7, None, party, timed=False))
+            app.set_status(status_line(7, party, timed=False))
             await pilot.pause()
             lines = status_text(app).splitlines()
             first, second = lines[1], next(line for line in lines[2:] if line.startswith("10快快俠"))

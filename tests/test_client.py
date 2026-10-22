@@ -184,12 +184,12 @@ async def test_local_party_shows_whose_action_it_is(engine, monkeypatch):
 
 
 def test_status_line_lists_conditions_and_the_core_warning():
-    fine = status_line(3, Status(conditions=[("疲勞", "中"), ("恐懼", "輕")]), [], timed=False)
+    fine = status_line(3, [Status(conditions=[("疲勞", "中"), ("恐懼", "輕")])], timed=False)
     assert fine.mode == "一般模式" and not fine.party
     assert fine.characters[0].warning == "" and fine.characters[0].items == [("疲勞", "中"), ("恐懼", "輕")]
-    danger = status_line(3, Status(conditions=[("失血", "重")], warning="瀕死"), [], timed=True)
+    danger = status_line(3, [Status(conditions=[("失血", "重")], warning="瀕死")], timed=True)
     assert danger.characters[0].warning == "瀕死" and danger.mode == "限時模式"
-    empty = status_line(1, Status(conditions=[]), [], timed=False)
+    empty = status_line(1, [Status(conditions=[])], timed=False)
     assert empty.characters[0].items == [("良好", "良好")]
-    party = status_line(2, None, [Status(conditions=[], name="阿明", alive=False)], timed=False)
+    party = status_line(2, [Status(conditions=[], name="阿明", alive=False)], timed=False)
     assert party.party and party.characters[0].name == "阿明" and not party.characters[0].alive
