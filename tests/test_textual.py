@@ -66,7 +66,8 @@ async def test_new_game_turn_and_status_update():
         lines = log_lines(app)
         assert "› 往上爬" in lines and "你選擇了「往上爬」。" in lines
         assert any("新增 小腿挫傷（中）" in line for line in lines)
-        assert "回合 2" in status_text(app) and "受傷" in status_text(app)
+        assert "回合 2" in status_text(app) and "小腿挫傷" in status_text(app)
+        assert "受傷" not in status_text(app) and "背包" not in status_text(app)  # 直接列出狀態，不加評語；背包不放在狀態列
 
 
 async def test_suggest_button_fills_premise():
@@ -105,7 +106,7 @@ async def test_timed_mode_counts_down_and_sends_timeout():
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
         await start_game(pilot, app, timed=True)
-        assert "限時模式" in str(app.query_one("#mode").render())
+        assert "限時模式" in status_text(app).splitlines()[0]  # 跟回合同一排
         assert app.query_one("#timer").has_class("show")
         app.time_left = 0.2  # 不用真的等 10 秒
         await wait_until(pilot, lambda: any(line.startswith("› （時間到") for line in log_lines(app)))
@@ -355,18 +356,19 @@ async def test_story_does_not_jump_when_choices_appear(monkeypatch):
         assert options.styles.opacity == 1.0
 
 
-async def test_inventory_collapses_on_phones_and_expands_on_click():
-    for width, expanded in ((40, False), (100, True)):
-        app = StoryApp()
-        async with app.run_test(size=(width, 30)) as pilot:
-            await start_game(pilot, app)
-            await pilot.press("1", "enter")
-            await wait_until(pilot, lambda: app.choices == ["點亮油燈", "躲起來"] and not app.typing)
-            assert ("鑰匙 · 油燈" in status_text(app)) is expanded
-            assert ("2 件" in status_text(app)) is not expanded
-            await pilot.click("#status")
-            assert ("鑰匙 · 油燈" in status_text(app)) is not expanded  # 點一下切換
-        (Path("save.json")).unlink(missing_ok=True)
+async def test_status_lists_conditions_and_warns_only_when_in_danger():
+    from story.core.session import Status
+
+    app = StoryApp()
+    async with app.run_test(size=SIZE) as pilot:
+        await pilot.pause()
+        app.set_status(Status(turn=3, level="受傷", body=[("疲勞", "中")], mind=[("恐懼", "輕")], inventory=["鑰匙"]))
+        line = status_text(app)
+        assert "疲勞 · 恐懼" in line and "受傷" not in line and "⚠" not in line and "鑰匙" not in line
+        app.set_status(Status(turn=3, level="瀕死", body=[("失血", "重")], mind=[], inventory=[]))
+        assert "⚠ 瀕死 · 失血" in status_text(app)
+        app.set_status(Status(turn=3, level="良好", body=[], mind=[], inventory=[]))
+        assert "狀態 良好" in status_text(app)
 
 
 async def test_theme_command_changes_colors_and_is_remembered(isolated):
@@ -452,13 +454,13 @@ async def test_online_opening_shows_busy_line(isolated):
 
 
 async def test_party_status_columns_line_up():
-    """多人模式的狀態列：名字長短、傷勢多寡不同，各欄仍然對齊；手機上小區塊（背包 空）不會被拆開。"""
+    """多人模式的狀態列：名字長短、狀態多寡不同，狀態欄仍然對齊；手機上「⚠ 重傷」這類小區塊不會被拆開。"""
     from rich.cells import cell_len
 
     from story.core.session import Status
 
     party = [
-        Status(turn=7, level="受傷", body=[("右臂撕裂傷", "中")], mind=[], inventory=["鑰匙"], name="阿民"),
+        Status(turn=7, level="重傷", body=[("右臂撕裂傷", "重"), ("小腿挫傷", "中")], mind=[("恐懼", "中"), ("失眠", "輕")], inventory=["鑰匙"], name="阿民"),
         Status(turn=7, level="良好", body=[], mind=[], inventory=[], name="10快快俠"),
     ]
 
@@ -473,11 +475,12 @@ async def test_party_status_columns_line_up():
             await pilot.pause()
             lines = status_text(app).splitlines()
             first, second = lines[1], next(line for line in lines[2:] if line.startswith("10快快俠"))
-            assert column(first, "受傷") == column(second, "良好")  # 狀態欄對齊
-            if width >= 60:
-                assert column(first, "背包") == column(second, "背包")  # 背包欄對齊
-            else:
-                assert any("背包 空" in line for line in lines)  # 不會拆成「背包」和「空」兩行
+            assert "限時模式" not in lines[0] and "一般模式" in lines[0]
+            assert column(first, "⚠ 重傷") == column(second, "良好")  # 狀態欄對齊
+            if width < 60:
+                assert len(lines) > 3  # 窄畫面放不下就換行，但每個狀態都完整
+            for word in ("右臂撕裂傷", "小腿挫傷", "恐懼", "失眠"):
+                assert any(word in line for line in lines)
 
 
 async def test_premise_dialog_lets_you_pick_a_genre(monkeypatch):

@@ -14,7 +14,7 @@ from rich.text import Text
 from textual import events, on, work
 from textual.app import App, ComposeResult, SystemCommand
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Input, OptionList, Static
 
@@ -29,7 +29,8 @@ from story.shells.prefs import get_saved_theme, save_theme
 from story.shells.textual.style import CHAR_DELAY, FAST_FACTOR, PAUSE_AFTER, SPINNER, THEME, palette
 
 
-NARROW_WIDTH = 60  # 比這個窄（手機直式）就用窄畫面的樣式，背包預設收合
+NARROW_WIDTH = 60  # 比這個窄（手機直式）就用窄畫面的樣式
+WARNING_LEVELS = ("重傷", "瀕死")  # 整體狀態到這個程度才在狀態列警告：再受傷就有生命危險
 
 
 # ---------- 回合間的變化 ----------
@@ -45,19 +46,19 @@ def describe_changes(groups: ChangeGroups, colors: dict[str, str]) -> Text | Non
     return Text.assemble(*parts) if parts else None
 
 
-def pack(groups: list[Text], width: int) -> Text:
-    """把幾個不該拆開的小區塊（「受傷 右臂撕裂傷」「背包 空」）排進指定寬度：一行放得下就並排，放不下才換行。
-    Rich 會在任何空白處換行，直接交給它排會把「背包」和「空」拆到兩行。"""
+def pack(groups: list[Text], width: int, sep: Text = Text("  ")) -> Text:
+    """把幾個不該拆開的小區塊（「⚠ 重傷」「右臂撕裂傷」）用 sep 串起來排進指定寬度：一行放得下就並排，放不下才換行。
+    Rich 會在任何空白處換行，直接交給它排會把「⚠」和「重傷」拆到兩行。"""
     lines: list[list[Text]] = [[]]
     used = 0
     for group in (g for g in groups if g.plain):
-        size = cell_len(group.plain) + (2 if lines[-1] else 0)
+        size = cell_len(group.plain) + (cell_len(sep.plain) if lines[-1] else 0)
         if lines[-1] and used + size > width:
             lines.append([])
             used, size = 0, cell_len(group.plain)
         lines[-1].append(group)
         used += size
-    return Text("\n").join(Text("  ").join(line) for line in lines)
+    return Text("\n").join(sep.join(line) for line in lines)
 
 
 # ---------- 主畫面 ----------
@@ -66,13 +67,10 @@ def pack(groups: list[Text], width: int) -> Text:
 class StoryApp(App):
     TITLE = "Story"
     CSS = """
-    #statusbar {
+    #status {
         dock: top; height: auto; padding: 1 3 0 3;
         border-bottom: hkey $panel-lighten-1; background: $background;
     }
-    #status { width: 1fr; }
-    #status:hover { background: $panel 40%; }  /* 點狀態列可以展開／收合背包 */
-    #mode { width: 18; text-align: right; }
     #log {
         padding: 1 3; align-horizontal: center;
         scrollbar-size-vertical: 1; scrollbar-gutter: stable;  /* 一開始就預留捲軸位置，捲軸出現時文字才不會跳 */
@@ -108,8 +106,7 @@ class StoryApp(App):
     #cmd:focus { border: round $primary; background-tint: $foreground 0%; }
 
     /* 窄畫面（手機）：縮小邊距，讓故事有更多寬度 */
-    Screen.-narrow #statusbar { padding: 0 1; }
-    Screen.-narrow #mode { width: 9; }
+    Screen.-narrow #status { padding: 0 1; }
     Screen.-narrow #log { padding: 1 1; }
     Screen.-narrow #timer, Screen.-narrow #choices { margin: 0 0; }
     Screen.-narrow #cmd { margin: 0 0; }
@@ -142,8 +139,7 @@ class StoryApp(App):
         self.busy_line: Static | None = None  # 故事區裡的「故事生成中」那一行
         self.progress = ""  # 線上多人：房間推來的進度（單人直接讀核心的 progress）
         self.shown_status: tuple[Status | None, list[Status] | None] = (None, None)  # 狀態列目前顯示的內容
-        self.inventory_open: bool | None = None  # 背包展開與否；None 是依畫面寬度（手機收合、電腦展開）
-        self.timed = False  # 狀態列右邊顯示的模式（換主題時重畫用）
+        self.timed = False  # 狀態列回合旁邊顯示的模式
         self.theme_ready = False
         self.frame = 0
         self.time_left = 0.0  # 限時模式的剩餘秒數，0 代表沒有在倒數
@@ -154,9 +150,7 @@ class StoryApp(App):
         self.skip = False
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="statusbar"):
-            yield Static("", id="status")
-            yield Static("", id="mode")  # 狀態列最右邊固定一格：顯示目前的模式
+        yield Static("", id="status")
         yield VerticalScroll(id="log")
         choices = OptionList(id="choices", classes="-empty")
         choices.border_title = "接下來"
@@ -177,7 +171,6 @@ class StoryApp(App):
         self.theme = saved if saved in self.available_themes else THEME
         self.theme_ready = True  # 之後的主題變更才是玩家選的，要記住
         self.set_status(None)
-        self.render_mode(False)
         self.set_interval(0.1, self.tick)
         self.boot()
 
@@ -191,7 +184,6 @@ class StoryApp(App):
         if not self.theme_ready:
             return
         self.set_status(*self.shown_status)
-        self.render_mode(self.timed)
         if not self.web:
             save_theme(theme)
 
@@ -432,75 +424,48 @@ class StoryApp(App):
 
     # ---------- 顯示 ----------
 
-    @on(events.Click, "#status")
-    def toggle_inventory(self) -> None:
-        """點狀態列：展開或收合背包。"""
-        self.inventory_open = not self.inventory_expanded()
-        self.set_status(*self.shown_status)
-
     def on_resize(self, event: events.Resize) -> None:
-        self.set_status(*self.shown_status)  # 狀態列的排版和背包預設展開與否都跟畫面寬度有關，轉向或改變視窗大小時重畫
+        self.set_status(*self.shown_status)  # 狀態列的換行跟畫面寬度有關，轉向或改變視窗大小時重畫
 
-    def inventory_expanded(self) -> bool:
-        if self.inventory_open is None:
-            return self.size.width >= NARROW_WIDTH  # 手機（窄畫面）預設收合
-        return self.inventory_open
+    def condition_parts(self, st: Status) -> list[Text]:
+        """一位角色的狀態：危險時先警告，再依序列出每個狀態（依程度上色，不分身體與精神），沒有狀態就是「良好」。
+        背包不放在狀態列：每回合的「獲得／失去」會顯示在故事裡，完整內容用 /state 看。"""
+        parts = [Text(f"⚠ {st.level}", style=f"bold {self.colors[st.level]}")] if st.level in WARNING_LEVELS else []
+        parts += [Text(name, style=self.colors[severity]) for name, severity in st.body + st.mind]
+        return parts or [Text("良好", style=self.colors["良好"])]
 
-    def inventory_parts(self, items: list[str]) -> list[tuple[str, str]]:
-        """狀態列的背包：展開時列出物品，收合時只顯示件數。"""
-        if not items:
-            return [("背包 ", "dim"), ("空", "")]
-        if self.inventory_expanded():
-            return [("背包 ▾ ", "dim"), (" · ".join(items), "")]
-        return [("背包 ", "dim"), (f"{len(items)} 件", ""), (" ▸", "dim")]
+    def turn_line(self, turn: int) -> Text:
+        """「回合 7  限時模式」：模式跟回合放在同一排，狀態列其他地方都留給狀態。"""
+        mode = ("限時模式", self.colors["bad"]) if self.timed else ("一般模式", "dim")
+        return Text.assemble(("回合 ", "dim"), (str(turn), "bold"), ("  ", ""), mode)
 
     def set_status(self, status: Status | None, party: list[Status] | None = None) -> None:
         self.shown_status = (status, party)
-        muted = "dim"
-
-        def listed(conds: list[tuple[str, str]], first_sep: str) -> list[tuple[str, str]]:
-            parts: list[tuple[str, str]] = []
-            for i, (name, severity) in enumerate(conds):
-                parts += [(" · " if i else first_sep, muted), (name, self.colors[severity])]
-            return parts
-
+        bar = self.query_one("#status", Static)
+        width = bar.content_region.width or self.size.width - 8
+        sep = Text(" · ", style="dim")
         if party:
-            # 每位角色一列、欄位對齊，名字和傷勢長短不同也不會錯開。
-            # 電腦：名字、狀態、精神、背包各一欄；手機放不下四欄：名字一欄，其他合成一欄自動換行
-            narrow = self.size.width < NARROW_WIDTH
-            table = Table.grid(padding=(0, 2 if narrow else 3))
+            # 第一排是回合與模式，下面每位角色一列：名字一欄、狀態一欄，名字長短不同也會對齊
+            table = Table.grid(padding=(0, 2))
             table.add_column(no_wrap=True)
-            for _ in range(1 if narrow else 3):
-                table.add_column()
+            table.add_column()
+            name_width = max(cell_len(s.name) for s in party) + 2
             for st in party:
                 name = Text(st.name, style="bold dim" if not st.alive else "bold")
-                if not st.alive:
-                    cells = [Text("已倒下", style=muted), Text(""), Text("")]
-                else:
-                    cells = [
-                        Text.assemble((st.level, f"bold {self.colors[st.level]}"), *listed(st.body, "  ")),
-                        Text.assemble(("精神 ", muted), *listed(st.mind, "")) if st.mind else Text(""),
-                        Text.assemble(*self.inventory_parts(st.inventory)),
-                    ]
-                if narrow:
-                    width = self.query_one("#status", Static).content_region.width or self.size.width - 11
-                    name_width = max(cell_len(s.name) for s in party) + 2
-                    cells = [pack(cells, width - name_width)]
-                table.add_row(name, *cells)
-            turn = Text.assemble(("回合 ", muted), (str(party[0].turn), "bold"))
-            self.query_one("#status", Static).update(Group(turn, table))
+                cell = Text("已倒下", style="dim") if not st.alive else pack(self.condition_parts(st), width - name_width, sep)
+                table.add_row(name, cell)
+            bar.update(Group(self.turn_line(party[0].turn), table))
             return
         if status is None:
-            self.query_one("#status", Static).update(Text("Story", style="dim"))
+            bar.update(Text("Story", style="dim"))
             return
-
-        bar = Text.assemble(
-            ("回合 ", muted), (str(status.turn), "bold"),
-            ("     狀態 ", muted), (status.level, f"bold {self.colors[status.level]}"), *listed(status.body, "  "),
-            *([("     精神 ", muted)] + listed(status.mind, "") if status.mind else []),
-            ("     ", ""), *self.inventory_parts(status.inventory),
-        )
-        self.query_one("#status", Static).update(bar)
+        parts = self.condition_parts(status)
+        head = Text.assemble(self.turn_line(status.turn), ("     狀態 ", "dim"))
+        line = pack(parts, width - cell_len(head.plain), sep)
+        if "\n" in line.plain:  # 同一排放不下（手機）：狀態整個移到第二排
+            head = Text.assemble(self.turn_line(status.turn), ("\n狀態 ", "dim"))
+            line = pack(parts, width - 5, sep)
+        bar.update(head + line)
 
     def clear_story(self, premise: str = "") -> None:
         """新故事開始：清空故事區、選項與狀態列，並先顯示故事前提（等 AI 寫開場時可以先讀，線上多人的其他人也知道要玩什麼）。"""
@@ -646,10 +611,10 @@ class StoryApp(App):
         self.query_one("#timer", Static).remove_class("show")
 
     def render_mode(self, timed: bool) -> None:
-        """狀態列最右邊固定顯示目前的模式。"""
-        self.timed = timed
-        label = Text("限時模式", style=self.colors["bad"]) if timed else Text("一般模式", style="dim")
-        self.query_one("#mode", Static).update(label)
+        """狀態列回合旁邊顯示目前的模式。"""
+        if timed != self.timed:
+            self.timed = timed
+            self.set_status(*self.shown_status)
 
     def render_timer(self) -> None:
         """選項上方的倒數條。"""
