@@ -434,6 +434,29 @@ def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):
     assert (call["prompt"], call["cached"], call["output"], call["thinking"]) == (1200, 800, 300, 50)
 
 
+def test_requests_time_out_and_retry():
+    """Gemini 偶爾卡住一兩分鐘：每次請求有逾時，逾時或伺服器忙時自動重送。"""
+    from story.core.engine import REQUEST_ATTEMPTS, REQUEST_TIMEOUT, new_client
+
+    options = new_client("key")._api_client._http_options
+    assert options.timeout == REQUEST_TIMEOUT * 1000 and options.retry_options.attempts == REQUEST_ATTEMPTS
+
+
+def test_timeout_after_retries_becomes_a_normal_error():
+    """重送都逾時：轉成核心會處理的 RuntimeError（不然會讓程式出錯），失敗的呼叫記進下一筆紀錄。"""
+    import httpx
+
+    engine, gemini = make_engine(beat())
+
+    def timeout(**request):
+        raise httpx.ReadTimeout("timed out")
+
+    gemini.models.generate_content = timeout
+    with pytest.raises(RuntimeError, match="太久沒有回應"):
+        engine.act(GameState(premise="x", arc=ARC), "a")
+    assert engine.calls[0]["kind"] == "劇情" and "timed out" in engine.calls[0]["error"]
+
+
 def test_is_key_error():
     assert is_key_error(InvalidKeyError())
     assert not is_key_error(RuntimeError("網路斷線"))

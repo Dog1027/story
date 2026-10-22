@@ -5,6 +5,7 @@ import random
 import time
 from pathlib import Path
 
+import httpx
 from google import genai
 from google.genai import types
 
@@ -17,6 +18,8 @@ KEEP_EVENTS, KEEP_FLAGS = 6, 12  # 重大事件、已確立的事實各保留最
 TARGET_TURNS = 30  # 故事預定長度（回合）；超過時只提醒 AI 收尾，不強制結束
 ACT_TURNS = TARGET_TURNS // 4  # 每一幕預計幾回合，待太久就提醒 AI 推進
 MIN_ACT_TURNS = 5  # 每一幕至少幾回合；還沒到時 AI 說里程碑達成也不推進，避免故事一下子就跑完
+REQUEST_TIMEOUT = 40  # 一次 AI 請求最多等幾秒；Gemini 偶爾卡住一兩分鐘，重送通常比較快
+REQUEST_ATTEMPTS = 3  # 逾時或伺服器忙（429、5xx）時最多送幾次（含第一次）
 TWIST_IDEAS = 3  # 規劃大綱時從題材包的 twists.md 隨機抽幾則轉折靈感
 MIN_ENDING_TURN = 20  # 最早第幾回合才接受 AI 宣告的結局（還要進到最後一幕）；因傷死亡不受限制
 MIN_TIME_LIMIT, MAX_TIME_LIMIT = 8, 60  # 限時模式的反應時間範圍（秒）
@@ -63,6 +66,17 @@ SYSTEM_PROMPT = """你是一個互動式文字冒險遊戲的敘事者。
 - key_event 只記真正改變故事走向的大事（結盟、背叛、重要發現、失去重要的人或物），大多數回合應該留空。flags_set 只記之後還會用到的長期事實，不要重複已有的事實，也不要記當下的動作。
 - 若「模式」區塊說明是限時模式：當情勢緊迫（追逐、墜落、對峙、倒數）時設定 time_limit，越危急越短；平靜的場景設 0。非限時模式一律設 0。
 - 若玩家行動是「（時間到……）」，代表玩家沒能及時反應，要描述猶豫帶來的後果。"""
+
+
+def new_client(api_key: str | None) -> genai.Client:
+    """逾時或伺服器忙時自動重送（間隔約 1、2 秒），不讓玩家一直等一個卡住的請求。"""
+    return genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            timeout=REQUEST_TIMEOUT * 1000,  # 毫秒
+            retry_options=types.HttpRetryOptions(attempts=REQUEST_ATTEMPTS),
+        ),
+    )
 
 
 def is_key_error(e: Exception) -> bool:
@@ -257,14 +271,14 @@ class Engine:
         log_path: Path = LOG_PATH,
         genres: dict[str, Genre] | None = None,
     ):
-        self.client = client or genai.Client(api_key=api_key)
+        self.client = client or new_client(api_key)
         self.genres = load_genres()[0] if genres is None else genres  # 題材包（見 genres.py）
         self.calls: list[dict] = []  # 上次寫紀錄之後的 AI 呼叫：種類、秒數、token 用量（寫進紀錄後清空）
         self.log_path = log_path  # 網頁版每個玩家各自一份紀錄
         self.stage = ""  # 開新故事時目前在做什麼，外殼顯示在等待畫面上（例如「規劃故事大綱」）
 
     def set_api_key(self, api_key: str) -> None:
-        self.client = genai.Client(api_key=api_key)
+        self.client = new_client(api_key)
 
     # ---------- 對外介面 ----------
 
@@ -550,7 +564,13 @@ class Engine:
         """所有 AI 呼叫都經過這裡：記下種類、花了幾秒與 Gemini 回報的 token 用量（送出、命中快取、輸出、思考），
         寫進每回合的紀錄，方便查等待時間花在哪裡。"""
         started = time.monotonic()
-        response = self.client.models.generate_content(**request)
+        try:
+            response = self.client.models.generate_content(**request)
+        except Exception as e:  # 重送幾次都失敗：失敗的呼叫也記下來，跟下一回合的紀錄寫在一起
+            self.calls.append({"kind": kind, "seconds": round(time.monotonic() - started, 2), "error": str(e)[:200]})
+            if isinstance(e, (httpx.TimeoutException, httpx.ConnectError)):  # 轉成核心會處理的錯誤
+                raise RuntimeError("Gemini 太久沒有回應或連不上，請稍後再試。") from e
+            raise
         call = {"kind": kind, "seconds": round(time.monotonic() - started, 2)}
         usage = getattr(response, "usage_metadata", None)
         for field, name in (

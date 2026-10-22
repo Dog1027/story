@@ -193,17 +193,29 @@ def test_dead_characters_are_skipped(core, engine):
     assert engine.rounds[-1] == {"小華": "小華往上爬"}
 
 
-def test_failed_round_lets_last_player_retry(core, engine):
+def test_failed_round_lets_everyone_choose_again(core, engine):
     core.start()
     core.send("")
     core.send("1")
     engine.fail_with = InvalidKeyError()
     reply = core.send("2")
-    assert reply.error == "api_key" and reply.actor == "小華"
+    assert reply.error == "api_key" and reply.actor == "阿明"  # 撤回所有人的行動，從第一位重新輸入
     assert core.state.turn == 1  # 已從存檔還原
     core.set_api_key("新的 key")
     core.send("2")
-    assert engine.rounds == [{"阿明": "阿明往上爬", "小華": "小華躲起來"}]
+    core.send("2")
+    assert engine.rounds == [{"阿明": "阿明躲起來", "小華": "小華躲起來"}]
+
+
+def test_failed_timeout_round_does_not_get_stuck(core, engine):
+    """時間到替大家填入的行動推進失敗：要撤回，不然每個人都「已行動」卻沒人能重送。"""
+    core.start()
+    core.send("")
+    core.send("1")
+    engine.fail_with = RuntimeError("503 UNAVAILABLE")
+    reply = core.send("/timeout")
+    assert reply.error == "api" and "請重新選擇行動" in reply.notice
+    assert core.waiting() == ["阿明", "小華"]
 
 
 def test_party_ending(core):

@@ -136,7 +136,7 @@ src/story/
 
 **套用規則的函式**（單人、多人共用，單人傳 `GameState`、多人傳 `Character`）：`advance_clock()`、`apply_condition_changes()`、`apply_items()`、`apply_story_progress()`、`clamp_time_limit()`。
 
-**計算規則的函式**：`clock_text()`（遊戲內時間的文字）、`body_score()`、`body_level()`（傷勢分數與整體狀態，只算身體狀態）、`body_conditions()`、`mind_conditions()`、`is_key_error()`（判斷 Gemini 錯誤是不是 key 無效）。
+**計算規則的函式**：`clock_text()`（遊戲內時間的文字）、`body_score()`、`body_level()`（傷勢分數與整體狀態，只算身體狀態）、`body_conditions()`、`mind_conditions()`、`is_key_error()`（判斷 Gemini 錯誤是不是 key 無效）、`new_client()`（建立 Gemini client：每次請求有逾時，逾時或伺服器忙時自動重送）。
 
 **可以調整的常數**（都在檔案開頭）
 
@@ -154,6 +154,7 @@ src/story/
 | `HEAL_TIME` | 身體與精神狀態各程度的痊癒時間 | 見程式 |
 | `TIME_SPANS` | AI 選的時間類別換算成幾分鐘 | 見程式 |
 | `MIN_TIME_LIMIT`、`MAX_TIME_LIMIT` | 限時模式的秒數範圍 | 8–60 秒 |
+| `REQUEST_TIMEOUT`、`REQUEST_ATTEMPTS` | 一次 AI 請求最多等幾秒；逾時或伺服器忙（429、5xx）時最多送幾次 | 40 秒、3 次 |
 | `PREMISE_GENRES`、`PREMISE_SETTINGS` | 「幫我想」隨機挑選的題材與情境 | 14 種、8 種 |
 | `SYSTEM_PROMPT` | 給 AI 的寫作與遊戲規則 | — |
 
@@ -229,7 +230,7 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 | `_current_choices()` | 主角的選項 | 現在輪到的角色的選項 |
 | `_take_action()` | 直接推進一回合 | 先記下這位角色的行動，所有人都行動後才推進；`/timeout` 時還沒行動的人都算遲疑 |
 | `_snapshot()`、`_turn_reply()` | 主角的變化 | 每位角色各自的變化 |
-| `_turn_failed()` | 不用做事 | 讓最後輸入的人重送同一句就能重試，其他人的行動保留 |
+| `_turn_failed()` | 不用做事 | 撤回這回合所有人的行動，大家重新選擇（時間到或替離線的人填入的行動失敗時，才不會每個人都「已行動」卻沒人能重送而卡住）。線上多人時房間把錯誤送給每個人，限時模式重新倒數 |
 
 回覆的差別：`reply.actor` 是現在輪到誰；`reply.party` 是每位角色的狀態（`Status` 多了 `name`、`alive`）；`reply.party_changes` 是每位角色這回合的變化。存檔是 `party_save.json`。
 

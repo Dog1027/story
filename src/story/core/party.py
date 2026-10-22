@@ -198,7 +198,6 @@ class PartyCore(StoryCore):
         super().__init__(api_key, save_path=save_path, log_path=log_path, engine=engine or PartyEngine(api_key=api_key, log_path=log_path))
         self._players = names
         self.pending: dict[str, str] = {}  # 這一回合已經輸入的行動
-        self._last_actor: str | None = None  # 最後輸入行動的人（推進失敗時讓他重送）
         self._as: str | None = None  # send_as() 指定的角色
 
     # ---------- 覆寫 StoryCore 的掛勾 ----------
@@ -216,13 +215,12 @@ class PartyCore(StoryCore):
 
     def _take_action(self, action: str, timeout: bool) -> Reply:
         """記下這位角色的行動；所有人都行動後才推進一回合。時間到時，還沒行動的人都算遲疑。"""
-        self._last_actor = None
         if timeout:
             for c in self._waiting():
                 self.pending[c.name] = action
         else:
             actor = self._actor()
-            self.pending[actor.name], self._last_actor = action, actor.name
+            self.pending[actor.name] = action
             if self._waiting():  # 還有人沒輸入：換下一位
                 return self._reply(notice=f"已記下 {actor.name} 的行動。", **self._screen())
 
@@ -232,8 +230,9 @@ class PartyCore(StoryCore):
         return {c.name: snapshot(c) for c in self.state.party}
 
     def _turn_failed(self) -> None:
-        if self._last_actor:
-            self.pending.pop(self._last_actor, None)  # 讓最後輸入的人重送同一句就能重試，其他人的行動保留
+        # 撤回這回合所有的行動，大家重新選擇。只撤回最後一個人不夠：時間到或替離線的人自動填入的行動失敗時，
+        # 會變成每個人都「已行動」卻沒有人能重送，整局卡住
+        self.pending = {}
 
     # ---------- 回覆 ----------
 

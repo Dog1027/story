@@ -271,11 +271,17 @@ class Room:
                 await self._broadcast_notice("房主正在設定故事，請稍候。", skip=self.host)
             return
         self.host_reply = None
+        if phase == "playing" and reply.error:  # 這回合沒推進成功：核心撤回了所有人的行動，大家重新選擇
+            for member in self._online_members():
+                await self._send_reply(member.name, reply)
+            await self._broadcast_waiting()
+            self._stop_countdown()
+            if reply.time_limit:
+                self.countdown = asyncio.create_task(self._countdown(reply.time_limit, wait_first=False))
+            return
         if phase == "playing" and not reply.narration:
             if only:
                 await self._send_reply(only, reply)
-            elif reply.error:
-                await self._broadcast_notice(reply.notice)
             await self._broadcast_waiting()
             return
         self._stop_countdown()

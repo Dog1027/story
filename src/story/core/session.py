@@ -251,7 +251,7 @@ class StoryCore:
         except (errors.APIError, RuntimeError) as e:
             self.state = load(self.save_path) or self.state  # act() 可能已經改了一半的狀態，從存檔還原
             self._turn_failed()
-            return self._failed(e, lambda **kw: self._reply(**self._screen(), **kw))
+            return self._failed(e, lambda **kw: self._reply(**self._screen(), **kw), hint="這回合沒有推進，請重新選擇行動。")
         save(self.state, self.save_path)
         if self.state.game_over:
             self._phase = "ending"
@@ -370,11 +370,11 @@ class StoryCore:
             return {}
         return {"choices": list(self.state.current_choices), "time_limit": self.state.current_time_limit}
 
-    def _failed(self, e: Exception, retry_screen) -> Reply:
+    def _failed(self, e: Exception, retry_screen, hint: str = "") -> Reply:
         """LLM 呼叫失敗：留在原本的階段，讓外殼決定要不要換 key 後重送。"""
         if is_key_error(e):
             return retry_screen(error="api_key", notice="API key 無效或沒有權限。")
-        return retry_screen(error="api", notice=f"出錯了：{str(e)[:300]}")
+        return retry_screen(error="api", notice=f"{hint}出錯了：{str(e)[:300]}")
 
     @staticmethod
     def _pick(raw: str, options: list[str]) -> str | None:

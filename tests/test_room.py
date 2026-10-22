@@ -193,6 +193,31 @@ async def test_game_end_returns_to_lobby(room, monkeypatch):
     assert room.core is None
 
 
+async def test_failed_timeout_round_restarts_the_countdown(isolated):
+    engine = TimedEngine()
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=engine))
+    room.path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
+    await room.start(room.path)
+    try:
+        host, guest = await start_story(room)
+        await host.reply()
+        await guest.reply()
+        engine.fail_with = RuntimeError("503 UNAVAILABLE")
+        for player in (host, guest):
+            await player.conn.send({"type": "ready"})
+        await host.expect(lambda m: m["type"] == "timer")
+        failed = await guest.reply(lambda r: r.error == "api")  # 時間到，推進失敗
+        assert failed.choices == ["小華往上爬", "小華躲起來"]  # 大家都要重新選
+        await host.expect(lambda m: m["type"] == "timer")  # 重新倒數
+        engine.fail_with = None
+        await host.send("1")
+        await guest.send("2")
+        await host.reply(lambda r: bool(r.narration))
+        assert engine.rounds == [{"阿明": "阿明往上爬", "小華": "小華躲起來"}]
+    finally:
+        await room.stop()
+
+
 class SlowOpeningEngine(FakePartyEngine):
     """開場分兩個階段、各花一點時間，模擬真的呼叫兩次 AI。"""
 
