@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 Severity = Literal["輕", "中", "重"]
 ConditionKind = Literal["身體", "精神"]
@@ -83,9 +83,24 @@ class StoryArc(BaseModel):
     """隱藏的故事大綱：AI 依照它推進劇情，程式依照它控制節奏。不顯示給玩家。"""
 
     goal: str = Field(description="主角在這個故事裡的核心目標或要解開的謎團，一句話")
-    acts: list[Act] = Field(description="剛好四幕：起（建立處境）、承（深入與阻礙）、轉（重大轉折）、合（高潮與結局）")
+    twist: str = Field(description="隱藏的真相：玩家一開始不知道、第三幕才揭露，會顛覆玩家對處境的理解。出人意料但合理，一句話")
+    clues: list[str] = Field(description="2-3 個伏筆：第一、二幕可以自然出現的細節，當下看似無關，事後回想都指向真相，各一句話")
+    acts: list[Act] = Field(description="剛好四幕：起（建立處境）、承（深入與阻礙）、轉（揭露隱藏的真相，里程碑就是揭露它）、合（高潮與結局）")
     endings: list[str] = Field(description="2-3 種可能的結局方向，依玩家的抉擇而定，各一句話")
-    genre: str = Field(default="", description="若有「題材目錄」：照抄最適合這個故事前提的題材名稱；都不適合或沒有目錄時留空")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _old_saves(cls, data):
+        """舊存檔的大綱沒有真相與伏筆：補空值，照常讀取（只是沒有轉折的提醒）。"""
+        if isinstance(data, dict):
+            data = {"twist": "", "clues": [], **data}
+        return data
+
+
+class GenrePick(BaseModel):
+    """玩家選「自動」題材時，AI 依故事前提挑一個。"""
+
+    genre: str = Field(description="照抄「題材目錄」裡最適合這個故事前提的題材名稱；都不適合就留空")
 
 
 class Epilogue(BaseModel):

@@ -1,18 +1,19 @@
 """題材包：讓喜歡設計故事的人不用改程式，就能加入新的題材。
 
 結構仿照 Agent Skills（Claude Code 的 skill）：每個題材一個資料夾，裡面一份 GENRE.md，
-開頭是設定欄位（name、description），後面是給 AI 的寫作指引；可以另外附 premises.md、names.md。
+開頭是設定欄位（name、description），後面是給 AI 的寫作指引；可以另外附 premises.md、names.md、twists.md。
 
     genres/
     └── wuxia/            資料夾用英文名稱；顯示的題材名稱是 GENRE.md 的 name（例如「武俠」）
         ├── GENRE.md      必要：設定欄位＋寫作指引
         ├── premises.md   選用：「幫我想」用的開頭靈感，一行一個
-        └── names.md      選用：人名、地名、組織名的素材，規劃大綱時參考
+        ├── names.md      選用：人名、地名、組織名的素材，規劃大綱時參考
+        └── twists.md     選用：轉折靈感，一行一個，規劃大綱時隨機抽幾則
 
 跟 skill 一樣漸進揭露，用到才載入：
-- 目錄（名稱＋描述）：開局規劃大綱時給 AI，請它依前提挑一個題材；玩家也可以自己指定
+- 目錄（名稱＋描述）：玩家選「自動」時，開局先給 AI 目錄，請它依前提挑一個題材；玩家也可以自己指定
 - 指引（GENRE.md 的內文）：選定後整局放在每回合的提示詞前段（固定不變，不影響快取）
-- 附屬檔案：只在特定那次呼叫載入，premises.md 給「幫我想」、names.md 給規劃大綱
+- 附屬檔案：只在特定那次呼叫載入，premises.md 給「幫我想」、names.md 給規劃大綱與開場、twists.md 給規劃大綱
 
 題材包放在兩個地方：內建的在 story/genres/（跟著專案），個人的在 ~/.config/story/genres/。name 相同時個人的優先。
 """
@@ -25,7 +26,7 @@ BUILTIN_DIR = Path(__file__).resolve().parent.parent / "genres"
 PERSONAL_DIR = Path.home() / ".config" / "story" / "genres"
 MAX_DESCRIPTION = 200  # 描述的字數上限：目錄每次規劃大綱都會整份送出
 MAX_GUIDE = 2000  # 寫作指引的字數上限：每回合都會送出，太長會拖慢、也會稀釋其他規則
-MAX_EXTRA = 2000  # premises.md、names.md 的字數上限
+MAX_EXTRA = 2000  # premises.md、names.md、twists.md 的字數上限
 
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n?(.*)\Z", re.S)
 
@@ -37,6 +38,7 @@ class Genre:
     guide: str  # GENRE.md 的內文：寫作指引
     premises: list[str] = field(default_factory=list)  # premises.md：開頭靈感
     names: str = ""  # names.md：命名素材
+    twists: list[str] = field(default_factory=list)  # twists.md：轉折靈感
     path: Path | None = None
 
 
@@ -69,16 +71,20 @@ def parse_genre(folder: Path) -> Genre:
         raise InvalidGenre("GENRE.md 沒有寫作指引")
     if len(guide) > MAX_GUIDE:
         raise InvalidGenre(f"寫作指引超過 {MAX_GUIDE} 字（目前 {len(guide)} 字）")
-    premises = _extra(folder / "premises.md")
-    names = _extra(folder / "names.md")
     return Genre(
         name=name,
         description=description,
         guide=guide,
-        premises=[line.strip().lstrip("-*").strip() for line in premises.splitlines() if line.strip().lstrip("-*").strip()],
-        names=names,
+        premises=_items(_extra(folder / "premises.md")),
+        names=_extra(folder / "names.md"),
+        twists=_items(_extra(folder / "twists.md")),
         path=folder,
     )
+
+
+def _items(text: str) -> list[str]:
+    """一行一個的清單，可以用 - 或 * 開頭。"""
+    return [item for line in text.splitlines() if (item := line.strip().lstrip("-*").strip())]
 
 
 def _extra(path: Path) -> str:

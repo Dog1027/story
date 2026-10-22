@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from story.core.engine import Engine
-from story.core.models import Condition, PartyBeat, StoryArc, StoryBeat
+from story.core.models import Condition, GenrePick, PartyBeat, StoryArc, StoryBeat
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +55,8 @@ def cond(name: str, severity: str, kind: str = "身體") -> dict:
 
 ARC = StoryArc(
     goal="查出鑰匙的主人",
+    twist="鑰匙的主人就是失憶前的你",
+    clues=["鑰匙上刻著你的生日", "管理員看到你時愣了一下"],
     acts=[
         {"name": "第一幕", "milestone": "找到地下室"},
         {"name": "第二幕", "milestone": "發現實驗紀錄"},
@@ -68,9 +70,9 @@ ARC = StoryArc(
 class FakeGemini:
     """假的 Gemini client：依照呼叫的 response_schema 回傳排好的結果，並記下送出的提示詞。"""
 
-    def __init__(self, beats=(), arc=ARC, summary="新的摘要", premise="AI 想的開頭"):
+    def __init__(self, beats=(), arc=ARC, summary="新的摘要", premise="AI 想的開頭", genre=""):
         self.beats = list(beats)
-        self.arc, self.summary, self.premise = arc, summary, premise
+        self.arc, self.summary, self.premise, self.genre = arc, summary, premise, genre
         self.prompts: list[str] = []
         self.models = SimpleNamespace(generate_content=self.generate_content)
 
@@ -81,6 +83,8 @@ class FakeGemini:
             return SimpleNamespace(parsed=self.beats.pop(0), candidates=[])
         if schema is StoryArc:
             return SimpleNamespace(parsed=self.arc)
+        if schema is GenrePick:
+            return SimpleNamespace(parsed=GenrePick(genre=self.genre))
         if schema is not None:  # Epilogue
             return SimpleNamespace(parsed=schema(title="燈塔守望者", text="多年以後，燈塔仍會亮起。"))
         if "傷重倒下的場景" in contents:

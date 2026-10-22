@@ -9,7 +9,7 @@ from google import genai
 from google.genai import types
 
 from story.core.genres import Genre, load_genres
-from story.core.models import Character, Condition, Epilogue, GameState, StoryArc, StoryBeat, Turn
+from story.core.models import Character, Condition, Epilogue, GameState, GenrePick, StoryArc, StoryBeat, Turn
 
 MODEL = "gemini-3.5-flash-lite"
 HISTORY_BUDGET = 20_000  # 劇情紀錄保留原文的字數上限；超過才把最舊的部分壓縮進摘要，一次壓到剩一半
@@ -17,6 +17,7 @@ KEEP_EVENTS, KEEP_FLAGS = 6, 12  # 重大事件、已確立的事實各保留最
 TARGET_TURNS = 30  # 故事預定長度（回合）；超過時只提醒 AI 收尾，不強制結束
 ACT_TURNS = TARGET_TURNS // 4  # 每一幕預計幾回合，待太久就提醒 AI 推進
 MIN_ACT_TURNS = 5  # 每一幕至少幾回合；還沒到時 AI 說里程碑達成也不推進，避免故事一下子就跑完
+TWIST_IDEAS = 3  # 規劃大綱時從題材包的 twists.md 隨機抽幾則轉折靈感
 MIN_ENDING_TURN = 20  # 最早第幾回合才接受 AI 宣告的結局（還要進到最後一幕）；因傷死亡不受限制
 MIN_TIME_LIMIT, MAX_TIME_LIMIT = 8, 60  # 限時模式的反應時間範圍（秒）
 MAX_CONDITION_LEN = 12  # 單一狀態最多幾個字，避免 LLM 寫成一整句
@@ -268,14 +269,37 @@ class Engine:
     # ---------- 對外介面 ----------
 
     def start(self, state: GameState) -> None:
-        """先規劃隱藏的故事大綱，再產生開場。要呼叫兩次 AI，比一般回合久，所以用 stage 告訴外殼進度。"""
+        """先規劃隱藏的故事大綱，再產生開場（題材選「自動」時，最前面再多一次挑題材）。
+        要呼叫好幾次 AI，比一般回合久，所以用 stage 告訴外殼進度。"""
         try:
+            if state.genre_pending and self.genres:
+                self.stage = "挑選題材"
+                self.pick_genre(state)
             self.stage = "規劃故事大綱"
             self.plan_arc(state)
             self.stage = "寫開場"
             self._advance(state, action=None)
         finally:
             self.stage = ""
+
+    def pick_genre(self, state: GameState) -> None:
+        """玩家選「自動」：給 AI 題材目錄，請它依故事前提挑一個。先挑好，規劃大綱時才用得上題材的指引與轉折靈感。"""
+        catalog = "\n".join(f"- {g.name}：{g.description}" for g in self.genres.values())
+        picked = ""
+        if catalog:
+            response = self._generate(
+                "題材",
+                model=MODEL,
+                contents=f"為這個互動文字冒險故事挑一個題材。\n# 故事前提\n{state.premise}\n\n# 題材目錄\n{catalog}",
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=GenrePick,
+                    thinking_config=types.ThinkingConfig(thinking_level="low"),
+                ),
+            )
+            if isinstance(response.parsed, GenrePick):
+                picked = response.parsed.genre.strip()
+        state.genre, state.genre_pending = (picked if picked in self.genres else ""), False  # 不在目錄裡（或留空）就不套用
 
     def plan_arc(self, state: GameState) -> None:
         """請 AI 規劃故事大綱。舊存檔沒有大綱時，依目前的劇情補一份，並依回合數決定從哪一幕接著走。"""
@@ -289,15 +313,19 @@ class Engine:
         cast = self._cast_section(state)
         prompt = (
             f"為這個互動文字冒險故事規劃大綱，預定約 {TARGET_TURNS} 回合。\n# 故事前提\n{state.premise}\n{cast}{situation}\n"
-            "里程碑要具體、可以判斷是否達成。結局方向要依玩家的抉擇而不同，不要只有逃脫成功。"
+            "里程碑要具體、可以判斷是否達成。結局方向要依玩家的抉擇而不同，不要只有逃脫成功。\n"
+            "先想好隱藏的真相（twist），第三幕的里程碑就是揭露它；再設計前兩幕能自然出現的伏筆（clues），"
+            "讓真相揭露時玩家回想起來覺得「原來如此」，而不是突然冒出來的。避免老套的「同伴背叛」「幕後還有黑手」，除非有新意。"
         )
-        if genre := self.genres.get(state.genre):  # 玩家指定了題材：大綱要符合題材
+        if state.genre_pending:
+            self.pick_genre(state)
+        if genre := self.genres.get(state.genre):  # 大綱要符合題材
             prompt += f"\n\n# 題材：{genre.name}\n{genre.guide}"
             if genre.names:
                 prompt += f"\n\n# 命名素材（可以參考，不必全用）\n{genre.names}"
-        elif state.genre_pending and self.genres:  # 玩家選「自動」：給 AI 目錄，請它依前提挑一個
-            catalog = "\n".join(f"- {g.name}：{g.description}" for g in self.genres.values())
-            prompt += f"\n\n# 題材目錄\n{catalog}\n挑一個最適合故事前提的題材，把名稱照抄在 genre；都不適合就留空。"
+            if genre.twists:  # 每局隨機抽幾則，同一個題材玩很多次也不會總是同一招
+                ideas = "\n".join(f"- {t}" for t in random.sample(genre.twists, min(TWIST_IDEAS, len(genre.twists))))
+                prompt += f"\n\n# 轉折靈感（挑一則改寫成適合這個故事的版本，或想出更好的；不要照抄）\n{ideas}"
         response = self._generate(
             "大綱",
             model=MODEL,
@@ -312,9 +340,6 @@ class Engine:
             return  # 規劃失敗就先不用大綱，下回合再試
         state.arc = response.parsed
         state.arc.acts = state.arc.acts[:4]
-        if state.genre_pending:  # AI 挑的題材不在目錄裡（或留空）就不套用
-            picked = state.arc.genre.strip()
-            state.genre, state.genre_pending = (picked if picked in self.genres else ""), False
         # 已經進行很久的故事：依回合數推估目前在哪一幕
         state.act, state.act_turns = min(3, state.turn // ACT_TURNS), 0
 
@@ -491,6 +516,8 @@ class Engine:
             mark = "→ 目前" if i == state.act else ("✓ 已完成" if i < state.act else "")
             lines.append(f"第{i + 1}幕「{act.name}」：{act.milestone} {mark}")
         lines.append("可能的結局：" + "；".join(arc.endings))
+        if arc.twist:
+            lines += self._twist_lines(arc, state.act)
 
         final = state.act == len(arc.acts) - 1
         if not final and state.act_turns + 1 < MIN_ACT_TURNS:
@@ -505,6 +532,19 @@ class Engine:
         elif state.act_turns >= ACT_TURNS:
             lines.append("節奏提醒：這一幕已經拖太久了。本回合就要出現轉折，明顯朝目前的里程碑推進。")
         return "# 故事進度（玩家看不到）\n" + "\n".join(lines)
+
+    @staticmethod
+    def _twist_lines(arc: StoryArc, act: int) -> list[str]:
+        """隱藏的真相：前兩幕只埋伏筆，第三幕揭露，之後當作已知的事。"""
+        clues = "\n".join(f"- {c}" for c in arc.clues)
+        if act < 2:
+            lines = [f"隱藏的真相（第三幕才揭露，在那之前不要說破，也不要暗示得太明顯）：{arc.twist}"]
+            if clues:
+                lines.append(f"伏筆（前兩幕找合適的時機自然帶到，一次一個，不要解釋它的意義）：\n{clues}")
+            return lines
+        if act == 2:
+            return [f"本幕要揭露隱藏的真相：{arc.twist}" + (f"\n揭露時呼應之前埋下的伏筆：\n{clues}" if clues else "")]
+        return [f"已揭露的真相：{arc.twist}"]
 
     def _generate(self, kind: str, **request):
         """所有 AI 呼叫都經過這裡：記下種類、花了幾秒與 Gemini 回報的 token 用量（送出、命中快取、輸出、思考），

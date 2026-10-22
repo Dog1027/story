@@ -297,6 +297,28 @@ def test_wrap_up_reminder_after_target_length():
     assert "超過預定的" in gemini.prompts[-1]
 
 
+def test_twist_is_foreshadowed_then_revealed_in_the_third_act():
+    """前兩幕只給真相與伏筆、叫 AI 不要說破；第三幕要揭露；最後一幕當作已知。"""
+    prompts = {}
+    for act in range(4):
+        engine, gemini = make_engine(beat())
+        engine.act(GameState(premise="x", turn=8, minutes=0, arc=ARC, act=act), "a")
+        prompts[act] = gemini.prompts[-1]
+    for act in (0, 1):
+        assert "在那之前不要說破" in prompts[act] and "- 鑰匙上刻著你的生日" in prompts[act]
+    assert "本幕要揭露隱藏的真相：鑰匙的主人就是失憶前的你" in prompts[2] and "呼應之前埋下的伏筆" in prompts[2]
+    assert "已揭露的真相" in prompts[3] and "伏筆" not in prompts[3]
+
+
+def test_old_save_arc_without_twist_still_loads():
+    old = ARC.model_dump(exclude={"twist", "clues"}) | {"genre": "武俠"}  # 舊版大綱還有 genre 欄位
+    state = GameState.model_validate({"premise": "x", "arc": old})
+    assert state.arc.twist == "" and state.arc.clues == []
+    engine, gemini = make_engine(beat())
+    engine.act(state, "a")
+    assert "隱藏的真相" not in gemini.prompts[-1]
+
+
 def test_old_save_gets_arc_and_jumps_to_matching_act():
     engine, gemini = make_engine(beat())
     state = GameState(premise="舊存檔", turn=109, minutes=0, summary="主角把證據交給媒體")

@@ -8,7 +8,7 @@ from story.core.models import GameState, Turn
 from story.core.records import DEFAULT_PREMISE
 
 
-def write_genre(root, folder, name="武俠", description="江湖恩怨", guide="用古白話。", premises="", names=""):
+def write_genre(root, folder, name="武俠", description="江湖恩怨", guide="用古白話。", premises="", names="", twists=""):
     path = root / folder
     path.mkdir(parents=True)
     (path / "GENRE.md").write_text(f"---\nname: {name}\ndescription: {description}\n---\n\n{guide}\n", encoding="utf-8")
@@ -16,13 +16,15 @@ def write_genre(root, folder, name="武俠", description="江湖恩怨", guide="
         (path / "premises.md").write_text(premises, encoding="utf-8")
     if names:
         (path / "names.md").write_text(names, encoding="utf-8")
+    if twists:
+        (path / "twists.md").write_text(twists, encoding="utf-8")
     return path
 
 
 def pack(**fields):
     from story.core.genres import Genre
 
-    base = dict(name="武俠", description="江湖恩怨", guide="用古白話，人物用名號稱呼。", premises=["你是鏢師。"], names="人名：沈青衣")
+    base = dict(name="武俠", description="江湖恩怨", guide="用古白話，人物用名號稱呼。", premises=["你是鏢師。"], names="人名：沈青衣", twists=["師父才是元兇"])
     return {"武俠": Genre(**{**base, **fields})}
 
 
@@ -36,12 +38,13 @@ def test_builtin_genres_are_all_valid():
 
 
 def test_genre_folder_is_parsed(tmp_path):
-    write_genre(tmp_path, "wuxia", premises="- 你是鏢師。\n- 你是捕快。\n", names="人名：沈青衣")
+    write_genre(tmp_path, "wuxia", premises="- 你是鏢師。\n- 你是捕快。\n", names="人名：沈青衣", twists="- 師父才是元兇\n\n* 秘笈是假的\n")
     genres, problems = load_genres([tmp_path])
     genre = genres["武俠"]
     assert problems == []
     assert genre.description == "江湖恩怨" and genre.guide == "用古白話。"
     assert genre.premises == ["你是鏢師。", "你是捕快。"] and genre.names == "人名：沈青衣"
+    assert genre.twists == ["師父才是元兇", "秘笈是假的"]
 
 
 def test_broken_genres_are_skipped_with_a_reason(tmp_path):
@@ -73,7 +76,8 @@ def test_chosen_genre_guide_sits_in_the_stable_part_of_the_prompt():
     state = GameState(premise="鏢局", genre="武俠")
     engine.start(state)
     arc_prompt, opening = gemini.prompts[0], gemini.prompts[1]
-    assert "用古白話" in arc_prompt and "題材目錄" not in arc_prompt  # 已經指定題材：大綱照題材規劃
+    assert "用古白話" in arc_prompt and "題材目錄" not in arc_prompt  # 已經指定題材：大綱照題材規劃，不用再挑
+    assert "# 轉折靈感" in arc_prompt and "師父才是元兇" in arc_prompt
     assert "命名素材" in opening and "沈青衣" in opening
     engine.act(state, "上路")
     prompt = gemini.prompts[-1]
@@ -81,21 +85,23 @@ def test_chosen_genre_guide_sits_in_the_stable_part_of_the_prompt():
     assert "命名素材" not in prompt
 
 
-def test_auto_genre_is_picked_by_ai_from_the_catalog():
-    engine, gemini = make_engine(beat(), arc=ARC.model_copy(update={"genre": "武俠"}), genres=pack())
+def test_auto_genre_is_picked_before_planning_the_arc():
+    engine, gemini = make_engine(beat(), genre="武俠", genres=pack())
     state = GameState(premise="鏢局", genre_pending=True)
     engine.start(state)
-    assert "# 題材目錄\n- 武俠：江湖恩怨" in gemini.prompts[0]
+    pick, arc_prompt, opening = gemini.prompts
+    assert "# 題材目錄\n- 武俠：江湖恩怨" in pick
     assert state.genre == "武俠" and not state.genre_pending
-    assert "用古白話" in gemini.prompts[1]  # 挑好之後，開場就用這個題材寫
+    assert "用古白話" in arc_prompt and "師父才是元兇" in arc_prompt  # 先挑好，大綱就能用上指引與轉折靈感
+    assert "用古白話" in opening
 
 
 def test_auto_genre_not_in_catalog_means_no_genre():
-    engine, gemini = make_engine(beat(), arc=ARC.model_copy(update={"genre": "太空歌劇"}), genres=pack())
+    engine, gemini = make_engine(beat(), genre="太空歌劇", genres=pack())
     state = GameState(premise="太空站", genre_pending=True)
     engine.start(state)
     assert state.genre == "" and not state.genre_pending
-    assert "# 題材：" not in gemini.prompts[1]
+    assert "# 題材：" not in gemini.prompts[1] and "# 轉折靈感" not in gemini.prompts[1]
 
 
 def test_suggest_premise_uses_the_genre_pack():
