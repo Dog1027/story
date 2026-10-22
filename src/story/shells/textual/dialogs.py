@@ -13,8 +13,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Select, Static, TextArea
 
 from story.core import GENRE_AUTO, GENRE_NONE, MAX_PLAYERS, Reply
-from story.shells.apikey import KEY_PATH
-from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
+from story.shells.client import KEY_PATH, MAX_NAME_LEN, InvalidName, check_name
 
 
 class Dialog(ModalScreen):

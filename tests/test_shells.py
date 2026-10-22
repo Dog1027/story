@@ -162,3 +162,21 @@ def test_shells_only_use_the_public_core_interface():
             if attribute not in public:
                 problems.append(f"{path.name}: core.{attribute} 不是公開介面")
     assert problems == []
+
+
+def test_interfaces_go_through_the_shared_client_layer():
+    """介面（Textual 等）只負責長相：不自己建立核心、不直接連房間、不呼叫核心的方法，流程一律交給共用層（client.py）。
+    這樣新增網頁等其他介面時，流程不用再寫一次。"""
+    from pathlib import Path
+
+    import story.shells.textual
+
+    problems = []
+    for path in sorted(Path(story.shells.textual.__file__).parent.rglob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        for name in ("StoryCore", "PartyCore", "RoomConnection", "story.shells.room", "story.shells.apikey", "story.shells.players"):
+            if name in source:
+                problems.append(f"{path.name}: 用到 {name}（應該交給共用層）")
+        if re.search(r"\bcore\.\w+", source):
+            problems.append(f"{path.name}: 直接呼叫核心")
+    assert problems == []

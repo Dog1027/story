@@ -41,7 +41,8 @@ src/story/
 │   ├── models.py        資料結構
 │   └── records.py       存讀檔、回合變化、結局紀錄
 └── shells/              外殼：只透過 story.core 的公開介面跟核心溝通
-    ├── textual/
+    ├── client.py        外殼共用層：跟真人互動的流程（各介面共用）
+    ├── textual/         終端機介面：只負責長相，流程交給 client.py
     │   ├── app.py       主畫面 StoryApp
     │   ├── dialogs.py   對話框
     │   ├── style.py     配色、打字節奏
@@ -56,7 +57,9 @@ src/story/
     └── prefs.py         偏好設定（配色主題）
 ```
 
-**相依的方向只有一個**：外殼 → `story.core`。核心不 import 任何外殼；外殼只用 `story.core` 匯出的名稱，不直接 import `engine`、`models` 這些內部模組。
+**相依的方向只有一個**：介面 → 共用層（`client.py`）→ `story.core`。核心不 import 任何外殼；外殼只用 `story.core` 匯出的名稱，不直接 import `engine`、`models` 這些內部模組。介面（`textual/`）不自己建立核心、不直接連房間，流程一律交給共用層。這兩條規則都有測試把關（`test_shells.py`）。
+
+新功能放哪裡：改變遊戲結果或事實 → 核心；改變真人看到的順序、時機、流程 → 共用層；改變長相 → 各介面。
 
 ### `__main__.py`：`python -m story` 的進入點
 
@@ -271,9 +274,27 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 
 ## 外殼 `shells/`
 
+### `shells/client.py`：外殼共用層
+
+跟真人玩家互動的流程，所有介面共用。核心只管「送文字進去、拿 `Reply` 出來」，沒有時間感；這一層負責「什麼時候顯示什麼」，介面只負責「長什麼樣子」。以後要做網頁等其他介面時，只要實作 `View`，流程不用再寫一次。
+
+| 名稱 | 做什麼 |
+|---|---|
+| `View` | 介面要實作的方法：故事區（`show_narration()`、`show_action()`、`show_changes()`、`wait_enter()`…）、選項與提示（`prepare_choices()`、`show_choices()`、`set_hint()`）、狀態列（`set_status()`、`show_lobby()`）、等待與倒數（`set_busy()`、`show_busy()`、`start_timer()`）、通知與對話框（`ask_premise()`、`ask_confirm()`、`ask_ending()`、`ask_name()`、`ask_api_key()`…） |
+| `Client.run()` | 開局：取得名字（網頁模式）與 API key，建立 `StoryCore`／`PartyCore`；線上多人時改成連到房間、收房間推來的訊息 |
+| `Client.act()`、`command()`、`timeout()` | 介面把玩家的輸入交給這裡：行動（先顯示在故事區）、指令、倒數到了 |
+| `send()`、`ask_core()` | 把一句文字送給核心（在背景執行緒，超過 `BUSY_DELAY` 才顯示「故事生成中…」）；key 無效時請玩家換 key 後重送 |
+| `handle()` | 依 `reply.phase` 決定要跳出哪個對話框、顯示劇情或結局 |
+| `show_turn()` | 先放好選項（看不見）→ 劇情 → 變化 → 選項出現 → 更新狀態列 → 開始倒數（線上多人改成告訴房間看完了） |
+| `show_ending()` | 按 Enter → 尾聲 → 按 Enter → 結局對話框（一段一段來，先讀完最後的劇情） |
+| `refresh_hint()`、`update_waiting()` | 輪到誰、還在等誰；線上多人有人行動時通知 |
+| `status_line()` | 把 `Status` 轉成狀態列要顯示的內容（`StatusLine`）：直接列出每個狀態與程度、重傷或瀕死時的警告、沒有狀態時是「良好」，只說程度不說顏色。背包不放在狀態列 |
+
+介面的對話框也會用到的規則（名字的檢查 `check_name()`、key 的存放位置 `KEY_PATH`）也從這裡取用。
+
 ### `shells/textual/`：Textual 外殼
 
-用 [Textual](https://textual.textualize.io/) 寫成的終端機介面。只負責顯示和輸入：把玩家的輸入轉成文字送給核心，再依照 `Reply` 的階段和欄位更新畫面。不呼叫 engine，也不碰 `GameState`。
+用 [Textual](https://textual.textualize.io/) 寫成的終端機介面，實作共用層的 `View`：只負責長相（版面、配色、打字效果、捲動、倒數條、按鍵），把玩家的輸入交給 `Client`。不建立核心、不連房間，也不碰 `GameState`。
 
 **`dialogs.py`：對話框**
 
@@ -292,15 +313,12 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 
 | 方法 | 做什麼 |
 |---|---|
-| `boot()` | 取得名字（網頁模式）與 API key，建立 `StoryCore`，顯示第一個回覆 |
-| `send()`、`ask_core()` | 把一句文字送給核心（在背景執行緒，超過 0.15 秒才顯示「故事生成中…」）；key 無效時請玩家換 key 後重送 |
-| `handle()` | 依 `reply.phase` 決定要跳出哪個對話框、顯示劇情或結局 |
-| `show_turn()` | 打字效果顯示劇情，打完才顯示變化摘要、更新狀態列、出現選項與倒數 |
-| `show_ending()` | 按 Enter → 尾聲 → 按 Enter → 結局對話框（一段一段來，先讀完最後的劇情） |
+| `typewrite()` | `show_narration()` 的打字效果：按 Enter 加速，再按一次全部顯示 |
+| `prepare_choices()`、`show_choices()` | 選項框和倒數條在打字前先佔好位置（看不見），打完才淡入，版面不會突然往上跳 |
 | `follow_log()`、`scroll_log()` | 故事區停在最底時，新內容出現就自動捲到最底；玩家往上捲（包括文字還在打的時候）就不跟，捲回最底再恢復。自己行動時一定捲到最底 |
-| `set_status()` | 用 `Reply.status` 畫狀態列：回合旁邊顯示模式，接著直接列出每個狀態（依程度上色，不分身體與精神），重傷或瀕死時加上警告，沒有狀態時顯示「良好」。背包不放在狀態列（變化會顯示在故事裡，完整內容用 `/state` 看） |
-| `start_timer()`、`tick()` | 限時倒數（開著對話框時暫停），時間到送 `/timeout` |
-| `submit()` | 處理輸入框：打字中按 Enter 加速、指令、數字選項、自由行動 |
+| `set_status()` | 畫共用層給的 `StatusLine`：回合旁邊顯示模式，接著列出每個狀態並依程度上色，警告醒目標出；放不下時換行，不會把一個狀態拆成兩行 |
+| `start_timer()`、`tick()` | 限時倒數條（開著對話框時暫停），時間到交給 `client.timeout()` |
+| `submit()` | 處理輸入框：等 Enter 繼續、打字中按 Enter 加速、介面的指令（`/help`、`/theme`…），其他交給 `client.act()`／`client.command()` |
 
 **輔助函式**：`describe_changes()`，把 `Reply.changes` 依語氣轉成彩色文字。
 
@@ -407,8 +425,9 @@ uv run pytest -m "not slow"    # 略過會啟動真的伺服器的測試（約 1
 | `test_room.py` | 線上多人的房間（真的 Unix socket）：不照順序行動、名字檢查與人數上限、遊戲中只有隊員能回來、只有房主能回答與重來、斷線重連與替離線的人行動、換房主、大家看完才倒數、結局回到大廳 |
 | `test_players.py` | 名字檢查、同名鎖定、接手異常中斷的鎖 |
 | `test_prose.py` | 中文換行：英文名字不造成提早換行、英文單字不拆開、標點不在行首、引號不留在行尾 |
+| `test_client.py` | 外殼共用層：用只記錄呼叫的假介面確認流程，不需要 Textual。開新故事先顯示前提、劇情顯示完才出現選項與狀態再開始倒數、結局一段一段出現、key 無效時換 key 重送、多人模式顯示輪到誰、狀態列的內容 |
 | `test_textual.py` | Textual 外殼：模擬按鍵跑完整流程，包括打字與狀態列時機、倒數與暫停、對話框方向鍵、結局、讀檔、網頁模式、透過房間的線上多人、窄畫面樣式 |
-| `test_shells.py` | 純文字外殼玩完整局；網頁殼（`slow`）：每個連線是獨立的遊戲、同時在線人數上限、線上多人時每個分頁進到同一個大廳、手機輸入列的送字方式不會重複中文字；頁面網址跟著瀏覽器的網址、頁面有手機支援 |
+| `test_shells.py` | 純文字外殼玩完整局；網頁殼（`slow`）：每個連線是獨立的遊戲、同時在線人數上限、線上多人時每個分頁進到同一個大廳、手機輸入列的送字方式不會重複中文字；頁面網址跟著瀏覽器的網址、頁面有手機支援；架構規則：外殼只用核心的公開介面、介面的流程一律交給共用層 |
 
 改了遊戲規則或流程後跑一次 `uv run pytest`，就能確認原本的功能沒有被弄壞。新增功能時，在對應的測試檔加上測試。
 
