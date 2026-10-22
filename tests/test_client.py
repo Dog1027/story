@@ -187,7 +187,7 @@ def test_status_line_warns_only_when_in_danger_and_hides_the_inventory():
     fine = status_line(Status(turn=3, level="受傷", body=[("疲勞", "中")], mind=[("恐懼", "輕")], inventory=["鑰匙"]), [], timed=False)
     assert fine.mode == "一般模式" and not fine.party
     assert fine.characters[0].warning == "" and fine.characters[0].items == [("疲勞", "中"), ("恐懼", "輕")]
-    danger = status_line(Status(turn=3, level="瀕死", body=[("失血", "重")], mind=[], inventory=[]), [], timed=True)
+    danger = status_line(Status(turn=3, level="瀕死", body=[("失血", "重")], mind=[], inventory=[], warning="瀕死"), [], timed=True)
     assert danger.characters[0].warning == "瀕死" and danger.mode == "限時模式"
     empty = status_line(Status(turn=1, level="良好", body=[], mind=[], inventory=[]), [], timed=False)
     assert empty.characters[0].items == [("良好", "良好")]

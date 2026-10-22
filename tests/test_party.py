@@ -4,7 +4,7 @@ import pytest
 from conftest import ARC, FakePartyEngine, InvalidKeyError, cond, make_engine, pbeat, upd
 
 from story.core import PartyCore
-from story.core.party import PartyEngine
+from story.core.party import AWAY_ACTION, PartyEngine
 from story.core.engine import TIMEOUT_ACTION
 from story.core.models import Character, GameState
 from story.core.records import ending_record, load
@@ -257,6 +257,18 @@ def test_resume_ignores_player_order(engine, isolated):
 
 
 # ---------- 線上多人：send_as 與 view ----------
+
+
+def test_away_is_an_action_whose_text_the_core_decides(core, engine):
+    """斷線的人由房間送出 /away：給 AI 的文字由核心決定，已經行動或倒下的人不能用它蓋掉行動。"""
+    core.start()
+    core.send("")
+    assert core.action_for("/away") == AWAY_ACTION
+    core.send_as("阿明", "1")
+    assert "已經行動" in core.send_as("阿明", "/away").notice
+    core.send_as("小華", "/away")
+    assert engine.rounds == [{"阿明": "阿明往上爬", "小華": AWAY_ACTION}]
+    assert "[背包]\n  阿明：" in core.send("/state").info[1]  # 每個人的背包
 
 
 def test_send_as_accepts_actions_in_any_order(core, engine):

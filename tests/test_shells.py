@@ -22,7 +22,7 @@ def test_plain_shell_plays_a_whole_story(monkeypatch, capsys):
     plain.main()
     out = capsys.readouterr().out
     assert "你在燈塔醒來。" in out
-    assert "回合 2｜狀態 受傷：小腿挫傷（中）" in out
+    assert "回合 2｜狀態 小腿挫傷（中）" in out
     assert "─── 燈塔守望者 ───" in out
     assert "已存檔，下次見。" in out
 

@@ -110,6 +110,15 @@ def body_score(who: Holder) -> int:
     return sum(SEVERITY_POINTS[c.severity] for c in body_conditions(who))
 
 
+WARNING_LEVELS = ("重傷", "瀕死")  # 整體狀態到這個程度要警告玩家：再受傷就有生命危險
+
+
+def warning_level(who: Holder) -> str:
+    """要警告玩家的整體狀態（重傷、瀕死），不危險時是空字串。"""
+    level = body_level(who)
+    return level if level in WARNING_LEVELS else ""
+
+
 def body_level(who: Holder) -> str:
     """整體狀態看最嚴重的那一項：有重傷才算重傷（或多處中傷累積），只有輕微狀態就是輕傷。"""
     score = body_score(who)

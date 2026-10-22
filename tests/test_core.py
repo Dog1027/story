@@ -82,7 +82,7 @@ def test_choosing_by_number_and_reply_fields(core):
     assert reply.status.turn == 2 and reply.status.level == "受傷"
     assert reply.status.body == [("小腿挫傷", "中")]
     assert reply.changes == [("新增", [("小腿挫傷（中）", "中")]), ("獲得", [("油燈", "plain")])]
-    assert "回合 2｜狀態 受傷：小腿挫傷（中）" in reply.text
+    assert "回合 2｜狀態 小腿挫傷（中）" in reply.text
 
 
 def test_free_text_action(core, engine):
@@ -113,9 +113,23 @@ def test_info_commands_do_not_advance_the_story(core):
     new_game(core)
     reply = core.send("/state")
     assert reply.info[0] == "程式記住的東西" and reply.narration == ""
+    assert "[背包]\n  鑰匙" in reply.info[1]  # 狀態列不顯示背包，完整內容在這裡
     assert reply.choices == ["往上爬", "檢查鑰匙"]
     assert core.send("/help").info[0] == "說明"
     assert core.state.turn == 1
+
+
+def test_status_warns_only_when_the_next_wound_could_kill(core):
+    """哪些程度要警告是遊戲規則（跟死亡門檻一起定義在核心），外殼直接使用 Status.warning。"""
+    from story.core.models import Condition
+
+    new_game(core)
+    assert core.send("/state").status.warning == ""
+    core.state.conditions = [Condition(name="失血", kind="身體", severity="重")]
+    reply = core.send("/state")
+    assert reply.status.level == "重傷" and reply.status.warning == "重傷"
+    core.state.conditions = [Condition(name="疲勞", kind="身體", severity="中"), Condition(name="恐懼", kind="精神", severity="重")]
+    assert core.send("/state").status.warning == ""  # 中度的疲勞、精神狀態都不會致命
 
 
 def test_unknown_command_and_empty_input_while_playing(core):

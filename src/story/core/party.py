@@ -8,6 +8,7 @@ PartyEngine 繼承單人的 Engine，PartyCore 繼承單人的 StoryCore，只�
 - 所有還活著的角色都輸入後，才呼叫 AI 寫這一回合
 - reply.party 是每位角色的狀態，reply.party_changes 是每位角色這回合的變化
 - /timeout 會把還沒行動的人都當作「時間到」，直接推進這一回合
+- /away 是這位角色暫時離開（例如線上多人斷線），這回合不行動；給 AI 的文字是 AWAY_ACTION
 
 同一台電腦輪流輸入時用 send()，照隊伍順序收行動；線上多人用 send_as(名字, 文字)，誰先送誰先記，
 再用 view(名字) 取得某位玩家眼中的畫面（自己的選項）。
@@ -34,6 +35,7 @@ from story.core.engine import (
     clock_text,
     ending_allowed,
     mind_conditions,
+    warning_level,
 )
 from story.core.models import Character, GameState, PartyBeat
 from story.core.records import change_groups, snapshot
@@ -64,6 +66,7 @@ PARTY_SYSTEM_PROMPT = """你是一個多人互動式文字冒險遊戲的敘事�
 PARTY_SAVE_PATH = Path("party_save.json")
 PARTY_LOG_PATH = Path("party_log.jsonl")
 MAX_PLAYERS = 4
+AWAY_ACTION = "（暫時離開了，這回合沒有行動）"  # /away：角色暫時不在（線上多人斷線時由房間送出），這句會寫進劇情紀錄給 AI
 
 
 class PartyEngine(Engine):
@@ -213,6 +216,11 @@ class PartyCore(StoryCore):
         actor = self._actor()
         return actor.choices if actor else []
 
+    def action_for(self, text: str) -> str | None:
+        if text.strip() == "/away" and self._phase == "playing":
+            return AWAY_ACTION
+        return super().action_for(text)
+
     def _take_action(self, action: str, timeout: bool) -> Reply:
         """記下這位角色的行動；所有人都行動後才推進一回合。時間到時，還沒行動的人都算遲疑。"""
         if timeout:
@@ -273,7 +281,7 @@ class PartyCore(StoryCore):
 
     def send_as(self, name: str, text: str) -> Reply:
         """以某位角色的身分送出輸入，不用照隊伍順序。遊戲中以外的階段（前提、確認……）等同 send()。"""
-        if self._phase == "playing" and not text.strip().startswith("/"):
+        if self._phase == "playing" and (not text.strip().startswith("/") or text.strip() == "/away"):  # 行動才要檢查
             character = next((c for c in self.state.party if c.name == name), None)
             if character is None or not character.alive:
                 return self._reply(notice="你的角色已經倒下了。", **self._screen())
@@ -326,4 +334,5 @@ def _character_status(turn: int, c: Character) -> Status:
         inventory=list(c.inventory),
         name=c.name,
         alive=c.alive,
+        warning=warning_level(c) if c.alive else "",
     )

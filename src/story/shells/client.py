@@ -22,7 +22,6 @@ from story.shells.room import START, RoomConnection
 # 介面的對話框也會用到的規則（名字怎樣才能用、key 存在哪裡），一律從這裡取用
 __all__ = ["KEY_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "InvalidName", "StatusLine", "View", "check_name", "status_line"]
 
-WARNING_LEVELS = ("重傷", "瀕死")  # 整體狀態到這個程度才在狀態列警告：再受傷就有生命危險
 BUSY_DELAY = 0.15  # 核心超過這麼久還沒回覆才顯示「故事生成中」，很快的回覆就不閃一下
 
 
@@ -54,7 +53,7 @@ def character_line(status: Status) -> CharacterLine:
     return CharacterLine(
         name=status.name,
         alive=status.alive,
-        warning=status.level if status.level in WARNING_LEVELS else "",
+        warning=status.warning,  # 哪些程度要警告是遊戲規則，由核心判斷
         items=items or [("良好", "良好")],
     )
 

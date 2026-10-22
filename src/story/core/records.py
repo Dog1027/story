@@ -34,7 +34,12 @@ def load(path: Path = SAVE_PATH) -> GameState | None:
 
 def memory_text(state: GameState) -> str:
     events = "\n".join(f"  - {e}" for e in state.key_events) or "  （無）"
+    if state.party:
+        bags = "\n".join(f"  {c.name}：{'、'.join(c.inventory) or '空'}" for c in state.party)
+    else:
+        bags = f"  {'、'.join(state.inventory) or '空'}"
     return (
+        f"[背包]\n{bags}\n\n"
         f"[已確立的事實]\n  {'、'.join(state.flags) or '無'}\n\n"
         f"[重大事件]\n{events}\n\n"
         f"[長期摘要]\n  {state.summary or '（尚無）'}\n\n"

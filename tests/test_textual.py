@@ -398,7 +398,7 @@ async def test_status_lists_conditions_and_warns_only_when_in_danger():
         app.set_status(status_line(Status(turn=3, level="受傷", body=[("疲勞", "中")], mind=[("恐懼", "輕")], inventory=["鑰匙"]), [], timed=False))
         line = status_text(app)
         assert "疲勞 · 恐懼" in line and "受傷" not in line and "⚠" not in line and "鑰匙" not in line
-        app.set_status(status_line(Status(turn=3, level="瀕死", body=[("失血", "重")], mind=[], inventory=[]), [], timed=False))
+        app.set_status(status_line(Status(turn=3, level="瀕死", body=[("失血", "重")], mind=[], inventory=[], warning="瀕死"), [], timed=False))
         assert "⚠ 瀕死 · 失血" in status_text(app)
         app.set_status(status_line(Status(turn=3, level="良好", body=[], mind=[], inventory=[]), [], timed=False))
         assert "狀態 良好" in status_text(app)
@@ -493,7 +493,7 @@ async def test_party_status_columns_line_up():
     from story.core.session import Status
 
     party = [
-        Status(turn=7, level="重傷", body=[("右臂撕裂傷", "重"), ("小腿挫傷", "中")], mind=[("恐懼", "中"), ("失眠", "輕")], inventory=["鑰匙"], name="阿民"),
+        Status(turn=7, level="重傷", body=[("右臂撕裂傷", "重"), ("小腿挫傷", "中")], mind=[("恐懼", "中"), ("失眠", "輕")], inventory=["鑰匙"], name="阿民", warning="重傷"),
         Status(turn=7, level="良好", body=[], mind=[], inventory=[], name="10快快俠"),
     ]
 

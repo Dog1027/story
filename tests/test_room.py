@@ -9,7 +9,8 @@ from conftest import FakePartyEngine
 
 import story.shells.room as room_module
 from story.core import PartyCore, Reply
-from story.shells.room import OFFLINE_ACTION, Room, RoomConnection
+from story.core.party import AWAY_ACTION
+from story.shells.room import Room, RoomConnection
 
 
 class Player:
@@ -142,7 +143,7 @@ async def test_disconnected_players_rejoin_or_are_skipped(room):
     await host.expect(lambda m: m["type"] == "notice" and "小華 離線了" in m["text"])
     await host.send("1")  # 在線的人都行動了：替離線的小華送出「暫時離開」
     await host.reply(lambda r: bool(r.narration))
-    assert room.engine.rounds == [{"阿明": "阿明往上爬", "小華": OFFLINE_ACTION}]
+    assert room.engine.rounds == [{"阿明": "阿明往上爬", "小華": AWAY_ACTION}]
 
 
 async def test_host_leaving_passes_the_dialog_to_the_next_player(room):

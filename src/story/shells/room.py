@@ -34,7 +34,6 @@ from story.core import MAX_PLAYERS, PartyCore, Reply
 from story.shells.players import SAVES_DIR, InvalidName, check_name
 
 START = "開始遊戲"
-OFFLINE_ACTION = "（暫時離開了，這回合沒有行動）"
 READY_WAIT = 90  # 等大家看完劇情最多幾秒，超過就直接開始倒數
 TIMEOUT_GRACE = 1  # 倒數結束後多等一下，抵銷網路延遲
 LINE_LIMIT = 2**20
@@ -236,7 +235,7 @@ class Room:
             return
         waiting = self.core.waiting()
         if waiting and not any(self.members[n].online for n in waiting if n in self.members):
-            await self._act(waiting[0], OFFLINE_ACTION)
+            await self._act(waiting[0], "/away")  # 給 AI 的文字由核心決定
 
     async def _call(self, fn: Callable[[], Reply], busy: bool = False) -> Reply:
         """在背景執行緒呼叫核心（可能會呼叫 AI，要花幾秒）。busy 時讓大家看到「故事生成中」。"""

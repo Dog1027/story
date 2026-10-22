@@ -139,7 +139,7 @@ src/story/
 
 **套用規則的函式**（單人、多人共用，單人傳 `GameState`、多人傳 `Character`）：`advance_clock()`、`apply_condition_changes()`、`apply_items()`、`apply_story_progress()`、`clamp_time_limit()`。
 
-**計算規則的函式**：`clock_text()`（遊戲內時間的文字）、`body_score()`、`body_level()`（傷勢分數與整體狀態，只算身體狀態）、`body_conditions()`、`mind_conditions()`、`is_key_error()`（判斷 Gemini 錯誤是不是 key 無效）、`new_client()`（建立 Gemini client：每次請求有逾時，逾時或伺服器忙時自動重送）。
+**計算規則的函式**：`clock_text()`（遊戲內時間的文字）、`body_score()`、`body_level()`（傷勢分數與整體狀態，只算身體狀態）、`warning_level()`（整體狀態是 `WARNING_LEVELS`（重傷、瀕死）時要警告玩家：再受傷就有生命危險）、`body_conditions()`、`mind_conditions()`、`is_key_error()`（判斷 Gemini 錯誤是不是 key 無效）、`new_client()`（建立 Gemini client：每次請求有逾時，逾時或伺服器忙時自動重送）。
 
 **可以調整的常數**（都在檔案開頭）
 
@@ -192,7 +192,7 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 | `text` | 完整的純文字 |
 | `narration` | 這次產生（或讀檔重新顯示）的劇情；沒有新劇情時是空字串 |
 | `choices` | 選項 |
-| `status` | 狀態列資料（`Status`）：回合、整體狀態、身體、精神、背包 |
+| `status` | 狀態列資料（`Status`）：回合、整體狀態、身體、精神、背包，以及要不要警告（`warning`：重傷、瀕死，由核心判斷） |
 | `changes` | 這回合的變化：新增、惡化、好轉、痊癒、獲得、失去 |
 | `time_limit` | 限時秒數，0 代表不限時 |
 | `notice` | 簡短的系統訊息 |
@@ -211,6 +211,7 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 | 任意文字、空白 | 等前提時 | 故事前提；空白使用預設（或剛才 `/suggest` 想出來的） |
 | `/suggest`、`/timed on`、`/timed off` | 等前提時 | 讓 AI 想開頭、切換限時模式 |
 | `/timeout` | 遊戲中 | 外殼的倒數時間到了 |
+| `/away` | 遊戲中（多人） | 這位角色暫時離開、這回合不行動（線上多人替斷線的人送出）。給 AI 的文字是 `AWAY_ACTION`，跟 `/timeout` 的 `TIMEOUT_ACTION` 一樣由核心決定 |
 | `/restart` | 遊戲中、結束後 | 重新開始（遊戲中會先確認） |
 | `/state`、`/help` | 任何時候 | 記憶、說明 |
 
@@ -267,7 +268,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 | `save()`、`load()` | 存讀存檔（終端機版 `save.json`，網頁版由 `players.py` 指定路徑）。存檔是**原子性寫入**：先寫暫存檔再一次換上去，背景壓縮記憶時同時存檔、或寫到一半被關掉，都不會讀到壞掉的存檔 |
 | `snapshot()`、`change_groups()` | 比較回合前後，列出「新增／惡化／好轉／痊癒／獲得／失去」（放進 `Reply.changes`）。每個項目帶的是**語氣**（`輕`／`中`／`重`／`good`／`bad`／`plain`／`muted`），不是顏色，由外殼決定怎麼呈現 |
 | `ending_record()` | 結局的旅程紀錄（回合數、天數、重大事件） |
-| `memory_text()` | 「程式記住的東西」顯示的內容 |
+| `memory_text()` | 「程式記住的東西」（`/state`）顯示的內容：背包（多人時每個人的）、事實、重大事件、摘要 |
 | `DEFAULT_PREMISE` | 預設的故事前提 |
 
 ---
@@ -288,7 +289,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 | `show_turn()` | 先放好選項（看不見）→ 劇情 → 變化 → 選項出現 → 更新狀態列 → 開始倒數（線上多人改成告訴房間看完了） |
 | `show_ending()` | 按 Enter → 尾聲 → 按 Enter → 結局對話框（一段一段來，先讀完最後的劇情） |
 | `refresh_hint()`、`update_waiting()` | 輪到誰、還在等誰；線上多人有人行動時通知 |
-| `status_line()` | 把 `Status` 轉成狀態列要顯示的內容（`StatusLine`）：直接列出每個狀態與程度、重傷或瀕死時的警告、沒有狀態時是「良好」，只說程度不說顏色。背包不放在狀態列 |
+| `status_line()` | 把 `Status` 轉成狀態列要顯示的內容（`StatusLine`）：直接列出每個狀態與程度、核心判斷的警告（`Status.warning`）、沒有狀態時是「良好」，只說程度不說顏色。背包不放在狀態列（完整內容用 `/state` 看） |
 
 介面的對話框也會用到的規則（名字的檢查 `check_name()`、key 的存放位置 `KEY_PATH`）也從這裡取用。
 
@@ -380,7 +381,7 @@ textual-serve 讓每個分頁都是獨立的遊戲程序，彼此不共用資料
 | `RoomConnection` | 遊戲程序這一端：連到房間、收發訊息 |
 
 - **房主**：第一位加入的人。只有房主能回答「接續存檔、故事前提、確認重新開始」；房主離線時交給下一位在線的玩家，並重送正在等的對話框
-- **斷線**：遊戲中斷線的人保留角色，用同一個名字回來會看到目前這回合。在線的人都行動了、只剩離線的人時，替他們送出「暫時離開」
+- **斷線**：遊戲中斷線的人保留角色，用同一個名字回來會看到目前這回合。在線的人都行動了、只剩離線的人時，替他們送出 `/away`（給 AI 的「暫時離開」文字由核心決定）
 - **限時**：倒數由房間負責。新劇情送出後，等每個人回報看完（`ready`）才開始倒數，最多等 `READY_WAIT` 秒；時間到由房間送出 `/timeout`，玩家不能自己送
 - 一次只處理一則輸入（`lock`），核心不會被同時呼叫；會呼叫 AI 的輸入在背景執行緒執行，並讓大家看到「故事生成中」
 

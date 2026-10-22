@@ -16,7 +16,7 @@ from typing import Literal
 from google.genai import errors
 
 from story.core.records import DEFAULT_PREMISE, SAVE_PATH, ChangeGroups, change_groups, ending_record, load, memory_text, save, snapshot
-from story.core.engine import LOG_PATH, TIMEOUT_ACTION, Engine, body_conditions, body_level, is_key_error, mind_conditions
+from story.core.engine import LOG_PATH, TIMEOUT_ACTION, Engine, body_conditions, body_level, is_key_error, mind_conditions, warning_level
 from story.core.models import GameState
 
 Phase = Literal[
@@ -59,6 +59,7 @@ class Status:
     inventory: list[str]
     name: str = ""  # 多人模式：角色名字
     alive: bool = True  # 多人模式：角色是否還活著
+    warning: str = ""  # 要警告玩家的整體狀態（重傷、瀕死：再受傷就有生命危險）；不危險時是空字串
 
 
 @dataclass
@@ -393,6 +394,7 @@ class StoryCore:
             body=[(c.name, c.severity) for c in body_conditions(s)],
             mind=[(c.name, c.severity) for c in mind_conditions(s)],
             inventory=list(s.inventory),
+            warning=warning_level(s),
         )
 
     def _reply(self, **fields) -> Reply:
@@ -429,27 +431,18 @@ class StoryCore:
 # ---------- 純文字版的回覆 ----------
 
 
+def conditions_text(status: Status) -> str:
+    """狀態直接列出，不分身體與精神；危險時先警告。背包的變化會寫在每回合的變化裡，完整內容用 /state 看。"""
+    items = "、".join(f"{n}（{v}）" for n, v in status.body + status.mind) or "良好"
+    return f"⚠ {status.warning}　{items}" if status.warning else items
+
+
 def status_line(status: Status, timed: bool) -> str:
-    parts = [f"回合 {status.turn}", f"狀態 {status.level}"]
-    if status.body:
-        parts[-1] += "：" + "、".join(f"{n}（{v}）" for n, v in status.body)
-    if status.mind:
-        parts.append("精神 " + "、".join(f"{n}（{v}）" for n, v in status.mind))
-    parts.append("背包 " + ("、".join(status.inventory) or "空"))
-    if timed:
-        parts.append("限時模式")
-    return "｜".join(parts)
+    return f"回合 {status.turn}{'（限時模式）' if timed else ''}｜狀態 {conditions_text(status)}"
 
 
 def party_line(status: Status) -> str:
-    if not status.alive:
-        return f"{status.name}｜已倒下"
-    line = f"{status.name}｜{status.level}"
-    if status.body:
-        line += "：" + "、".join(f"{n}（{v}）" for n, v in status.body)
-    if status.mind:
-        line += "｜精神 " + "、".join(f"{n}（{v}）" for n, v in status.mind)
-    return line + "｜背包 " + ("、".join(status.inventory) or "空")
+    return f"{status.name}｜{conditions_text(status) if status.alive else '已倒下'}"
 
 
 def changes_line(groups: ChangeGroups) -> str:
