@@ -47,7 +47,7 @@ def test_dying_scenario_passes_when_the_wound_is_fatal(monkeypatch, capsys):
 
 def test_every_genre_pack_has_a_tone_scenario():
     found = evals.scenarios(evals.load_genres()[0])
-    assert {"opening", "early", "reveal", "agency", "reckless", "dying", "武俠"} <= set(found)
+    assert {"opening", "early", "reveal", "agency", "reckless", "dying", "judge", "武俠"} <= set(found)
 
 
 def test_unknown_scenario_lists_the_choices(monkeypatch, capsys):
@@ -69,3 +69,10 @@ def test_throttle_waits_out_the_rate_limit_and_retries(monkeypatch):
         return "ok"
 
     assert evals.Throttle(60_000).call(send) == "ok" and len(calls) == 2 and 12.5 in slept
+
+
+def test_judge_calibration_expects_bad_samples_to_fail(monkeypatch, capsys):
+    """一律判通過的評審：沒問題的範例過關，故意寫壞的範例全部被抓出來。"""
+    out = run(monkeypatch, capsys, ["judge", "--runs", "1"])
+    assert "✓ 沒問題的劇情判通過（不替玩家做決定）  1/1" in out
+    assert "✗ 識破替玩家做決定  0/1" in out and "✗ 識破文風不符題材  0/1" in out

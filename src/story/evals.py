@@ -4,6 +4,7 @@
 
     just eval                  全部情境，各跑 3 次
     just eval reveal agency    只跑這兩個情境
+    just eval judge            只檢查評審：故意寫壞的劇情它判不判得出來
     just eval --runs 5         各跑 5 次（AI 每次寫的不一樣，次數多比較準）
     just eval --rpm 60         每分鐘最多呼叫 60 次（付費方案可以調高，跑比較快）
 
@@ -133,7 +134,8 @@ class Trial:
     def check(self, name: str, passed: bool, detail: str = "") -> None:
         self.checks.append(Check(name, bool(passed), detail))
 
-    def judge(self, name: str, section: str, **values) -> None:
+    def judge(self, name: str, section: str, expect: bool = True, **values) -> None:
+        """請評審依 eval.md 的標準判斷。expect=False 用在故意寫壞的範例：評審判不通過，這項檢查才算通過。"""
         response = self.engine.client.models.generate_content(
             model=JUDGE_MODEL,
             contents=EVAL[section].format(**values),
@@ -146,7 +148,7 @@ class Trial:
         )
         verdict = response.parsed
         if isinstance(verdict, Verdict):
-            self.check(name, verdict.passed, verdict.reason)
+            self.check(name, verdict.passed == expect, verdict.reason)
         else:
             self.check(name, False, "評審沒有回傳結果")
 
@@ -243,7 +245,56 @@ def tone(genre: Genre) -> Callable[[Trial], GameState]:
     return run
 
 
-def scenarios(genres: dict[str, Genre]) -> dict[str, tuple[str, Callable[[Trial], GameState]]]:
+# 給評審的範例：故意寫壞的（評審要判不通過）與沒問題的（要判通過）。評審若把壞的都放過，其他情境的「通過」就不可信
+AGENCY_ACTION = "照著日誌打出燈號回應"
+AGENCY_BAD = (
+    "你舉起油燈，照著日誌打出三長一短的燈號。你心想，這下終於有人會來救你了，心中湧起一陣安心。"
+    "你決定下樓到碼頭等他們，順手把日誌塞進懷裡，對著空蕩的燈室說：「我一定會回來的。」"
+)
+AGENCY_GOOD = (
+    "你舉起油燈，照著日誌打出三長一短的燈號。海上的那盞燈熄了片刻，接著回了兩短一長，像是在確認什麼。"
+    "樓下傳來門閂被拉開的聲音，有人踩著濕透的靴子，一步一步往樓上走來。"
+)
+EARLY_ACTION = "把日誌丟進海裡，搭上岸邊的小船離開這座島，從此不再回來"
+EARLY_BAD = (
+    "你把日誌拋進翻湧的浪裡，划著小船離開了小島。燈塔的光在身後越來越小，終於消失在海平線上。"
+    "多年以後，你在遙遠的港口安頓下來，再也沒有想起那一夜。你的故事，就這樣畫下了句點。"
+)
+EARLY_GOOD = (
+    "你把日誌拋進浪裡，解開纜繩跳上小船。才划出不到百尺，船底就傳來木頭碎裂的聲音，海水從裂縫湧進來。"
+    "回頭望去，燈室的窗邊站著一個人影，正舉著燈，朝你打出三長一短的燈號。"
+)
+OPENING_BAD = (
+    "暴風雨拍打著燈塔，你在底層醒來，手裡握著一把生鏽的鑰匙。地板下傳來咳嗽聲。"
+    "你很快就會發現，鎮上傳說失蹤的守夜人其實根本沒有失蹤，他一直躲在燈塔底下的密室裡，守著一個不能讓任何人知道的秘密。"
+)
+REVEAL_BAD = (
+    "你走下石階，密室裡空無一人，只有一盞還溫熱的油燈和一張翻倒的椅子。牆上刻滿了三長一短的記號。"
+    "咳嗽聲不知何時停了，你覺得自己離真相只差一步，卻怎麼也想不透這一切代表什麼。"
+)
+TONE_BAD = (
+    "你掏出手機看了一眼導航，距離悅來客棧還有三公里。「OK，先去吃個飯再說。」你對師兄比了個讚。"
+    "客棧門口停著一排共享單車，店小二正低頭滑著平板點餐。"
+)
+
+
+def calibration(genres: dict[str, Genre]) -> Callable[[Trial], None]:
+    def run(t: Trial) -> None:
+        clues = "\n".join(f"- {c}" for c in ARC.clues)
+        t.judge("識破替玩家做決定", "agency", expect=False, action=AGENCY_ACTION, narration=AGENCY_BAD)
+        t.judge("沒問題的劇情判通過（不替玩家做決定）", "agency", action=AGENCY_ACTION, narration=AGENCY_GOOD)
+        t.judge("識破寫成結局", "no_ending", expect=False, action=EARLY_ACTION, narration=EARLY_BAD, choices="")
+        t.judge("沒問題的劇情判通過（故事繼續）", "no_ending", action=EARLY_ACTION, narration=EARLY_GOOD,
+                choices="游回岸邊\n抓住漂來的木板")
+        t.judge("識破開場說破真相", "twist_hidden", expect=False, twist=ARC.twist, narration=OPENING_BAD)
+        t.judge("識破只是暗示、沒有揭露", "reveal", expect=False, twist=ARC.twist, clues=clues, narration=REVEAL_BAD)
+        if wuxia := genres.get("武俠"):
+            t.judge("識破文風不符題材", "tone", expect=False, genre=wuxia.name, guide=wuxia.guide, narration=TONE_BAD)
+
+    return run
+
+
+def scenarios(genres: dict[str, Genre]) -> dict[str, tuple[str, Callable[[Trial], GameState | None]]]:
     """{代號: (說明, 情境)}。每個題材包各有一個情境，代號就是題材名稱。"""
     found = {
         "opening": ("開場：規劃大綱，開場不說破真相", opening),
@@ -252,6 +303,7 @@ def scenarios(genres: dict[str, Genre]) -> dict[str, tuple[str, Callable[[Trial]
         "agency": ("一般回合：不替玩家決定行動或感受", agency),
         "reckless": ("魯莽的行動：要付出代價", reckless),
         "dying": ("瀕死還冒險：會死", dying),
+        "judge": ("評審：故意寫壞的劇情要判不通過，沒問題的要判通過", calibration(genres)),
     }
     for name, genre in genres.items():
         found[name] = (f"題材「{name}」的開場：文風符合題材指引", tone(genre))
@@ -261,12 +313,14 @@ def scenarios(genres: dict[str, Genre]) -> dict[str, tuple[str, Callable[[Trial]
 # ---------- 執行與報告 ----------
 
 
-def attempt(scenario: Callable[[Trial], GameState], client, genres: dict[str, Genre], log_path: Path) -> Run:
+def attempt(scenario: Callable[[Trial], GameState | None], client, genres: dict[str, Genre], log_path: Path) -> Run:
     trial = Trial(client, genres, log_path)
     try:
         state = scenario(trial)
     except Exception as e:  # 一次失敗不影響其他次，報告裡列出來
         return Run(checks=trial.checks, error=str(e)[:200])
+    if state is None:  # 只檢查評審，沒有寫劇情
+        return Run(checks=trial.checks)
     return Run(state.current_narration, state.current_choices, trial.checks)
 
 
