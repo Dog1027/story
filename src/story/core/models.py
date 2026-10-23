@@ -28,8 +28,10 @@ class Condition(BaseModel):
 
 
 class StoryBeat(BaseModel):
-    """LLM 每回合必須回傳的結構。程式會驗證後才套用到狀態。"""
+    """LLM 每回合必須回傳的結構。程式會驗證後才套用到狀態。
+    欄位順序就是 AI 輸出的順序：先決定是不是結局，接著是劇情（串流時邊收邊顯示），其他變化最後由程式驗證後套用。"""
 
+    game_over: bool = Field(description="寫劇情之前先決定：故事是否在本回合結束（死亡、達成結局等）")
     narration: str = Field(description="本回合的劇情敘述，第二人稱，150-300 字")
     choices: list[str] = Field(description="給玩家的 2-4 個行動選項，每個一句話")
     conditions_changed: list[ConditionChange] = Field(description="新出現的狀態，或程度改變的既有狀態")
@@ -44,7 +46,6 @@ class StoryBeat(BaseModel):
     items_lost: list[str] = Field(description="玩家本回合失去或用掉的物品名稱")
     flags_set: list[str] = Field(description="新確立的長期事實，例如「與守門人結仇」；通常為空")
     key_event: str = Field(description="改變故事走向的大事，一句話；大多數回合為空字串")
-    game_over: bool = Field(description="故事是否在本回合結束（死亡、達成結局等）")
 
 
 class CharacterUpdate(BaseModel):
@@ -59,8 +60,9 @@ class CharacterUpdate(BaseModel):
 
 
 class PartyBeat(BaseModel):
-    """多人模式每回合的回傳：一段包含所有角色的劇情，加上每位角色各自的變化。"""
+    """多人模式每回合的回傳：一段包含所有角色的劇情，加上每位角色各自的變化。欄位順序同 StoryBeat。"""
 
+    game_over: bool = Field(description="寫劇情之前先決定：故事是否在本回合自然走到結局")
     narration: str = Field(description="本回合的劇情敘述，包含每位角色行動的結果，200-400 字；提到角色時用名字")
     character_updates: list[CharacterUpdate] = Field(description="隊伍中每位角色各一筆，順序和「隊伍」相同")
     time_passed: TimeSpan = Field(
@@ -71,7 +73,6 @@ class PartyBeat(BaseModel):
     milestone_reached: bool = Field(description="本回合是否達成了「故事進度」中目前這一幕的里程碑")
     flags_set: list[str] = Field(description="新確立的長期事實，例如「與守門人結仇」；通常為空")
     key_event: str = Field(description="改變故事走向的大事，一句話；大多數回合為空字串")
-    game_over: bool = Field(description="故事是否在本回合自然走到結局")
 
 
 class Act(BaseModel):

@@ -434,6 +434,53 @@ def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):
     assert (call["prompt"], call["cached"], call["output"], call["thinking"]) == (1200, 800, 300, 50)
 
 
+# ---------- 串流 ----------
+
+
+def test_partial_json_fields_while_streaming():
+    from story.core.engine import partial_bool, partial_string
+
+    text = '{"game_over": false, "narration": "你在\\n燈塔\\u9192'
+    assert partial_bool(text, "game_over") is False
+    assert partial_string(text, "narration") == "你在\n燈塔醒"
+    assert partial_string(text[:-3], "narration") == "你在\n燈塔"  # \\u 還沒收完整：先不顯示
+    assert partial_string('{"game_over": tr', "narration") is None and partial_bool('{"game_over": tr', "game_over") is None
+
+
+def test_draft_follows_the_narration_as_it_streams():
+    engine, gemini = make_engine(beat(narration="風雨中，你推開了燈塔的門。" * 3))
+    stream, drafts = gemini.generate_content_stream, []
+
+    def watching(**request):
+        for chunk in stream(**request, chunk_size=10):
+            yield chunk
+            drafts.append(engine.draft)  # 收下這一段之後，draft 已經更新
+
+    gemini.models.generate_content_stream = watching
+    state = GameState(premise="x", turn=1, minutes=0, arc=ARC)
+    engine.act(state, "a")
+    shown = [d for d in drafts if d]
+    assert len(shown) > 3 and all(b.startswith(a) for a, b in zip(shown, shown[1:]))  # 一路變長
+    assert shown[-1] == state.current_narration
+    assert engine.draft == ""  # 寫完就清空
+
+
+def test_early_ending_stops_before_any_narration_is_shown():
+    engine, gemini = make_engine(beat(game_over=True, narration="全劇終"), beat(narration="新的發展"))
+    stream, drafts = gemini.generate_content_stream, []
+
+    def watching(**request):
+        for chunk in stream(**request, chunk_size=5):
+            yield chunk
+            drafts.append(engine.draft)
+
+    gemini.models.generate_content_stream = watching
+    state = GameState(premise="x", turn=5, minutes=0, arc=ARC, act=1)
+    engine.act(state, "a")
+    assert "全劇終" not in "".join(drafts)  # game_over 在劇情前面：還沒出現劇情就中斷重寫
+    assert state.current_narration == "新的發展"
+
+
 def test_requests_time_out_and_retry():
     """Gemini 偶爾卡住一兩分鐘：每次請求有逾時，逾時或伺服器忙時自動重送。"""
     from story.core.engine import REQUEST_ATTEMPTS, REQUEST_TIMEOUT, new_client

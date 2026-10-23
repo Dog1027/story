@@ -128,6 +128,12 @@ class StoryCore:
         外殼可以在另一個執行緒讀取，顯示在等待畫面上。"""
         return getattr(self.engine, "stage", "")
 
+    @property
+    def draft(self) -> str:
+        """send() 執行中時，AI 正在寫的劇情（串流中目前收到的部分）；沒有在寫時是空字串。
+        外殼可以在另一個執行緒讀取，邊收邊顯示；send() 回傳的 Reply 才是最後的完整內容。"""
+        return getattr(self.engine, "draft", "")
+
     # ---------- 對外介面 ----------
 
     def start(self) -> Reply:

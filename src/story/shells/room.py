@@ -20,6 +20,7 @@ API key 用伺服器的，玩家不用輸入。
   {"type": "premise", "reply": {...}}     前提對話框的指令（幫我想、換一個、換題材）的結果，只回給要求 answer 的房主
   {"type": "new_story", "premise": "..."}  新故事開始：清空畫面，先顯示故事前提
   {"type": "busy", "on": true, "progress": "規劃故事大綱"}   故事生成中（progress 變了會再送一次）
+  {"type": "draft", "text": "..."}        AI 正在寫的劇情（串流中目前收到的全文，有新的字就再送一次）
   {"type": "waiting", "names": [...]}     這回合還沒行動的人
   {"type": "timer", "seconds": 12}        開始限時倒數（時間到由房間送出 /timeout）
   {"type": "notice", "text": "..."}
@@ -37,7 +38,7 @@ START = "開始遊戲"
 READY_WAIT = 90  # 等大家看完劇情最多幾秒，超過就直接開始倒數
 TIMEOUT_GRACE = 1  # 倒數結束後多等一下，抵銷網路延遲
 LINE_LIMIT = 2**20
-PROGRESS_POLL = 0.3  # 呼叫 AI 時每隔幾秒看一次進度
+PROGRESS_POLL = 0.1  # 呼叫 AI 時每隔幾秒看一次進度與 AI 寫到哪裡
 
 
 async def write(writer: asyncio.StreamWriter, message: dict) -> None:
@@ -243,12 +244,17 @@ class Room:
             await self._broadcast({"type": "busy", "on": True, "progress": ""})
         try:
             task = asyncio.create_task(asyncio.to_thread(fn))
-            progress = ""
-            while busy and not task.done():  # 開新故事要呼叫兩次 AI：進度變了就告訴大家
+            progress = draft = ""
+            while busy and not task.done():  # 進度變了（開新故事要呼叫好幾次 AI）、AI 多寫了幾個字，就告訴大家
                 await asyncio.wait({task}, timeout=PROGRESS_POLL)
-                if self.core and self.core.progress != progress and not task.done():
+                if not self.core or task.done():
+                    continue
+                if self.core.progress != progress:
                     progress = self.core.progress
                     await self._broadcast({"type": "busy", "on": True, "progress": progress})
+                if self.core.draft and self.core.draft != draft:
+                    draft = self.core.draft
+                    await self._broadcast({"type": "draft", "text": draft})
             reply = await task
         finally:
             if busy:

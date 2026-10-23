@@ -74,7 +74,16 @@ class FakeGemini:
         self.beats = list(beats)
         self.arc, self.summary, self.premise, self.genre = arc, summary, premise, genre
         self.prompts: list[str] = []
-        self.models = SimpleNamespace(generate_content=self.generate_content)
+        self.models = SimpleNamespace(generate_content=self.generate_content, generate_content_stream=self.generate_content_stream)
+
+    def generate_content_stream(self, model, contents, config, chunk_size=20):
+        """串流版：把 generate_content 的結果轉成文字，切成小段依序送出（結構化的回傳就是 JSON）。"""
+        response = self.models.generate_content(model=model, contents=contents, config=config)
+        parsed = getattr(response, "parsed", None)
+        text = parsed.model_dump_json() if parsed is not None else response.text
+        usage = getattr(response, "usage_metadata", None)
+        for i in range(0, len(text), chunk_size):
+            yield SimpleNamespace(text=text[i : i + chunk_size], candidates=[], usage_metadata=usage)
 
     def generate_content(self, model, contents, config):
         self.prompts.append(contents)

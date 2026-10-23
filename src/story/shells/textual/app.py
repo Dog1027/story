@@ -135,6 +135,10 @@ class StoryApp(App, View):
         self.typing = False
         self.speed = 1.0
         self.skip = False
+        self.narration: Prose | None = None  # 正在顯示的劇情
+        self.narration_text = ""  # 這段劇情目前收到的全文（AI 還在寫時會越來越長）
+        self.narration_done = False  # 已經收到完整內容
+        self.narration_task: asyncio.Task | None = None
 
     def compose(self) -> ComposeResult:
         yield Static("", id="status")
@@ -299,8 +303,51 @@ class StoryApp(App, View):
     def show_ending_title(self, title: str) -> None:
         self.log_message(f"─── {title} ───", "ending", follow=True)
 
-    async def show_narration(self, text: str) -> None:
-        await self.typewrite(text)
+    def start_narration(self) -> None:
+        """開始一段劇情：AI 還在寫時就開始打字，打字效果追著目前收到的文字。"""
+        if self.busy_line is not None:
+            self.busy_line.remove()
+            self.busy_line = None
+        self.narration = Prose(classes="narration")  # 懂中文換行規則的文字區塊
+        self.query_one("#log", VerticalScroll).mount(self.narration)
+        self.narration_text, self.narration_done = "", False
+        self.typing, self.speed, self.skip = True, 1.0, False
+        self.narration_task = asyncio.create_task(self.type_narration(self.narration))
+
+    def extend_narration(self, text: str) -> None:
+        self.narration_text = text
+
+    async def finish_narration(self, text: str) -> None:
+        self.narration_text, self.narration_done = text, True
+        await self.narration_task
+
+    def discard_narration(self) -> None:
+        if self.narration_task is not None:
+            self.narration_task.cancel()
+            self.narration.remove()
+        self.typing = False
+
+    async def type_narration(self, widget: Prose) -> None:
+        """一個字一個字顯示到目前收到的地方；還沒收完就等新的字。按 Enter 加速，再按一次直接顯示全部。"""
+        shown = 0
+        try:
+            while True:
+                text = self.narration_text
+                if self.skip and shown < len(text):
+                    shown = len(text)
+                    widget.set_text(text)
+                    self.scroll_log()
+                if shown < len(text):
+                    shown += 1
+                    widget.set_text(text[:shown])
+                    self.scroll_log()
+                    await asyncio.sleep((CHAR_DELAY + PAUSE_AFTER.get(text[shown - 1], 0)) * self.speed)
+                elif self.narration_done:
+                    break
+                else:
+                    await asyncio.sleep(0.05)  # AI 還在寫
+        finally:
+            self.typing = False
 
     async def wait_enter(self, hint: str) -> None:
         """提示也寫在輸入框裡：玩家往上捲在看前面的劇情時，故事區最底的提示看不到。"""
@@ -315,22 +362,9 @@ class StoryApp(App, View):
         line.remove()
 
     async def typewrite(self, text: str) -> None:
-        """一個字一個字顯示。按 Enter 加速，再按一次直接顯示全部。"""
-        log = self.query_one("#log", VerticalScroll)
-        widget = Prose(classes="narration")  # 懂中文換行規則的文字區塊
-        log.mount(widget)
-        self.typing, self.speed, self.skip = True, 1.0, False
-        try:
-            for i, ch in enumerate(text, 1):
-                if self.skip:
-                    break
-                widget.set_text(text[:i])
-                self.scroll_log()
-                await asyncio.sleep((CHAR_DELAY + PAUSE_AFTER.get(ch, 0)) * self.speed)
-        finally:
-            widget.set_text(text)
-            self.scroll_log()
-            self.typing = False
+        """一次給完整文字的打字效果。"""
+        self.start_narration()
+        await self.finish_narration(text)
 
     # ---------- 選項 ----------
 

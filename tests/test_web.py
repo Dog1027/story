@@ -29,7 +29,7 @@ class Browser:
         while True:
             message = await self.ws.receive_json(timeout=timeout)
             self.seen.append(message)
-            if message["t"] == "narration":
+            if message["t"] == "narration_end":
                 await self.answer(message["id"])
             if message["t"] == kind and condition(message):
                 return message

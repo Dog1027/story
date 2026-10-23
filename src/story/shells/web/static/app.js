@@ -14,6 +14,7 @@ const state = {
   ws: null,
   busy: false,
   typing: null, // 正在打字：{ speed, skip }
+  narration: null, // 正在顯示的劇情：{ el, text, done, finished }（AI 還在寫時 text 會越來越長）
   waitingEnter: null, // 等玩家按 Enter：回覆的 id
   choices: [],
   active: -1, // 用 ↑↓ 移到的選項
@@ -67,7 +68,21 @@ const handlers = {
     scrollLog(true); // 自己剛行動：一定捲到最底看結果
   },
   note({ text }) { add("div", "note", text); },
-  narration({ id, text }) { typewrite(text).then(() => answer(id)); },
+  narration_start() { startNarration(); },
+  narration_text({ text }) { if (state.narration) state.narration.text = text; },
+  narration_end({ id, text }) {
+    if (!state.narration) startNarration();
+    state.narration.text = text;
+    state.narration.done = true;
+    state.narration.finished.then(() => answer(id));
+  },
+  narration_discard() {
+    if (!state.narration) return;
+    state.narration.discarded = true;
+    state.narration.el.remove();
+    state.narration = null;
+    state.typing = null;
+  },
   changes({ name, groups }) {
     const el = add("div", "changes");
     const line = tag("div");
@@ -191,21 +206,37 @@ function scrollLog(force = false) {
 // 停在最底就繼續跟著新內容，往上捲就不跟（文字還在打的時候也能往回看），捲回最底再恢復
 log.addEventListener("scroll", () => { state.follow = log.scrollTop + log.clientHeight >= log.scrollHeight - 4; });
 
-async function typewrite(text) {
-  const el = add("div", "narration");
-  const typing = state.typing && !state.typing.started ? state.typing : { speed: 1, skip: false };
-  typing.started = true;
-  state.typing = typing;
-  if (!REDUCED_MOTION) {
-    for (let i = 1; i <= text.length && !typing.skip && !document.hidden; i++) {  // 分頁在背景時直接顯示全部
-      el.textContent = text.slice(0, i);
-      scrollLog();
-      await sleep((CHAR_DELAY + (PAUSE_AFTER[text[i - 1]] || 0)) * typing.speed);
+// 一段劇情：AI 還在寫時就開始打字，打字效果追著目前收到的文字；收完、打完才結束
+function startNarration() {
+  if (state.busyLine) { state.busyLine.remove(); state.busyLine = null; }
+  const narration = { el: add("div", "narration"), text: "", done: false };
+  state.narration = narration;
+  state.typing = { speed: 1, skip: false };
+  const typing = state.typing;
+  narration.finished = (async () => {
+    let shown = 0;
+    while (!narration.discarded) {
+      const text = narration.text;
+      // 分頁在背景、按了兩次 Enter、或不要動畫時：直接顯示目前收到的全部
+      if ((typing.skip || document.hidden || REDUCED_MOTION) && shown < text.length) {
+        shown = text.length;
+        narration.el.textContent = text;
+        scrollLog();
+      }
+      if (shown < text.length) {
+        shown += 1;
+        narration.el.textContent = text.slice(0, shown);
+        scrollLog();
+        await sleep((CHAR_DELAY + (PAUSE_AFTER[text[shown - 1]] || 0)) * typing.speed);
+      } else if (narration.done) {
+        break;
+      } else {
+        await sleep(50); // AI 還在寫
+      }
     }
-  }
-  el.textContent = text;
-  scrollLog();
-  if (state.typing === typing) state.typing = null;
+    if (state.narration === narration) state.narration = null;
+    if (state.typing === typing) state.typing = null;
+  })();
 }
 
 function speedUp() {

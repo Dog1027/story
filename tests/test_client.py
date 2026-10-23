@@ -31,8 +31,17 @@ class RecordingView(View):
     def show_note(self, text):
         self.record("show_note", text)
 
-    async def show_narration(self, text):
+    def start_narration(self):
+        self.record("start_narration")
+
+    def extend_narration(self, text):
+        self.record("extend_narration", text)
+
+    async def finish_narration(self, text):
         self.record("show_narration", text)
+
+    def discard_narration(self):
+        self.record("discard_narration")
 
     def show_changes(self, groups, name=""):
         self.record("show_changes", name)
@@ -193,3 +202,56 @@ def test_status_line_lists_conditions_and_the_core_warning():
     assert empty.characters[0].items == [("良好", "良好")]
     party = status_line(2, [Status(conditions=[], name="阿明", alive=False)], timed=False)
     assert party.party and party.characters[0].name == "阿明" and not party.characters[0].alive
+
+
+class StreamingEngine(FakeEngine):
+    """一個字一個字慢慢寫劇情（更新 draft），像真的 AI 在串流。fail 時寫到一半出錯。"""
+
+    def __init__(self, fail=False):
+        super().__init__()
+        self.draft, self.fail = "", fail
+
+    def act(self, state, action):
+        import time
+
+        text = "風雨中，你推開了燈塔的門。"
+        for i in range(1, len(text) + 1):
+            self.draft = text[:i]
+            time.sleep(0.03)
+        self.draft = ""
+        if self.fail:
+            raise RuntimeError("503 UNAVAILABLE")
+        super().act(state, action)
+        state.current_narration = text
+
+
+async def test_narration_is_shown_while_the_ai_is_still_writing(monkeypatch):
+    engine = StreamingEngine()
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=engine, **kw))
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    view = RecordingView()
+    client = Client(view)
+    await client.run()
+    view.calls.clear()
+    await client.act("1")
+    names = view.names()
+    assert names.index("start_narration") < names.index("prepare_choices")  # 回覆到之前就開始顯示
+    extended = [c[1] for c in view.calls if c[0] == "extend_narration"]
+    assert len(extended) > 2 and all(b.startswith(a) for a, b in zip(extended, extended[1:]))
+    assert ("show_narration", "風雨中，你推開了燈塔的門。") in view.calls
+    assert names.count("start_narration") == 1 and "show_busy" not in names[names.index("start_narration"):]
+
+
+async def test_half_written_narration_is_taken_back_when_the_turn_fails(monkeypatch):
+    engine = StreamingEngine(fail=True)
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=engine, **kw))
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    view = RecordingView()
+    client = Client(view)
+    await client.run()
+    view.calls.clear()
+    await client.act("1")
+    names = view.names()
+    assert "start_narration" in names and "discard_narration" in names and "show_narration" not in names
+    assert any(c[0] == "notify" and c[2] for c in view.calls)  # 出錯的通知
+    assert client.draft == ""

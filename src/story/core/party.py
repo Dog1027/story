@@ -150,13 +150,19 @@ class PartyEngine(Engine):
             f"# 剛才發生的事\n{state.current_narration}\n\n"
             f"# 指示\n{who} 的傷勢已經致命。接續上面的敘述，寫一小段（100 字以內）{who} 傷重倒下的場景，只輸出敘述本身。"
         )
-        response = self._generate(
+        prefix = state.current_narration + "\n\n"
+
+        def on_text(text: str) -> None:  # 串流時接在剛才的劇情後面
+            self.draft = prefix + text.lstrip()
+
+        text, _ = self._stream(
             "倒下",
+            on_text,
             model=MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(system_instruction=self.system_prompt),
         )
-        if text := (response.text or "").strip():
+        if text := text.strip():
             state.current_narration += "\n\n" + text
 
     def _log_turn(self, state: GameState, action: dict[str, str] | None, beat: PartyBeat) -> None:

@@ -284,3 +284,35 @@ async def test_one_player_can_start_alone(room):
     assert (await host.reply()).phase == "ask_premise"
     await host.send("燈塔")
     assert (await host.reply(lambda r: bool(r.narration))).choices == ["阿明往上爬", "阿明躲起來"]
+
+
+class StreamingPartyEngine(FakePartyEngine):
+    """推進回合時慢慢寫劇情（更新 draft），像真的 AI 在串流。"""
+
+    draft = ""
+
+    def act(self, state, actions):
+        import time
+
+        for i in range(1, 6):
+            self.draft = "大家往上爬"[:i]
+            time.sleep(0.15)
+        self.draft = ""
+        super().act(state, actions)
+
+
+async def test_everyone_sees_the_narration_while_it_is_written(isolated):
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=StreamingPartyEngine()))
+    room.path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
+    await room.start(room.path)
+    try:
+        host, guest = await start_story(room)
+        await host.reply()
+        await guest.reply()
+        await guest.send("1")
+        await host.send("1")
+        draft = await guest.expect(lambda m: m["type"] == "draft")  # 寫完之前就收到
+        assert "大家往上爬".startswith(draft["text"])
+        await guest.reply(lambda r: bool(r.narration))
+    finally:
+        await room.stop()

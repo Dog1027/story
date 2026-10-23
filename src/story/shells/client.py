@@ -23,6 +23,7 @@ from story.shells.room import START, RoomConnection
 __all__ = ["KEY_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "InvalidName", "StatusLine", "View", "check_name", "status_line"]
 
 BUSY_DELAY = 0.15  # 核心超過這麼久還沒回覆才顯示「故事生成中」，很快的回覆就不閃一下
+DRAFT_POLL = 0.1  # 等核心時每隔幾秒看一次 AI 寫到哪裡（串流），有新的字就先顯示
 
 
 # ---------- 給介面的顯示資料：只說內容與程度，不說顏色與排版 ----------
@@ -83,8 +84,20 @@ class View:
         """故事區裡的一行說明，例如讀取存檔時的「讀取存檔：……」。"""
         raise NotImplementedError
 
-    async def show_narration(self, text: str) -> None:
-        """顯示一段劇情（例如打字效果），顯示完才回傳。"""
+    def start_narration(self) -> None:
+        """開始顯示一段劇情（例如打字效果）。文字會陸續由 extend_narration() 給；等待提示要一併收起。"""
+        raise NotImplementedError
+
+    def extend_narration(self, text: str) -> None:
+        """這段劇情目前收到的全文（AI 還在寫，會越來越長）。"""
+        raise NotImplementedError
+
+    async def finish_narration(self, text: str) -> None:
+        """這段劇情的完整內容；全部顯示完才回傳。"""
+        raise NotImplementedError
+
+    def discard_narration(self) -> None:
+        """收回還沒寫完的這段劇情（AI 出錯，這回合沒有推進）。"""
         raise NotImplementedError
 
     def show_changes(self, groups: ChangeGroups, name: str = "") -> None:
@@ -187,6 +200,7 @@ class Client:
         self.actor = ""  # 多人模式：現在輪到誰（線上多人：輪到自己時是自己的名字）
         self.waiting: list[str] = []  # 線上多人：這回合還沒行動的人
         self.choices: list[str] = []
+        self.draft = ""  # 已經交給介面、還在串流中的劇情
         self.busy = False
         self.progress = ""  # 線上多人：房間推來的進度（單人直接讀核心的 progress）
         self.timed = False
@@ -304,9 +318,13 @@ class Client:
         try:
             while True:
                 task = asyncio.create_task(asyncio.to_thread(self.core.send, text))
-                done, _ = await asyncio.wait({task}, timeout=BUSY_DELAY)
-                if not done:
-                    self.view.show_busy()
+                waited = 0.0
+                while not task.done():
+                    await asyncio.wait({task}, timeout=DRAFT_POLL)
+                    waited += DRAFT_POLL
+                    self.follow_draft(self.core.draft)
+                    if waited >= BUSY_DELAY and not self.draft:
+                        self.view.show_busy()
                 reply = await task
                 if reply.error != "api_key":
                     return reply
@@ -325,6 +343,28 @@ class Client:
         self.busy = busy
         self.view.set_busy(busy)
 
+    def follow_draft(self, draft: str) -> None:
+        """AI 正在寫的劇情有新的字：先交給介面顯示。AI 重寫時（新的不是接在舊的後面）收回舊的重新開始。"""
+        if not draft or draft == self.draft:
+            return
+        if self.draft and not draft.startswith(self.draft):
+            self.view.discard_narration()
+            self.draft = ""
+        if not self.draft:
+            self.view.start_narration()
+        self.draft = draft
+        self.view.extend_narration(draft)
+
+    async def narrate(self, text: str) -> None:
+        """顯示一段完整的劇情；已經在串流顯示的就接著顯示完。"""
+        if self.draft and not text.startswith(self.draft):
+            self.view.discard_narration()
+            self.draft = ""
+        if not self.draft:
+            self.view.start_narration()
+        self.draft = ""
+        await self.view.finish_narration(text)
+
     def busy_text(self) -> str:
         """等待提示的文字，例如「故事生成中：規劃故事大綱…」。"""
         progress = self.progress if self.room else (self.core.progress if self.core else "")
@@ -332,6 +372,9 @@ class Client:
 
     async def handle(self, reply: Reply) -> None:
         """依照回覆的階段決定接下來的流程。"""
+        if self.draft and not reply.narration:  # 串流到一半出錯，這回合沒有推進：收回寫到一半的劇情
+            self.view.discard_narration()
+            self.draft = ""
         if reply.timed != self.timed:
             self.timed = reply.timed
             self.view.set_status(status_line(*self.shown, self.timed))
@@ -397,7 +440,7 @@ class Client:
             self.refresh_hint()
             if reply.resumed:
                 self.view.show_note(reply.notice)
-            await self.view.show_narration(reply.narration)
+            await self.narrate(reply.narration)
             for name, groups in reply.changes:
                 self.view.show_changes(groups, name)
             self.view.show_choices(self.choices)
@@ -415,7 +458,7 @@ class Client:
         if ending.epilogue:
             await self.view.wait_enter("按 Enter 看尾聲")
             self.view.show_ending_title(ending.title)
-            await self.view.show_narration(ending.epilogue)
+            await self.narrate(ending.epilogue)
         else:
             self.view.show_ending_title("故事結束")
         await self.view.wait_enter("按 Enter 查看結局")
@@ -482,6 +525,8 @@ class Client:
                 self.set_busy(message["on"])
                 if message["on"]:
                     self.view.show_busy()
+            elif kind == "draft":  # 房間轉來的 AI 正在寫的劇情
+                self.follow_draft(message["text"])
             elif kind == "timer":
                 self.view.start_timer(message["seconds"])
             elif kind == "waiting":

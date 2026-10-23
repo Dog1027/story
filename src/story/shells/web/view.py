@@ -120,8 +120,17 @@ class WebView(View):
     def show_note(self, text: str) -> None:
         self.post("note", text=text)
 
-    async def show_narration(self, text: str) -> None:
-        await self.ask("narration", text=text)
+    def start_narration(self) -> None:
+        self.post("narration_start")
+
+    def extend_narration(self, text: str) -> None:
+        self.post("narration_text", text=text)
+
+    async def finish_narration(self, text: str) -> None:
+        await self.ask("narration_end", text=text)  # 瀏覽器顯示完才回覆
+
+    def discard_narration(self) -> None:
+        self.post("narration_discard")
 
     def show_changes(self, groups: ChangeGroups, name: str = "") -> None:
         self.post("changes", name=name, groups=[[label, [list(i) for i in items]] for label, items in groups])

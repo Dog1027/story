@@ -2,6 +2,7 @@
 
 import json
 import random
+import re
 import time
 from pathlib import Path
 
@@ -66,6 +67,46 @@ SYSTEM_PROMPT = """你是一個互動式文字冒險遊戲的敘事者。
 - key_event 只記真正改變故事走向的大事（結盟、背叛、重要發現、失去重要的人或物），大多數回合應該留空。flags_set 只記之後還會用到的長期事實，不要重複已有的事實，也不要記當下的動作。
 - 若「模式」區塊說明是限時模式：當情勢緊迫（追逐、墜落、對峙、倒數）時設定 time_limit，越危急越短；平靜的場景設 0。非限時模式一律設 0。
 - 若玩家行動是「（時間到……）」，代表玩家沒能及時反應，要描述猶豫帶來的後果。"""
+
+
+class EndingTooEarly(Exception):
+    """串流時發現 AI 太早宣告結局：還沒有任何劇情顯示出來就中斷，請它重寫。"""
+
+
+def raise_friendly(e: Exception) -> None:
+    """重送幾次都逾時或連不上：轉成核心會處理的錯誤；其他錯誤照原樣丟出。"""
+    if isinstance(e, (httpx.TimeoutException, httpx.ConnectError)):
+        raise RuntimeError("Gemini 太久沒有回應或連不上，請稍後再試。") from e
+    raise e
+
+
+def partial_string(text: str, key: str) -> str | None:
+    """從還沒生成完的 JSON 取出某個字串欄位目前收到的內容（例如串流中的 narration）。還沒出現時回傳 None。"""
+    match = re.search(r'"%s"\s*:\s*"' % re.escape(key), text)
+    if not match:
+        return None
+    out, i = [], match.end()
+    while i < len(text) and text[i] != '"':
+        if text[i] != "\\":
+            out.append(text[i])
+            i += 1
+            continue
+        if i + 1 >= len(text) or (text[i + 1] == "u" and i + 6 > len(text)):
+            break  # 跳脫字元還沒收完整，等下一段
+        escaped = text[i + 1]
+        if escaped == "u":
+            out.append(chr(int(text[i + 2 : i + 6], 16)))
+            i += 6
+        else:
+            out.append({"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f"}.get(escaped, escaped))
+            i += 2
+    return "".join(out)
+
+
+def partial_bool(text: str, key: str) -> bool | None:
+    """從還沒生成完的 JSON 取出布林欄位；還沒出現時回傳 None。"""
+    match = re.search(r'"%s"\s*:\s*(true|false)' % re.escape(key), text)
+    return None if match is None else match.group(1) == "true"
 
 
 def new_client(api_key: str | None) -> genai.Client:
@@ -290,6 +331,7 @@ class Engine:
         self.calls: list[dict] = []  # 上次寫紀錄之後的 AI 呼叫：種類、秒數、token 用量（寫進紀錄後清空）
         self.log_path = log_path  # 網頁版每個玩家各自一份紀錄
         self.stage = ""  # 開新故事時目前在做什麼，外殼顯示在等待畫面上（例如「規劃故事大綱」）
+        self.draft = ""  # AI 正在寫的劇情（串流中目前收到的部分），外殼可以先顯示；沒有在寫時是空字串
 
     def set_api_key(self, api_key: str) -> None:
         self.client = new_client(api_key)
@@ -308,7 +350,7 @@ class Engine:
             self.stage = "寫開場"
             self._advance(state, action=None)
         finally:
-            self.stage = ""
+            self.stage, self.draft = "", ""
 
     def pick_genre(self, state: GameState) -> None:
         """玩家選「自動」：給 AI 題材目錄，請它依故事前提挑一個。先挑好，規劃大綱時才用得上題材的指引與轉折靈感。"""
@@ -379,7 +421,10 @@ class Engine:
         if state.arc is None:
             self.plan_arc(state)
         state.recent.append(Turn(narration=state.current_narration, action=self._action_text(action)))  # 只往後追加
-        self._advance(state, action=action)
+        try:
+            self._advance(state, action=action)
+        finally:
+            self.draft = ""
 
     def suggest_premise(self, avoid: str = "", genre: str = "") -> str:
         """請 AI 想一個新的故事開頭。題材由程式隨機挑選（玩家指定了題材就用那個），AI 負責發揮。
@@ -437,10 +482,12 @@ class Engine:
     def _next_beat(self, state: GameState, action) -> StoryBeat:
         """請 AI 寫這一回合。太早寫出結局時請它重寫一次；重寫後還是結局的話，_apply() 會忽略結局的宣告。"""
         prompt = self._build_prompt(state, action)
-        beat = self._call(prompt)
-        if beat.game_over and not ending_allowed(state, state.turn + 1):
-            beat = self._call(prompt + "\n\n" + EARLY_ENDING_RETRY, kind="重寫")
-        return beat
+        try:
+            # game_over 是 AI 第一個輸出的欄位：太早的結局在劇情出現之前就會發現，玩家不會看到被換掉的版本
+            return self._call(prompt, stop_on_ending=not ending_allowed(state, state.turn + 1))
+        except EndingTooEarly:
+            self.draft = ""
+            return self._call(prompt + "\n\n" + EARLY_ENDING_RETRY, kind="重寫")
 
     def _advance(self, state: GameState, action: str | None) -> None:
         beat = self._next_beat(state, action)
@@ -469,7 +516,7 @@ class Engine:
             f"# 剛才發生的事\n{state.current_narration}\n\n"
             "# 指示\n主角的傷勢已經致命。接續上面的敘述，寫出主角傷重死亡的結局，choices 留空，game_over 設為 true。"
         )
-        ending = self._call(prompt, kind="倒下")
+        ending = self._call(prompt, kind="倒下", prefix=state.current_narration + "\n\n")  # 串流時接在剛才的劇情後面
         state.current_narration += "\n\n" + ending.narration
         state.current_choices = []
         state.current_time_limit = 0
@@ -578,16 +625,42 @@ class Engine:
         return [f"已揭露的真相：{arc.twist}"]
 
     def _generate(self, kind: str, **request):
-        """所有 AI 呼叫都經過這裡：記下種類、花了幾秒與 Gemini 回報的 token 用量（送出、命中快取、輸出、思考），
-        寫進每回合的紀錄，方便查等待時間花在哪裡。"""
+        """所有一次拿完整結果的 AI 呼叫都經過這裡：記下種類、花了幾秒與 Gemini 回報的 token 用量
+        （送出、命中快取、輸出、思考），寫進每回合的紀錄，方便查等待時間花在哪裡。"""
         started = time.monotonic()
         try:
             response = self.client.models.generate_content(**request)
         except Exception as e:  # 重送幾次都失敗：失敗的呼叫也記下來，跟下一回合的紀錄寫在一起
-            self.calls.append({"kind": kind, "seconds": round(time.monotonic() - started, 2), "error": str(e)[:200]})
-            if isinstance(e, (httpx.TimeoutException, httpx.ConnectError)):  # 轉成核心會處理的錯誤
-                raise RuntimeError("Gemini 太久沒有回應或連不上，請稍後再試。") from e
+            self._record(kind, started, None, error=str(e)[:200])
+            raise_friendly(e)
+        self._record(kind, started, response)
+        return response
+
+    def _stream(self, kind: str, on_text, **request):
+        """串流的 AI 呼叫：每收到一段，就用目前為止的全文呼叫 on_text。紀錄方式跟 _generate() 一樣。
+        回傳 (全文, 最後一段)。on_text 丟出 EndingTooEarly 時中斷並往外丟。"""
+        started, text, last, extra = time.monotonic(), "", None, {}
+        stream = None
+        try:
+            stream = self.client.models.generate_content_stream(**request)
+            for chunk in stream:
+                last = chunk
+                if piece := chunk.text:
+                    text += piece
+                    on_text(text)
+        except EndingTooEarly:
+            extra["stopped"] = "太早寫出結局"
             raise
+        except Exception as e:
+            extra["error"] = str(e)[:200]
+            raise_friendly(e)
+        finally:
+            if stream is not None and hasattr(stream, "close"):
+                stream.close()  # 中斷時不再接收剩下的部分
+            self._record(kind, started, last, **extra)
+        return text, last
+
+    def _record(self, kind: str, started: float, response, **extra) -> None:
         call = {"kind": kind, "seconds": round(time.monotonic() - started, 2)}
         usage = getattr(response, "usage_metadata", None)
         for field, name in (
@@ -598,8 +671,7 @@ class Engine:
         ):
             if (value := getattr(usage, field, None)) is not None:
                 call[name] = value
-        self.calls.append(call)
-        return response
+        self.calls.append(call | extra)
 
     def _write_log(self, record: dict) -> None:
         """寫一行紀錄，附上這段期間的 AI 呼叫。"""
@@ -610,10 +682,19 @@ class Engine:
         except OSError:
             pass  # 紀錄寫不進去不影響遊戲
 
-    def _call(self, prompt: str, kind: str = "劇情"):
-        """呼叫 Gemini，取得結構化的回傳（單人是 StoryBeat，多人是 PartyBeat）。"""
-        response = self._generate(
+    def _call(self, prompt: str, kind: str = "劇情", stop_on_ending: bool = False, prefix: str = ""):
+        """串流呼叫 Gemini，取得結構化的回傳（單人是 StoryBeat，多人是 PartyBeat）。
+        收到劇情的同時更新 draft（前面接上 prefix），外殼可以先顯示。stop_on_ending 時，AI 一宣告結局就中斷（EndingTooEarly）。"""
+
+        def on_text(text: str) -> None:
+            if stop_on_ending and partial_bool(text, "game_over") is True:
+                raise EndingTooEarly
+            if (narration := partial_string(text, "narration")) is not None:
+                self.draft = prefix + narration
+
+        text, last = self._stream(
             kind,
+            on_text,
             model=MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -622,10 +703,11 @@ class Engine:
                 response_schema=self.beat_schema,
             ),
         )
-        if not isinstance(response.parsed, self.beat_schema):
-            reason = response.candidates[0].finish_reason if response.candidates else response.prompt_feedback
+        try:
+            return self.beat_schema.model_validate_json(text)
+        except ValueError:
+            reason = last.candidates[0].finish_reason if last is not None and last.candidates else "沒有內容"
             raise RuntimeError(f"模型輸出無法解析（{reason}），請換個行動試試。")
-        return response.parsed
 
     # ---------- 驗證並套用 ----------
 
