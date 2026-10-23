@@ -48,32 +48,31 @@ src/story/
     │   ├── style.py     配色、打字節奏
     │   ├── prose.py     懂中文的換行
     │   └── commands.py  指令與快捷鍵
-    ├── web.py           網頁殼
+    ├── web/             網頁介面：伺服器、WebView、瀏覽器頁面（static/），流程交給 client.py
     ├── room.py          線上多人的房間
-    ├── web_templates/   網頁殼的頁面（加上手機支援的 textual-serve 模板）
     ├── plain.py         純文字外殼
     ├── players.py       網頁版的玩家
     ├── apikey.py        API key 的存取
     └── prefs.py         偏好設定（配色主題）
 ```
 
-**相依的方向只有一個**：介面 → 共用層（`client.py`）→ `story.core`。核心不 import 任何外殼；外殼只用 `story.core` 匯出的名稱，不直接 import `engine`、`models` 這些內部模組。介面（`textual/`）不自己建立核心、不直接連房間，流程一律交給共用層。這兩條規則都有測試把關（`test_shells.py`）。
+**相依的方向只有一個**：介面 → 共用層（`client.py`）→ `story.core`。核心不 import 任何外殼；外殼只用 `story.core` 匯出的名稱，不直接 import `engine`、`models` 這些內部模組。介面（`textual/`、網頁的 `web/view.py`）不自己建立核心、不直接連房間，流程一律交給共用層。這兩條規則都有測試把關（`test_shells.py`）。
 
 新功能放哪裡：改變遊戲結果或事實 → 核心；改變真人看到的順序、時機、流程 → 共用層；改變長相 → 各介面。
 
 ### `__main__.py`：`python -m story` 的進入點
 
-讓 `python -m story` 也能啟動終端機版。網頁殼用 `python -m story --web` 在背景啟動遊戲。
+讓 `python -m story` 也能啟動終端機版。
 
 ### `__init__.py`：程式進入點
 
 只有 `main()`，負責啟動外殼。`uv run story` 執行的就是這個函式（定義在 `pyproject.toml` 的 `[project.scripts]`）。
 
 - 沒有參數：Textual 外殼 `StoryApp`
-- `--web`：網頁模式的 `StoryApp`（由網頁殼使用），先問名字、存檔依名字分開、API key 不存到伺服器
 - `--plain`：純文字外殼
 - `--party`：多人模式（可以和 `--plain` 一起用）
-- `--room 路徑`：線上多人（由網頁殼使用），連到網頁伺服器裡的房間
+
+網頁版是另一個指令 `story-web`（`shells/web/`）。
 
 ## 核心 `core/`
 
@@ -348,38 +347,34 @@ Textual 底層的 Rich 只會在空格處換行，是為英文設計的。AI 常
 
 
 
-### `shells/web.py`：網頁殼
+### `shells/web/`：網頁版
 
-用 [textual-serve](https://github.com/Textualize/textual-serve) 把終端機版原封不動地放進瀏覽器。每開一個分頁，伺服器就在背景用 `python -m story --web` 啟動一個網頁模式的遊戲，畫面透過網頁上的終端機模擬器（xterm.js）顯示。這裡不寫任何介面或遊戲邏輯，所以改功能時只要改 Textual 外殼，網頁版會一起變。
+瀏覽器打開就能玩，手機和電腦用同一個頁面（`uv run story-web`）。伺服器用 aiohttp，對每個瀏覽器分頁建立一個共用層的 `Client`，介面是 `WebView`：共用層的每個呼叫變成一則 JSON 訊息，經由 WebSocket 送到瀏覽器，瀏覽器只負責畫出來。流程跟終端機版是同一份（`client.py`），所以改流程時不用改網頁。
 
-| 名稱 | 做什麼 |
+| 檔案／名稱 | 做什麼 |
 |---|---|
-| `LimitedServer` | 限制同時在線人數（`MAX_SESSIONS`），滿了就顯示提示並關閉連線 |
-| `game_command()` | 每個連線要啟動的遊戲指令 |
-| `LimitedServer.handle_index()` | 頁面裡的 JS 與 websocket 網址跟著瀏覽器實際連進來的網址（textual-serve 預設寫死成啟動時的 host:port，用 0.0.0.0 或其他電腦連進來時畫面會停在「Story」） |
-| `game_command()` | 每個連線要啟動的遊戲指令；線上多人時加上 `--room` |
-| `main()` | `uv run story-web` 的進入點；參數 `--host`、`--port`、`--public-url`、`--party` |
+| `__init__.py`：`make_app()` | 網頁伺服器：首頁、靜態檔、WebSocket（`/ws`）。限制同時在線人數（`MAX_SESSIONS`），滿了就顯示提示。線上多人時房間跟著伺服器一起啟動與關閉 |
+| `__init__.py`：`main()` | `uv run story-web` 的進入點；參數 `--host`、`--port`、`--party` |
+| `view.py`：`WebView` | 實作共用層的 `View`。要等玩家的（劇情顯示完、按 Enter、對話框）帶一個 `id`，等瀏覽器回覆；前提對話框開著時，瀏覽器可以送指令給核心（換題材、換一個、幫我想）。訊息格式寫在檔案開頭 |
+| `static/index.html`、`style.css` | 頁面與外觀：上方狀態列（第幾回、限時模式、每位角色的狀態）、中間故事、下方選項按鈕與輸入框；手機上對話框從下方滑出。跟著系統的淺色／深色，也可以在選單裡切換（存在這個瀏覽器） |
+| `static/app.js` | 把訊息畫出來：打字效果（點故事區或按 Enter 加速、再按一次全部顯示）、往上捲時不自動跟隨、選項（點擊，或在輸入框用 ↑↓ 選擇）、倒數條（單人開著對話框時暫停）、對話框排隊、通知 |
 
-**手機支援**：`web_templates/app_index.html` 是 textual-serve 模板的複製版（`LimitedServer` 用 `templates_path` 指定），多了兩件事，都只在觸控裝置（或網址有 `?mobile=1`）生效：
+**手機**：用一般的網頁輸入框打字（中文選字正常）、原生的捲動、字級 16px 以上（手機不會自動放大畫面）。
 
-- `viewport` 設定：沒有它手機會把頁面當成電腦網頁縮小顯示，字很小
-- 畫面下方的輸入列：xterm.js 和手機輸入法處理中文選字時會重複字，所以手機改用一般的網頁輸入框打字，送出時用「貼上」（bracketed paste）把整段文字送進遊戲，再送一個 Enter。終端機本身在手機上不叫出鍵盤。頁面會先包一層 `WebSocket`，才能用 textual.js 建立的同一條連線送字
-- 手指上下滑動捲動故事：遊戲開著滑鼠模式時 xterm.js 不處理觸控滑動，所以頁面把滑動換成滑鼠滾輪（SGR 格式）送給遊戲；只是點一下時照常算成點擊
+**單人**（沒加 `--party`）：先問名字（每個名字有自己的存檔 `saves/名字.json`，同一個名字同時只能有一個人在線），再請玩家輸入自己的 API key（只留在這次連線，不存到伺服器）。
 
-升級 textual-serve 時，要對照新版的模板，看有沒有需要跟著改的地方。Textual 介面在 60 格以下（手機直式）會切換成窄畫面的樣式（`StoryApp.HORIZONTAL_BREAKPOINTS`），縮小邊距。
-
-`--party` 是線上多人：伺服器裡開一個房間（`room.py`），跟著伺服器一起啟動與關閉，每個分頁的遊戲都連到這個房間。
+**線上多人**（`--party`）：伺服器裡開一個房間（`room.py`），每個分頁的 `Client` 都連到這個房間，大家一起玩同一局，呼叫 AI 用伺服器的 API key。
 
 預設只監聽 `127.0.0.1`。`--host 0.0.0.0` 會開放其他電腦連線，但目前沒有 HTTPS，玩家的 API key 會以明文傳送。
 
 ### `shells/room.py`：線上多人的房間
 
-textual-serve 讓每個分頁都是獨立的遊戲程序，彼此不共用資料。線上多人時，這些程序透過 Unix socket 連到網頁伺服器裡的房間；房間持有唯一一份 `PartyCore`，呼叫 AI 用伺服器的 API key。訊息格式寫在檔案開頭的說明裡（一行一個 JSON）。
+線上多人時，每個瀏覽器分頁的 `Client` 透過 Unix socket 連到網頁伺服器裡的房間；房間持有唯一一份 `PartyCore`，呼叫 AI 用伺服器的 API key。訊息格式寫在檔案開頭的說明裡（一行一個 JSON）。
 
 | 名稱 | 做什麼 |
 |---|---|
 | `Room` | 大廳（等人加入、房主開始）→ 房主回答對話框 → 遊戲中（每個人用 `send_as()` 各自行動，推進後用 `view()` 送給每個人自己的選項）→ 結局 → 回到大廳 |
-| `RoomConnection` | 遊戲程序這一端：連到房間、收發訊息 |
+| `RoomConnection` | 玩家這一端（共用層的 `Client`）：連到房間、收發訊息 |
 
 - **房主**：第一位加入的人。只有房主能回答「接續存檔、故事前提、確認重新開始」；房主離線時交給下一位在線的玩家，並重送正在等的對話框
 - **斷線**：遊戲中斷線的人保留角色，用同一個名字回來會看到目前這回合。在線的人都行動了、只剩離線的人時，替他們送出 `/away`（給 AI 的「暫時離開」文字由核心決定）
@@ -411,7 +406,6 @@ textual-serve 讓每個分頁都是獨立的遊戲程序，彼此不共用資料
 
 ```bash
 uv run pytest                  # 全部（約 30 秒）
-uv run pytest -m "not slow"    # 略過會啟動真的伺服器的測試（約 10 秒）
 ```
 
 測試都不會連到 Gemini，也不會動到你真的存檔或 API key：每個測試都在暫存資料夾裡執行，AI 的回覆由假物件提供。
@@ -428,8 +422,9 @@ uv run pytest -m "not slow"    # 略過會啟動真的伺服器的測試（約 1
 | `test_players.py` | 名字檢查、同名鎖定、接手異常中斷的鎖 |
 | `test_prose.py` | 中文換行：英文名字不造成提早換行、英文單字不拆開、標點不在行首、引號不留在行尾 |
 | `test_client.py` | 外殼共用層：用只記錄呼叫的假介面確認流程，不需要 Textual。開新故事先顯示前提、劇情顯示完才出現選項與狀態再開始倒數、結局一段一段出現、key 無效時換 key 重送、多人模式顯示輪到誰、狀態列的內容 |
-| `test_textual.py` | Textual 外殼：模擬按鍵跑完整流程，包括打字與狀態列時機、倒數與暫停、對話框方向鍵、結局、讀檔、網頁模式、透過房間的線上多人、窄畫面樣式 |
-| `test_shells.py` | 純文字外殼玩完整局；網頁殼（`slow`）：每個連線是獨立的遊戲、同時在線人數上限、線上多人時每個分頁進到同一個大廳、手機輸入列的送字方式不會重複中文字；頁面網址跟著瀏覽器的網址、頁面有手機支援；架構規則：外殼只用核心的公開介面、介面的流程一律交給共用層 |
+| `test_textual.py` | Textual 外殼：模擬按鍵跑完整流程，包括打字與狀態列時機、倒數與暫停、對話框方向鍵、結局、讀檔、窄畫面樣式 |
+| `test_web.py` | 網頁版：用 WebSocket 扮演瀏覽器。頁面有手機支援、單人玩一回合（存檔依名字分開）、名字不能用時說明原因再問、前提對話框裡的操作、離開、同時在線人數上限、線上多人時每個分頁進到同一個大廳並一起開始 |
+| `test_shells.py` | 純文字外殼玩完整局；架構規則：外殼只用核心的公開介面、介面的流程一律交給共用層 |
 
 改了遊戲規則或流程後跑一次 `uv run pytest`，就能確認原本的功能沒有被弄壞。新增功能時，在對應的測試檔加上測試。
 
@@ -439,7 +434,7 @@ uv run pytest -m "not slow"    # 略過會啟動真的伺服器的測試（約 1
 
 | 檔案 | 用途 |
 |---|---|
-| `pyproject.toml` | 專案設定：相依套件（`google-genai`、`pydantic`、`textual`、`textual-serve`）、開發用套件（`pytest`、`pytest-asyncio`）、執行指令 `story` 與 `story-web`、pytest 設定 |
+| `pyproject.toml` | 專案設定：相依套件（`google-genai`、`pydantic`、`textual`、`aiohttp`）、開發用套件（`pytest`、`pytest-asyncio`）、執行指令 `story` 與 `story-web`、pytest 設定 |
 | `uv.lock` | `uv` 鎖定的套件版本，確保每台電腦裝到一樣的版本 |
 | `.python-version` | 使用的 Python 版本（3.14） |
 | `.gitignore` | 不進版本控制的檔案：虛擬環境、存檔、紀錄檔等 |

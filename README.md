@@ -24,7 +24,7 @@ AI 文字冒險遊戲，可以在終端機或瀏覽器裡玩。劇情由 Gemini 
 
 ## 執行
 
-裝了 [just](https://github.com/casey/just) 的話，常用指令都有捷徑：執行 `just` 會列出全部，例如 `just play`、`just web-party`、`just lan`、`just test`。下面是不用 just 的完整指令。
+裝了 [just](https://github.com/casey/just) 的話，常用指令都有捷徑：執行 `just` 會列出全部，例如 `just play`、`just serve`（線上多人的網頁伺服器）、`just serve-solo`、`just test`。下面是不用 just 的完整指令。
 
 **終端機版**
 
@@ -51,13 +51,13 @@ uv run story --plain
 uv run story-web
 ```
 
-接著在瀏覽器打開 <http://127.0.0.1:8080>。網頁版就是把終端機版原封不動地放進瀏覽器，畫面和操作完全相同，改功能時只要改一份。
+接著在瀏覽器打開 <http://127.0.0.1:8080>。網頁版是專門為瀏覽器設計的介面，手機和電腦用同一個頁面，會跟著系統切換淺色、深色。遊戲流程跟終端機版共用同一份程式（`shells/client.py`），網頁只負責畫面。
 
 網頁版是給多人各自遊玩的：
 
 - 進入時先輸入名字，每個名字有自己的存檔（在 `saves/` 資料夾），同一個名字同時只能有一個人在線
 - 每個玩家輸入自己的 Gemini API key，key 只留在這次連線裡，不會存到伺服器
-- 同時在線最多 10 人（`web.py` 的 `MAX_SESSIONS`）
+- 同時在線最多 10 人（`shells/web/__init__.py` 的 `MAX_SESSIONS`）
 
 **線上多人**（大家各自用瀏覽器連進來，一起玩同一局）
 
@@ -75,7 +75,7 @@ uv run story-web --party
 
 目前整台伺服器只有一個房間，大家都進同一局。
 
-**用手機玩**：網頁版會自動切換成手機版面。畫面下方多一個輸入列，打字（包括中文選字）都在這裡輸入，按「送出」送進遊戲；什麼都不打直接送出等於按 Enter。選項可以直接點畫面，手指上下滑動可以捲動故事。電腦版不受影響；想在電腦上看手機版，可以在網址後面加上 `?mobile=1`。
+**網頁版的操作**：點選項，或直接在下方輸入框寫下行動（手機的中文輸入法也能正常選字）。文字顯示中點一下故事區或按 Enter 會加速，再按一次全部顯示。右上角的 ⋯ 選單有「程式記住的東西」、「重新開始」、說明與外觀（淺色／深色）。在電腦上也可以在輸入框用 ↑↓ 選擇選項後按 Enter。
 
 預設只接受本機連線。要讓其他電腦連進來：
 
@@ -92,7 +92,7 @@ export GEMINI_API_KEY=你的金鑰
 uv run story
 ```
 
-## 操作
+## 終端機版的操作
 
 | 按鍵 | 功能 |
 |---|---|
@@ -107,8 +107,6 @@ uv run story
 | F1 | 說明 |
 | Ctrl+Q | 存檔並離開 |
 
-在網頁版裡，瀏覽器會攔截 Ctrl+T、Ctrl+R、Ctrl+P、Ctrl+Q 這些按鍵（開新分頁、重新整理、列印、關閉瀏覽器）。請改用 `/` 開啟指令選單。
-
 每回合都會自動存檔，下次執行時可以接續：終端機版存在目前資料夾的 `save.json`，多人模式存在 `party_save.json`（同一組玩家才會接續），網頁版存在 `saves/名字.json`，線上多人存在 `saves/party.json`。
 
 ## 調整
@@ -116,7 +114,8 @@ uv run story
 常用的設定都是程式檔開頭的常數：
 
 - 故事長度、使用的模型、傷勢與痊癒規則：`src/story/core/engine.py`
-- 預設配色主題、打字速度：`src/story/shells/textual/style.py`（網頁版會跟著一起變）。遊戲中按 F2 或輸入 `/theme` 可以換主題，傷勢與狀態的顏色會從主題的成功／警告／錯誤色算出來
+- 終端機版的預設配色主題、打字速度：`src/story/shells/textual/style.py`。遊戲中按 F2 或輸入 `/theme` 可以換主題，傷勢與狀態的顏色會從主題的成功／警告／錯誤色算出來
+- 網頁版的配色、字型、打字速度：`src/story/shells/web/static/style.css` 開頭的顏色設定，與 `app.js` 開頭的常數
 
 每個檔案的詳細說明見 [docs/files.md](docs/files.md)。
 
@@ -124,7 +123,6 @@ uv run story
 
 ```bash
 uv run pytest                  # 全部
-uv run pytest -m "not slow"    # 略過會啟動真的伺服器的測試
 ```
 
 測試不會連到 Gemini，也不會動到你的存檔或 API key。改完功能後跑一次，就能確認原本的功能沒有被弄壞。各測試檔驗證的內容見 [docs/files.md](docs/files.md#測試-tests)。

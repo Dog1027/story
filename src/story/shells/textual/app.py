@@ -118,10 +118,9 @@ class StoryApp(App, View):
         Binding("down", "move_choice(1)", show=False),
     ]
 
-    def __init__(self, web: bool = False, party: bool = False, room: str | None = None) -> None:
+    def __init__(self, party: bool = False) -> None:
         super().__init__()
-        self.web = web
-        self.client = Client(self, web=web, party=party, room=room)  # 流程都在共用層，這裡只負責畫面
+        self.client = Client(self, party=party)  # 流程都在共用層，這裡只負責畫面
         self.choices: list[str] = []  # 畫面上的選項
         self.choices_hidden = False  # prepare_choices 放好、還看不見的選項
         self.busy = False
@@ -152,7 +151,7 @@ class StoryApp(App, View):
         self.client.close()
 
     def on_mount(self) -> None:
-        saved = None if self.web else get_saved_theme()
+        saved = get_saved_theme()
         self.theme = saved if saved in self.available_themes else THEME
         self.theme_ready = True  # 之後的主題變更才是玩家選的，要記住
         self.set_status(None)
@@ -166,21 +165,14 @@ class StoryApp(App, View):
         return palette(self.current_theme)
 
     def watch_theme(self, theme: str) -> None:
-        """換了主題：狀態列跟著換色；終端機版記住選擇（網頁版的設定檔在伺服器上，不存）。"""
+        """換了主題：狀態列跟著換色，並記住選擇。"""
         if not self.theme_ready:
             return
         self.set_status(self.status_shown)
-        if not self.web:
-            save_theme(theme)
+        save_theme(theme)
 
     def action_theme(self) -> None:
         self.action_change_theme()  # Textual 內建的主題選擇器：上下移動就能預覽
-
-    def watch_app_focus(self, focus: bool) -> None:
-        # 網頁版一開始是失焦狀態，這時跳出的對話框不會自動聚焦；回到焦點時 Textual 只還原舊畫面上的焦點，
-        # 對話框裡就沒有元件能打字。這裡補上：沒有元件有焦點時，聚焦第一個。
-        if focus and self.screen.focused is None:
-            self.screen.focus_next()
 
     # ---------- 對話框（View） ----------
 

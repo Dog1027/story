@@ -227,26 +227,6 @@ async def test_missing_key_asks_for_it_and_saves_it(monkeypatch, isolated):
     assert (isolated / "api_key").read_text() == "my-key"
 
 
-async def test_web_mode_asks_name_and_never_stores_key(isolated):
-    app = StoryApp(web=True)
-    async with app.run_test(size=SIZE) as pilot:
-        await wait_until(pilot, lambda: isinstance(app.screen, NameDialog))
-        app.screen.query_one("#name", Input).value = "../hack"
-        await pilot.press("enter")
-        assert "只能包含" in str(app.screen.query_one("#error").render())
-        app.screen.query_one("#name", Input).value = "阿明"
-        await pilot.press("enter")
-        await wait_until(pilot, lambda: isinstance(app.screen, ApiKeyDialog))
-        assert app.screen.query_one("#save", Checkbox).disabled
-        app.screen.query_one("#key", Input).value = "player-key"
-        await pilot.press("enter")
-        await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog))
-        assert str(app.client.core.save_path) == "saves/阿明.json"
-        assert (isolated / "saves" / "阿明.lock").exists()
-    assert not (isolated / "saves" / "阿明.lock").exists()  # 離開時釋放
-    assert not (isolated / "api_key").exists()
-
-
 async def test_party_mode_takes_turns(monkeypatch):
     from conftest import FakePartyEngine
     from story.core import PartyCore
@@ -289,59 +269,6 @@ async def test_narration_uses_chinese_line_breaking(monkeypatch):
         narration = app.query_one(".narration", Prose)
         lines = str(narration.render()).splitlines()
         assert lines[0].startswith("阿明轉頭看向 Bob，")
-
-
-async def test_online_party_through_a_room(isolated):
-    """線上多人：畫面沒有自己的核心，透過房間和另一位玩家（直接用連線模擬）一起玩。"""
-    import tempfile
-    from pathlib import Path
-
-    from conftest import FakePartyEngine
-    from story.core import PartyCore
-    from story.shells.room import Room, RoomConnection
-    from story.shells.textual.dialogs import NameDialog
-
-    engine = FakePartyEngine()
-    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=engine))
-    path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
-    await room.start(path)
-    try:
-        app = StoryApp(web=True, party=True, room=path)
-        async with app.run_test(size=(110, 32)) as pilot:
-            await wait_until(pilot, lambda: isinstance(app.screen, NameDialog) and app.screen.query("#name"))
-            app.screen.query_one("#name", Input).value = "阿明"
-            await pilot.press("enter")
-            await wait_until(pilot, lambda: "阿明（房主）" in status_text(app))
-            assert app.client.core is None and app.choices == []  # 只有一個人，還不能開始
-
-            guest = await RoomConnection.open(path)
-            await guest.send({"type": "join", "name": "小華"})
-            await wait_until(pilot, lambda: app.choices == ["開始遊戲"])
-            await pilot.press("1", "enter")
-            await start_game(pilot, app)
-            await wait_until(pilot, lambda: app.client.actor == "阿明" and not app.typing)
-            assert app.choices == ["阿明往上爬", "阿明躲起來"]
-            assert log_lines(app) == [f"故事前提：{DEFAULT_PREMISE}", "兩人在燈塔醒來。"]
-
-            await pilot.press("2", "enter")
-            await wait_until(pilot, lambda: app.client.waiting == ["小華"])
-            assert "› 阿明：阿明躲起來" in log_lines(app)
-            assert "等待 小華" in app.query_one("#cmd", Input).placeholder
-
-            await guest.send({"type": "send", "text": "1"})
-            await wait_until(pilot, lambda: app.client.actor == "阿明" and not app.typing and len(log_lines(app)) > 2)
-            assert "阿明阿明躲起來；小華小華往上爬" in log_lines(app)
-
-            # 第二回合小華先行動：阿明這邊跳出通知，選項不重建（以前會整個重畫、閃一下）
-            rebuilt = []
-            original = app.set_choices
-            app.set_choices = lambda choices: (rebuilt.append(choices), original(choices))
-            await guest.send({"type": "send", "text": "1"})
-            await wait_until(pilot, lambda: any("小華 已行動" in str(n.message) for n in app._notifications))
-            assert rebuilt == [] and app.choices == ["阿明往上爬", "阿明躲起來"]
-            guest.close()
-    finally:
-        await room.stop()
 
 
 async def test_narrow_screen_uses_smaller_margins(isolated):
@@ -427,15 +354,6 @@ async def test_theme_command_changes_colors_and_is_remembered(isolated):
         assert app.theme == "solarized-light"  # 下次開啟沿用
 
 
-async def test_web_mode_does_not_save_theme(isolated):
-    app = StoryApp(web=True)
-    async with app.run_test(size=SIZE) as pilot:
-        await wait_until(pilot, lambda: isinstance(app.screen, NameDialog))
-        app.theme = "nord"
-        await pilot.pause()
-    assert not (isolated / "theme").exists()  # 設定檔在伺服器上，存了會影響所有玩家
-
-
 def test_every_builtin_theme_gives_valid_status_colors():
     """ansi 主題的顏色是 ansi_red 這種名稱，要轉成 Rich 認得的寫法，否則狀態列會出錯。"""
     from rich.style import Style
@@ -446,44 +364,6 @@ def test_every_builtin_theme_gives_valid_status_colors():
     for theme in BUILTIN_THEMES.values():
         for color in palette(theme).values():
             Style.parse(f"bold {color}")  # 認不得會拋出錯誤
-
-
-async def test_online_opening_shows_busy_line(isolated):
-    """線上多人：房間先送「新故事」（清空畫面）再送「生成中」，生成中的提示不能被清空畫面一起清掉。"""
-    import tempfile
-
-    from conftest import FakePartyEngine
-    from story.core import PartyCore
-    from story.shells.room import Room, RoomConnection
-    from story.shells.textual.dialogs import NameDialog
-
-    class SlowOpening(FakePartyEngine):
-        def start(self, state):
-            self.stage = "規劃故事大綱"
-            time.sleep(1)
-            self.stage = ""
-            super().start(state)
-
-    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=SlowOpening()))
-    path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
-    await room.start(path)
-    try:
-        app = StoryApp(web=True, party=True, room=path)
-        async with app.run_test(size=(110, 32)) as pilot:
-            await wait_until(pilot, lambda: isinstance(app.screen, NameDialog) and app.screen.query("#name"))
-            app.screen.query_one("#name", Input).value = "阿明"
-            await pilot.press("enter")
-            guest = await RoomConnection.open(path)
-            await guest.send({"type": "join", "name": "小華"})
-            await wait_until(pilot, lambda: app.choices == ["開始遊戲"])
-            await pilot.press("1", "enter")
-            await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog))
-            app.screen.query_one("#ok", Button).press()
-            await wait_until(pilot, lambda: any("規劃故事大綱" in line for line in log_lines(app)))
-            await wait_until(pilot, lambda: app.client.actor == "阿明" and not app.typing)
-            guest.close()
-    finally:
-        await room.stop()
 
 
 async def test_party_status_columns_line_up():

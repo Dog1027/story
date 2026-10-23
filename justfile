@@ -16,25 +16,17 @@ plain:
 party:
     uv run story --party
 
-# 網頁版：每個人各自玩（host 用 0.0.0.0 開放其他電腦連線）
-web host="127.0.0.1" port="8080":
-    uv run story-web --host {{host}} --port {{port}}
-
-# 線上多人：大家用瀏覽器一起玩同一局（需要伺服器的 GEMINI_API_KEY）
-web-party host="127.0.0.1" port="8080":
-    uv run story-web --party --host {{host}} --port {{port}}
-
-# 開放區網連線的線上多人
-lan port="8080":
+# 網頁伺服器：線上多人，大家用瀏覽器一起玩同一局（開放區網連線，需要伺服器的 GEMINI_API_KEY）
+serve port="8080":
     uv run story-web --party --host 0.0.0.0 --port {{port}}
+
+# 網頁伺服器：每個人各自玩，輸入自己的 API key（開放區網連線）
+serve-solo port="8080":
+    uv run story-web --host 0.0.0.0 --port {{port}}
 
 # 全部測試（可以加 pytest 參數，例如 just test -k party）
 test *args:
     uv run pytest {{args}}
-
-# 略過會啟動真的伺服器的慢測試
-test-fast *args:
-    uv run pytest -m "not slow" {{args}}
 
 # 刪除除錯紀錄（*.log.jsonl 等），不會動到存檔
 clean-logs:
