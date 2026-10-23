@@ -30,7 +30,7 @@ import json
 from collections.abc import Callable
 from dataclasses import replace
 
-from story.core import MAX_PLAYERS, PartyCore, Reply
+from story.core import MAX_PLAYERS, MIN_PLAYERS, PartyCore, Reply
 from story.shells.players import SAVES_DIR, InvalidName, check_name
 
 START = "開始遊戲"
@@ -206,8 +206,8 @@ class Room:
             await self._send_notice(name, f"等房主 {self.host} 開始遊戲。")
             return
         players = self._online()
-        if text not in ("1", START) or len(players) < 2:
-            await self._send_notice(name, "至少要 2 位玩家才能開始。")
+        if text not in ("1", START) or len(players) < MIN_PLAYERS:
+            await self._send_notice(name, f"至少要 {MIN_PLAYERS} 位玩家才能開始。")
             return
         self.core = self.make_core(players)
         await self._route(self.core.start())

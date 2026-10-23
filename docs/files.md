@@ -303,7 +303,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 |---|---|
 | `Dialog` | 所有對話框共用的樣式，以及方向鍵規則（←→ 在按鈕間移動、↑↓ 在列之間移動） |
 | `ApiKeyDialog` | 輸入 Gemini API key（網頁模式不提供儲存） |
-| `PartyNamesDialog` | 多人模式：輸入 2 到 4 位玩家的名字 |
+| `PartyNamesDialog` | 多人模式：輸入 1 到 4 位玩家的名字（`MIN_PLAYERS`、`MAX_PLAYERS`） |
 | `NameDialog` | 網頁模式：輸入名字並佔用 |
 | `PremiseDialog` + `PremiseArea` | 新故事：多行輸入框、限時模式勾選、題材選單、「換一個」（`/random`）與「幫我想」（`/suggest`）按鈕。透過 app 給的 `ask(指令…)` 把指令送給核心（線上多人時經過房間）並讀回覆 |
 | `ConfirmDialog` | 是／否確認（找到存檔、重新開始） |

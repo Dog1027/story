@@ -236,9 +236,9 @@ async def test_party_mode_takes_turns(monkeypatch):
     app = StoryApp(party=True)
     async with app.run_test(size=(110, 32)) as pilot:
         await wait_until(pilot, lambda: isinstance(app.screen, PartyNamesDialog))
-        app.screen.query_one("#names", Input).value = "阿明"
+        app.screen.query_one("#names", Input).value = "甲 乙 丙 丁 戊"
         await pilot.press("enter")
-        assert "2 到" in str(app.screen.query_one("#error").render())
+        assert "1 到 4" in str(app.screen.query_one("#error").render())
         app.screen.query_one("#names", Input).value = "阿明，小華"
         await pilot.press("enter")
         await start_game(pilot, app)

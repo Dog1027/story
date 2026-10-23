@@ -14,7 +14,7 @@
 import asyncio
 from dataclasses import dataclass, field
 
-from story.core import ChangeGroups, Ending, PartyCore, Reply, Status, StoryCore
+from story.core import MIN_PLAYERS, ChangeGroups, Ending, PartyCore, Reply, Status, StoryCore
 from story.shells.apikey import KEY_PATH, forget_api_key, get_saved_api_key, save_api_key
 from story.shells.players import MAX_NAME_LEN, InvalidName, Player, check_name
 from story.shells.room import START, RoomConnection
@@ -529,8 +529,9 @@ class Client:
         self.view.show_lobby([f"{n}（房主）" if n == host else n for n in members])
         self.actor, self.waiting = "", []
         if self.my_name == host:
-            self.set_choices([START] if len(members) >= 2 else [])
-            placeholder = "選「開始遊戲」，大家就會一起進入故事" if len(members) >= 2 else "等其他玩家加入（至少 2 人）…"
+            ready = len(members) >= MIN_PLAYERS
+            self.set_choices([START] if ready else [])
+            placeholder = "選「開始遊戲」，大家就會一起進入故事" if ready else f"等其他玩家加入（至少 {MIN_PLAYERS} 人）…"
         else:
             self.set_choices([])
             placeholder = f"等房主 {host} 開始遊戲…"

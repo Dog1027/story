@@ -275,3 +275,12 @@ async def test_only_commands_asking_for_an_answer_get_one(room):
     answer = await host.expect(lambda m: m["type"] == "premise")
     assert Reply.from_dict(answer["reply"]).phase == "ask_premise"
     assert not any(m["type"] == "premise" for m in host.messages)  # 只有一個回覆
+
+
+async def test_one_player_can_start_alone(room):
+    host = await join(room, "阿明")
+    await host.expect(lambda m: m["type"] == "lobby" and m["members"] == ["阿明"])
+    await host.send("1")
+    assert (await host.reply()).phase == "ask_premise"
+    await host.send("燈塔")
+    assert (await host.reply(lambda r: bool(r.narration))).choices == ["阿明往上爬", "阿明躲起來"]

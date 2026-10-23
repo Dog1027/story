@@ -16,3 +16,7 @@ saves/
 .*.tmp
 party_save.json
 party_log.jsonl
+
+# just start 的背景伺服器
+.server.pid
+server.log

@@ -2,7 +2,7 @@
 
 from getpass import getpass
 
-from story.core import PartyCore, StoryCore
+from story.core import MAX_PLAYERS, MIN_PLAYERS, PartyCore, StoryCore
 from story.shells.apikey import get_saved_api_key
 
 
@@ -13,7 +13,7 @@ def main(party: bool = False) -> None:
     if party:
         while True:
             try:
-                names = input("玩家名字（2 到 4 位，用逗號隔開）：").replace("，", ",").split(",")
+                names = input(f"玩家名字（{MIN_PLAYERS} 到 {MAX_PLAYERS} 位，用逗號隔開）：").replace("，", ",").split(",")
             except (EOFError, KeyboardInterrupt):
                 return
             try:

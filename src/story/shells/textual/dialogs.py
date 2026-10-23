@@ -12,7 +12,7 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Select, Static, TextArea
 
-from story.core import GENRE_AUTO, GENRE_NONE, MAX_PLAYERS, Reply
+from story.core import GENRE_AUTO, GENRE_NONE, MAX_PLAYERS, MIN_PLAYERS, Reply
 from story.shells.client import KEY_PATH, MAX_NAME_LEN, InvalidName, check_name
 
 
@@ -158,7 +158,7 @@ class PartyNamesDialog(Dialog):
         with Vertical():
             yield Static("多人模式", classes="title")
             yield Static(
-                f"每位玩家扮演一位角色，大家輪流在這台電腦上輸入行動。\n輸入 2 到 {MAX_PLAYERS} 位玩家的名字，用逗號或空白隔開。",
+                f"每位玩家扮演一位角色，大家輪流在這台電腦上輸入行動。\n輸入 {MIN_PLAYERS} 到 {MAX_PLAYERS} 位玩家的名字，用逗號或空白隔開。",
                 classes="hint",
             )
             yield Input(placeholder="例如：阿明，小華", id="names")
@@ -177,8 +177,8 @@ class PartyNamesDialog(Dialog):
         except InvalidName as e:
             error.update(str(e))
             return
-        if not 2 <= len(names) <= MAX_PLAYERS:
-            error.update(f"需要 2 到 {MAX_PLAYERS} 位玩家。")
+        if not MIN_PLAYERS <= len(names) <= MAX_PLAYERS:
+            error.update(f"需要 {MIN_PLAYERS} 到 {MAX_PLAYERS} 位玩家。")
             return
         if len(set(names)) != len(names):
             error.update("名字不能重複。")

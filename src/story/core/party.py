@@ -66,7 +66,7 @@ PARTY_SYSTEM_PROMPT = """你是一個多人互動式文字冒險遊戲的敘事�
 
 PARTY_SAVE_PATH = Path("party_save.json")
 PARTY_LOG_PATH = Path("party_log.jsonl")
-MAX_PLAYERS = 4
+MIN_PLAYERS, MAX_PLAYERS = 1, 4  # 一個人也能開線上多人的房間先玩，其他人之後再一起玩下一局
 AWAY_ACTION = "（暫時離開了，這回合沒有行動）"  # /away：角色暫時不在（線上多人斷線時由房間送出），這句會寫進劇情紀錄給 AI
 
 
@@ -197,8 +197,8 @@ class PartyCore(StoryCore):
         engine: Engine | None = None,
     ):
         names = [n.strip() for n in players if n.strip()]
-        if not 2 <= len(names) <= MAX_PLAYERS or len(set(names)) != len(names):
-            raise ValueError(f"多人模式需要 2 到 {MAX_PLAYERS} 位不重複的玩家。")
+        if not MIN_PLAYERS <= len(names) <= MAX_PLAYERS or len(set(names)) != len(names):
+            raise ValueError(f"多人模式需要 {MIN_PLAYERS} 到 {MAX_PLAYERS} 位不重複的玩家。")
         super().__init__(api_key, save_path=save_path, log_path=log_path, engine=engine or PartyEngine(api_key=api_key, log_path=log_path))
         self._players = names
         self.pending: dict[str, str] = {}  # 這一回合已經輸入的行動

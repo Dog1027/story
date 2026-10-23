@@ -27,11 +27,11 @@ def test_plain_shell_party_mode(monkeypatch, capsys):
 
     monkeypatch.setenv("GEMINI_API_KEY", "test")
     monkeypatch.setattr(plain, "PartyCore", lambda api_key, players: PartyCore(api_key, players, engine=FakePartyEngine()))
-    inputs = iter(["阿明", "阿明,小華", "", "1", "2", "/quit"])
+    inputs = iter(["阿明,阿明", "阿明,小華", "", "1", "2", "/quit"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
     plain.main(party=True)
     out = capsys.readouterr().out
-    assert "多人模式需要 2 到" in out
+    assert "多人模式需要 1 到" in out  # 名字重複
     assert "輪到 阿明 行動" in out and "輪到 小華 行動" in out
     assert "阿明　獲得 油燈" in out
 

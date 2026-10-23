@@ -140,8 +140,9 @@ def core(engine, isolated):
     return PartyCore("test", NAMES, save_path=isolated / "party.json", engine=engine)
 
 
-def test_needs_two_to_four_unique_players():
-    for players in (["阿明"], ["阿明", "阿明"], ["a", "b", "c", "d", "e"]):
+def test_needs_one_to_four_unique_players():
+    PartyCore("test", ["阿明"], engine=FakePartyEngine())  # 一個人也能開始
+    for players in ([], ["阿明", "阿明"], ["a", "b", "c", "d", "e"]):
         with pytest.raises(ValueError):
             PartyCore("test", players, engine=FakePartyEngine())
 
