@@ -304,7 +304,10 @@ async def test_story_does_not_jump_when_choices_appear(monkeypatch):
     app = StoryApp()
     async with app.run_test(size=(40, 30)) as pilot:
         await start_game(pilot, app)
+        height_before = app.query_one("#log").size.height
         await pilot.press("1", "enter")
+        await pilot.pause()
+        assert app.query_one("#log").size.height == height_before  # 剛選完：選項區留在原位，只是看不見
         await wait_until(pilot, lambda: app.typing)
         options = app.query_one("#choices")
         assert options.styles.opacity == 0.0 and not options.has_class("-empty")  # 已佔位、還看不見

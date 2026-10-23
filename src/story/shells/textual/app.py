@@ -376,7 +376,13 @@ class StoryApp(App, View):
             self.reserve_timer()
 
     def show_choices(self, choices: list[str]) -> None:
-        if self.choices_hidden and choices == self.choices:
+        options = self.query_one("#choices", OptionList)
+        if not choices and options.option_count:
+            # 選完選項：保留原本選項的位置，只是完全看不見，故事區才不會忽高忽低、文字往下掉
+            self.choices, self.choices_hidden = [], True
+            self.animator.force_stop_animation(options.styles, "opacity")
+            options.styles.opacity = 0.0
+        elif self.choices_hidden and choices == self.choices:
             self.reveal_choices()  # prepare_choices 放好的選項：淡入
         else:
             self.set_choices(choices)
@@ -506,13 +512,14 @@ class StoryApp(App, View):
         self.run_worker(self.client.act(raw))
 
     def choose_index(self, index: int) -> None:
-        self.run_worker(self.client.act(str(index + 1)))
+        if not self.choices_hidden:  # 看不見的選項（剛選完、還沒換上新的）不能選
+            self.run_worker(self.client.act(str(index + 1)))
 
     def action_move_choice(self, step: int) -> None:
         if isinstance(self.screen, ModalScreen):
             return
         options = self.query_one("#choices", OptionList)
-        if options.option_count:
+        if options.option_count and not self.choices_hidden:
             options.action_cursor_down() if step > 0 else options.action_cursor_up()
 
     @on(OptionList.OptionSelected, "#choices")
