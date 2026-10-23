@@ -102,7 +102,7 @@ button { cursor: pointer; }
 
 /* ---------- 下方：倒數、選項、輸入 ---------- */
 #dock {
-  border-top: 1px solid var(--line); background: var(--paper);
+  background: var(--paper);
   padding: 10px max(16px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
   display: grid; gap: 8px;
 }
