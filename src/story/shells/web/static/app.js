@@ -6,7 +6,8 @@ const CHAR_DELAY = 30; // 每個字的間隔（毫秒），跟終端機版一樣
 const FAST_FACTOR = 0.15; // 按一次 Enter 後，間隔縮成原本的幾倍
 const PAUSE_AFTER = { "。": 250, "！": 250, "？": 250, "，": 100, "、": 80, "…": 150, "\n": 100 };
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const TOUCH = matchMedia("(pointer: coarse)").matches; // 手機、平板：不要自動把焦點移到輸入框，不然鍵盤會一直跳出來
+// 手機、平板：不要自動把焦點移到輸入框，不然鍵盤會一直跳出來
+const TOUCH = matchMedia("(pointer: coarse)").matches || matchMedia("(hover: none)").matches;
 
 const $ = (id) => document.getElementById(id);
 const log = $("log"), input = $("input"), choicesList = $("choices");

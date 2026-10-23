@@ -33,7 +33,13 @@ def make_app(room: Room | None = None, room_path: str = "") -> web.Application:
     sessions = 0  # 目前在線的分頁數
 
     async def index(request: web.Request) -> web.FileResponse:
-        return web.FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+        return web.FileResponse(STATIC / "index.html")
+
+    async def no_stale_files(request: web.Request, response: web.StreamResponse) -> None:
+        # 頁面與 JS、CSS 每次都先問伺服器有沒有更新（沒變就不用重新下載）。
+        # 不然瀏覽器可能沿用快取的舊 app.js，跟更新後的伺服器對不上，劇情和選項就出不來
+        if not request.path.startswith("/ws"):
+            response.headers["Cache-Control"] = "no-cache"
 
     async def websocket(request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse(heartbeat=30)
@@ -67,6 +73,7 @@ def make_app(room: Room | None = None, room_path: str = "") -> web.Application:
             client.close()
         return ws
 
+    app.on_response_prepare.append(no_stale_files)
     app.router.add_get("/", index)
     app.router.add_get("/ws", websocket)
     app.router.add_static("/static", STATIC)

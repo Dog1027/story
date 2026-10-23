@@ -57,7 +57,8 @@ async def test_page_is_served_with_phone_support():
     async with TestClient(TestServer(web.make_app())) as client:
         page = await (await client.get("/")).text()
         assert '<meta name="viewport" content="width=device-width' in page and "/static/app.js" in page
-        assert (await client.get("/static/app.js")).status == 200
+        script = await client.get("/static/app.js")
+        assert script.status == 200 and script.headers["Cache-Control"] == "no-cache"  # 更新後不會用到快取的舊檔
 
 
 async def test_single_player_plays_a_turn(isolated):
