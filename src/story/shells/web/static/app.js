@@ -6,6 +6,7 @@ const CHAR_DELAY = 30; // 每個字的間隔（毫秒），跟終端機版一樣
 const FAST_FACTOR = 0.15; // 按一次 Enter 後，間隔縮成原本的幾倍
 const PAUSE_AFTER = { "。": 250, "！": 250, "？": 250, "，": 100, "、": 80, "…": 150, "\n": 100 };
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const TOUCH = matchMedia("(pointer: coarse)").matches; // 手機、平板：不要自動把焦點移到輸入框，不然鍵盤會一直跳出來
 
 const $ = (id) => document.getElementById(id);
 const log = $("log"), input = $("input"), choicesList = $("choices");
@@ -103,7 +104,7 @@ const handlers = {
     const placeholder = input.placeholder;
     input.placeholder = hint; // 往上捲在看前面的劇情時，也知道接下來要按 Enter
     input.disabled = false;
-    input.focus();
+    focusInput();
   },
   prepare_choices({ choices, timed }) {
     state.typing = state.typing || { speed: 1, skip: false }; // 從現在起按 Enter 都算加速，不會選到還看不見的選項
@@ -313,6 +314,10 @@ function setActive(index) {
   buttons[state.active].scrollIntoView({ block: "nearest" });
 }
 
+function focusInput() {
+  if (!TOUCH) input.focus(); // 電腦：回到輸入框就能直接打字或按 Enter
+}
+
 function setBusy(busy) {
   state.busy = busy;
   input.disabled = busy && !state.waitingEnter;
@@ -320,7 +325,7 @@ function setBusy(busy) {
   if (!busy) {
     if (state.busyLine) state.busyLine.remove();
     state.busyLine = null;
-    if (!state.premise && $("overlay").hidden) input.focus();
+    if (!state.premise && $("overlay").hidden) focusInput();
   }
 }
 
@@ -413,7 +418,7 @@ function openSheet(build, onClose, dismissible = true) {
     document.removeEventListener("keydown", onKey);
     if (onClose) onClose(value);
     if (sheetQueue.length) openSheet(...sheetQueue.shift());
-    else if (!state.busy || state.waitingEnter) input.focus();
+    else if (!state.busy || state.waitingEnter) focusInput();
   };
   const onKey = (event) => { if (event.key === "Escape" && dismissible) close(null); };
   closeCurrent = () => close(null);
@@ -422,7 +427,8 @@ function openSheet(build, onClose, dismissible = true) {
   if (heading) heading.id = "sheet-title";
   overlay.hidden = false;
   document.addEventListener("keydown", onKey);
-  const focus = sheet.querySelector("textarea, input:not([type=checkbox]), .btn.primary");
+  // 要打字的對話框（名字、key）才聚焦到輸入框；手機上前提可以直接用預設的，不要一打開就跳出鍵盤
+  const focus = sheet.querySelector(TOUCH ? "input[type=text], input[type=password]" : "textarea, input:not([type=checkbox]), .btn.primary");
   if (focus) focus.focus();
 }
 
@@ -569,7 +575,7 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
       suggest.disabled = false;
       suggest.textContent = "幫我想";
       if (reply.error) toast(reply.error, { error: true, title: "AI 沒有想出開頭" });
-      else { area.value = reply.suggestion; area.focus(); }
+      else { area.value = reply.suggestion; if (!TOUCH) area.focus(); }
     };
     const startButton = tag("button", "btn primary", "開始");
     startButton.type = "button";
