@@ -1,4 +1,4 @@
-"""Textual 外殼（終端機介面，網頁殼也是包住它）。"""
+"""Textual 外殼：終端機介面。"""
 
 from story.shells.textual.app import StoryApp
 

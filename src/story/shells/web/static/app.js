@@ -485,12 +485,13 @@ function helpSheet() {
   ].join("\n"));
 }
 
-function nameSheet({ id, hint, error }) {
+// 名字能不能用由伺服器判斷，不能用時會帶著原因（error）再問一次
+function nameSheet({ id, hint, error, max_len }) {
   openSheet((sheet, close) => {
     const name = field("text", "name-input", "例如：阿明");
-    name.maxLength = 20;
+    name.maxLength = max_len;
     const errorLine = tag("p", "error", error || "");
-    const submit = () => { if (name.value.trim()) close(name.value.trim()); else errorLine.textContent = "請輸入名字。"; };
+    const submit = () => close(name.value);
     name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
     sheet.append(tag("h2", "", "你的名字"), tag("p", "hint", hint || "每個名字有自己的存檔，下次用同一個名字進來就能接著玩。"), name, errorLine);
     sheet.append(buttons([["離開", () => close(null)], ["進入", submit, true]]));

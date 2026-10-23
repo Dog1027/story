@@ -17,7 +17,7 @@ from story.core import StoryCore
 from story.core.records import DEFAULT_PREMISE
 from story.shells.textual import StoryApp
 from story.shells.textual.prose import Prose
-from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, NameDialog, PremiseDialog
+from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, PremiseDialog
 
 SIZE = (100, 28)
 
@@ -173,6 +173,12 @@ async def test_ending_flow():
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog))
 
 
+async def type_out(app: StoryApp, text: str) -> None:
+    """一次給完整文字的一段劇情（跟共用層顯示劇情的方式一樣）。"""
+    app.start_narration()
+    await app.finish_narration(text)
+
+
 async def test_scrolling_up_while_typing_stops_following():
     """文字還在打的時候往上捲：不會被拉回最底，可以往回看；捲回最底就繼續跟著新內容。"""
     app = StoryApp()
@@ -187,11 +193,11 @@ async def test_scrolling_up_while_typing_stops_following():
 
         app.follow_log(0)  # 玩家往上捲
         assert not app.follow
-        await app.typewrite("新的劇情" * 5)
+        await type_out(app, "新的劇情" * 5)
         assert pulled == []  # 打字時不會把玩家拉回最底
 
         app.follow_log(log.max_scroll_y)  # 玩家捲回最底
-        await app.typewrite("新的劇情" * 5)
+        await type_out(app, "新的劇情" * 5)
         assert pulled
 
         app.follow_log(0)
@@ -224,6 +230,15 @@ async def test_missing_key_asks_for_it_and_saves_it(monkeypatch, isolated):
         await pilot.press("enter")
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog))
     assert (isolated / "api_key").read_text() == "my-key"
+
+
+async def test_leaving_the_key_dialog_quits(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY")
+    app = StoryApp()
+    async with app.run_test(size=SIZE) as pilot:
+        await wait_until(pilot, lambda: isinstance(app.screen, ApiKeyDialog))
+        await pilot.click("#cancel")
+        await wait_until(pilot, lambda: app.return_code is not None)
 
 
 async def test_party_mode_takes_turns(monkeypatch):

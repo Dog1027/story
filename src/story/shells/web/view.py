@@ -17,7 +17,7 @@ from dataclasses import asdict
 from aiohttp import web
 
 from story.core import ChangeGroups, Reply
-from story.shells.client import Client, InvalidName, StatusLine, View, check_name
+from story.shells.client import MAX_NAME_LEN, Client, StatusLine, View
 
 BUSY_POLL = 0.3  # 等待時每隔幾秒看一次進度文字有沒有變
 
@@ -209,21 +209,9 @@ class WebView(View):
     async def ask_ending(self, title: str, record: str) -> bool:
         return bool(await self.ask("ending", title=title, record=record))
 
-    async def ask_name(self, claim, hint: str = "") -> str | None:
-        """問名字，名字不能用時帶著原因再問一次。"""
-        error = ""
-        while True:
-            raw = await self.ask("name", hint=hint, error=error)
-            if raw is None:
-                return None
-            try:
-                name = check_name(str(raw))
-            except InvalidName as e:
-                error = str(e)
-                continue
-            if error := await claim(name):
-                continue
-            return name
+    async def ask_name(self, hint: str, error: str) -> str | None:
+        raw = await self.ask("name", hint=hint, error=error, max_len=MAX_NAME_LEN)
+        return None if raw is None else str(raw)
 
     async def ask_api_key(self, reason: str, can_save: bool) -> tuple[str, bool] | None:
         key = await self.ask("api_key", reason=reason)

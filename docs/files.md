@@ -342,13 +342,12 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 
 | 類別 | 用途 |
 |---|---|
-| `Dialog` | 所有對話框共用的樣式，以及方向鍵規則（←→ 在按鈕間移動、↑↓ 在列之間移動） |
-| `ApiKeyDialog` | 輸入 Gemini API key（網頁模式不提供儲存） |
+| `Dialog` | 所有對話框共用的樣式、「離開」按鈕與 Esc，以及方向鍵規則（←→ 在按鈕間移動、↑↓ 在列之間移動） |
+| `ApiKeyDialog` | 輸入 Gemini API key，可以選擇存起來 |
 | `PartyNamesDialog` | 多人模式：輸入 1 到 4 位玩家的名字（`MIN_PLAYERS`、`MAX_PLAYERS`） |
-| `NameDialog` | 網頁模式：輸入名字並佔用 |
-| `PremiseDialog` + `PremiseArea` | 新故事，由上到下：題材選單、題材介紹、故事前提（一開始就填好預設的開頭，玩家改了才用玩家寫的；換題材時沒改過就跟著換，「換一個」一定換）、限時模式勾選，最後是「換一個」（`/random`）、「幫我想」（`/suggest`）、「開始」。透過 app 給的 `ask(指令…)` 把指令送給核心（線上多人時經過房間）並讀回覆 |
+| `PremiseDialog` + `PremiseArea` | 新故事，由上到下：題材選單、題材介紹、故事前提（一開始就填好預設的開頭，玩家改了才用玩家寫的；換題材時沒改過就跟著換，「換一個」一定換）、限時模式勾選，最後是「換一個」（`/random`）、「幫我想」（`/suggest`）、「開始」。透過 app 給的 `ask(指令…)` 把指令送給核心並讀回覆 |
 | `ConfirmDialog` | 是／否確認（找到存檔、重新開始） |
-| `EndingDialog` | 結局名稱、旅程紀錄、再玩一次 |
+| `EndingDialog` | 結局名稱、旅程紀錄、再玩一次（`ConfirmDialog` 加上說明） |
 | `InfoDialog` | 顯示 `Reply.info`（記憶、說明） |
 
 **`app.py`：主畫面 `StoryApp`**

@@ -100,7 +100,7 @@ class RecordingView(View):
         self.record("ask_ending", title)
         return self.play_again
 
-    async def ask_name(self, claim, hint=""):
+    async def ask_name(self, hint, error):
         return None
 
     async def ask_api_key(self, reason, can_save):

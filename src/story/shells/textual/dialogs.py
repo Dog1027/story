@@ -1,7 +1,7 @@
-"""Textual 外殼的對話框：API key、名字、新故事、確認、結局、說明。"""
+"""Textual 外殼的對話框：API key、多人的名字、新故事、確認、結局、說明。"""
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 
 from textual import on, work
 from textual.app import ComposeResult
@@ -13,7 +13,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Select, Static, TextArea
 
 from story.core import GENRE_AUTO, GENRE_NONE, MAX_PLAYERS, MIN_PLAYERS, Reply
-from story.shells.client import KEY_PATH, MAX_NAME_LEN, InvalidName, check_name
+from story.shells.client import KEY_PATH, InvalidName, check_name
 
 
 class Dialog(ModalScreen):
@@ -54,6 +54,7 @@ class Dialog(ModalScreen):
         Binding("down", "move_between_rows(1)", show=False),
     ]
 
+    @on(Button.Pressed, "#cancel")
     def action_cancel(self) -> None:
         self.dismiss(None)
 
@@ -84,20 +85,18 @@ class Dialog(ModalScreen):
 
 
 class ApiKeyDialog(Dialog):
-    """請玩家輸入 API key。回傳 (key, 是否儲存) 或 None。網頁版不提供儲存，key 只留在這次連線的記憶體裡。"""
+    """請玩家輸入 API key。回傳 (key, 是否儲存) 或 None。"""
 
-    def __init__(self, reason: str, can_save: bool = True):
+    def __init__(self, reason: str):
         super().__init__()
-        self.reason, self.can_save = reason, can_save
+        self.reason = reason
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static(self.reason, classes="title")
             yield Static("可以到 https://aistudio.google.com/apikey 免費申請。", classes="hint")
-            if not self.can_save:
-                yield Static("key 只用於這次連線，不會存到伺服器上；下次進來要重新輸入。", classes="hint")
             yield Input(placeholder="貼上 API key", password=True, id="key")
-            yield Checkbox(f"儲存到 {KEY_PATH}，下次自動使用", value=True, id="save", disabled=not self.can_save)
+            yield Checkbox(f"儲存到 {KEY_PATH}，下次自動使用", value=True, id="save")
             with Horizontal():
                 yield Button("離開", id="cancel", compact=True)
                 yield Button("確定", variant="primary", id="ok", compact=True)
@@ -107,48 +106,7 @@ class ApiKeyDialog(Dialog):
     def submit(self) -> None:
         key = self.query_one("#key", Input).value.strip()
         if key:
-            self.dismiss((key, self.can_save and self.query_one("#save", Checkbox).value))
-
-    @on(Button.Pressed, "#cancel")
-    def cancel(self) -> None:
-        self.dismiss(None)
-
-
-class NameDialog(Dialog):
-    """網頁版：輸入名字。claim(名字) 負責佔用這個名字，成功回傳空字串，失敗回傳要顯示的原因。
-    回傳佔用成功的名字或 None。"""
-
-    def __init__(self, claim: Callable[[str], Awaitable[str]], hint: str = "每個名字有自己的存檔，下次用同一個名字進來就能接著玩。"):
-        super().__init__()
-        self.claim, self.hint = claim, hint
-
-    def compose(self) -> ComposeResult:
-        with Vertical():
-            yield Static("你的名字", classes="title")
-            yield Static(self.hint, classes="hint")
-            yield Input(placeholder="例如：阿明", id="name", max_length=MAX_NAME_LEN)
-            yield Static("", id="error", classes="hint")
-            with Horizontal():
-                yield Button("離開", id="cancel", compact=True)
-                yield Button("進入", variant="primary", id="ok", compact=True)
-
-    @on(Input.Submitted)
-    @on(Button.Pressed, "#ok")
-    async def submit(self) -> None:
-        error = self.query_one("#error", Static)
-        try:
-            name = check_name(self.query_one("#name", Input).value)
-        except InvalidName as e:
-            error.update(str(e))
-            return
-        if reason := await self.claim(name):
-            error.update(reason)
-            return
-        self.dismiss(name)
-
-    @on(Button.Pressed, "#cancel")
-    def cancel(self) -> None:
-        self.dismiss(None)
+            self.dismiss((key, self.query_one("#save", Checkbox).value))
 
 
 class PartyNamesDialog(Dialog):
@@ -184,10 +142,6 @@ class PartyNamesDialog(Dialog):
             error.update("名字不能重複。")
             return
         self.dismiss(names)
-
-    @on(Button.Pressed, "#cancel")
-    def cancel(self) -> None:
-        self.dismiss(None)
 
 
 class PremiseArea(TextArea):
@@ -351,13 +305,15 @@ class PremiseDialog(Dialog):
 
 
 class ConfirmDialog(Dialog):
-    def __init__(self, question: str, yes: str = "確定", no: str = "取消"):
+    def __init__(self, question: str, yes: str = "確定", no: str = "取消", detail: str = ""):
         super().__init__()
-        self.question, self.yes, self.no = question, yes, no
+        self.question, self.yes, self.no, self.detail = question, yes, no, detail
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static(self.question, classes="title")
+            if self.detail:
+                yield Static(self.detail, classes="hint")
             with Horizontal():
                 yield Button(self.no, id="no", compact=True)
                 yield Button(self.yes, variant="primary", id="yes", compact=True)
@@ -377,16 +333,7 @@ class EndingDialog(ConfirmDialog):
     """故事結束：顯示結局名稱與這趟旅程的紀錄，問要不要再玩。"""
 
     def __init__(self, title: str, record: str):
-        super().__init__(f"結局：{title}" if title else "故事結束", yes="再玩一次", no="離開")
-        self.record = record
-
-    def compose(self) -> ComposeResult:
-        with Vertical():
-            yield Static(self.question, classes="title")
-            yield Static(self.record, classes="hint")
-            with Horizontal():
-                yield Button(self.no, id="no", compact=True)
-                yield Button(self.yes, variant="primary", id="yes", compact=True)
+        super().__init__(f"結局：{title}" if title else "故事結束", yes="再玩一次", no="離開", detail=record)
 
 
 class InfoDialog(Dialog):

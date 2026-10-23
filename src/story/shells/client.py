@@ -166,8 +166,8 @@ class View:
         """顯示結局與旅程紀錄，回傳要不要再玩一次。"""
         raise NotImplementedError
 
-    async def ask_name(self, claim, hint: str = "") -> str | None:
-        """問名字。claim(名字) 是 async 函式，回傳空字串代表可以用，否則是不能用的原因。"""
+    async def ask_name(self, hint: str, error: str) -> str | None:
+        """問名字，回傳玩家輸入的文字（取消時 None）。error 是上一次不能用的原因，第一次是空字串；hint 空白時用介面自己的說明。"""
         raise NotImplementedError
 
     async def ask_api_key(self, reason: str, can_save: bool) -> tuple[str, bool] | None:
@@ -227,7 +227,7 @@ class Client:
             await self.join_room()
             return
         if self.web:
-            name = await self.view.ask_name(self.claim_name)
+            name = await self.ask_name(self.claim_name)
             if name is None:
                 self.view.exit()
                 return
@@ -248,6 +248,21 @@ class Client:
         else:
             self.core = StoryCore(api_key=key)
         await self.handle(self.core.start())
+
+    async def ask_name(self, claim, hint: str = "") -> str | None:
+        """問名字，不能用時帶著原因再問。claim(名字) 負責佔用這個名字：成功回傳空字串，否則是不能用的原因。"""
+        error = ""
+        while True:
+            raw = await self.view.ask_name(hint, error)
+            if raw is None:
+                return None
+            try:
+                name = check_name(raw)
+            except InvalidName as e:
+                error = str(e)
+                continue
+            if not (error := await claim(name)):
+                return name
 
     async def claim_name(self, name: str) -> str:
         player = Player(name)
@@ -495,7 +510,7 @@ class Client:
         except OSError:
             self.view.show_fatal("連不上遊戲房間，請稍後重新整理。")
             return
-        name = await self.view.ask_name(self.claim_seat, hint="大家在同一局裡，每個名字就是一位角色。中途斷線可以用同一個名字回來。")
+        name = await self.ask_name(self.claim_seat, hint="大家在同一局裡，每個名字就是一位角色。中途斷線可以用同一個名字回來。")
         if name is None:
             self.view.exit()
             return

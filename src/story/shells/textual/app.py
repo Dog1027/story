@@ -21,7 +21,7 @@ from textual.widgets import Input, OptionList, Static
 from story.core import ChangeGroups, Reply
 from story.shells.client import CharacterLine, Client, StatusLine, View
 from story.shells.textual.commands import COMMANDS, help_text
-from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, NameDialog, PartyNamesDialog, PremiseDialog
+from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, PartyNamesDialog, PremiseDialog
 from story.shells.textual.prose import Marked, Prose
 from story.shells.prefs import get_saved_theme, save_theme
 from story.shells.textual.style import CHAR_DELAY, FAST_FACTOR, PAUSE_AFTER, SPINNER, THEME, palette
@@ -128,7 +128,7 @@ class StoryApp(App, View):
         self.status_shown: StatusLine | None = None  # 狀態列目前顯示的內容（換主題、改變寬度時重畫）
         self.theme_ready = False
         self.frame = 0
-        self.time_left = 0.0  # 限時模式的剩餘秒數，0 代表沒有在倒數
+        self.time_limit = self.time_left = 0.0  # 限時模式這回合的秒數與剩下的秒數，0 代表沒有在倒數
         self.last_tick = 0.0
         self.continue_event: asyncio.Event | None = None  # 等玩家按 Enter 繼續
         self.follow = True  # 故事區有新內容時自動捲到最底；玩家往上捲就暫停，捲回最底再恢復
@@ -189,11 +189,8 @@ class StoryApp(App, View):
     async def ask_ending(self, title: str, record: str) -> bool:
         return await self.push_screen_wait(EndingDialog(title, record))
 
-    async def ask_name(self, claim, hint: str = "") -> str | None:
-        return await self.push_screen_wait(NameDialog(claim, hint=hint) if hint else NameDialog(claim))
-
     async def ask_api_key(self, reason: str, can_save: bool) -> tuple[str, bool] | None:
-        return await self.push_screen_wait(ApiKeyDialog(reason, can_save=can_save))
+        return await self.push_screen_wait(ApiKeyDialog(reason))
 
     async def ask_party_names(self) -> list[str] | None:
         return await self.push_screen_wait(PartyNamesDialog())
@@ -361,11 +358,6 @@ class StoryApp(App, View):
         cmd.placeholder = placeholder
         line.remove()
 
-    async def typewrite(self, text: str) -> None:
-        """一次給完整文字的打字效果。"""
-        self.start_narration()
-        await self.finish_narration(text)
-
     # ---------- 選項 ----------
 
     def prepare_choices(self, choices: list[str], timed: bool) -> None:
@@ -464,8 +456,7 @@ class StoryApp(App, View):
         if self.busy_line is not None:
             self.frame = (self.frame + 1) % len(SPINNER)
             self.busy_line.update(self.busy_text())
-        # 開著對話框或指令選單時暫停倒數（線上多人大家共用一個倒數，不能暫停）
-        if self.time_left <= 0 or self.busy or (not self.client.room and isinstance(self.screen, ModalScreen)):
+        if self.time_left <= 0 or self.busy or isinstance(self.screen, ModalScreen):  # 開著對話框或指令選單時暫停倒數
             return
         self.time_left = max(0.0, self.time_left - elapsed)
         self.render_timer()
