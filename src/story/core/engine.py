@@ -61,6 +61,7 @@ SYSTEM_PROMPT = """你是一個互動式文字冒險遊戲的敘事者。
   精神狀態不會致命，但要影響主角的判斷與表現，例如恐懼時手抖、驚慌時聽不進別人的話；危機解除後可以直接移除。痊癒或消失時移除；惡化或好轉時用相同名稱回報新的程度。
   已有的狀態一律沿用「遊戲狀態」裡的原名，不要改名或換個說法重新新增。名稱只描述是什麼狀態（例如「右臂撕裂傷」），不要包含程度詞（輕傷、重傷、嚴重等），程度只用 severity 表示。狀態要影響後續劇情與行動的成敗。
 - 主角會不會因傷勢而死，由程式依傷勢總分判定（見「遊戲狀態」）。不要自行讓主角因傷而死；傷勢接近致命時，在敘述中呈現危險。game_over 只用於劇情自然走到結局。
+- 選擇要有真實的代價，不要手下留情：魯莽、危險的行動（正面硬拚強敵、從高處跳下、傷重還硬撐、明知有陷阱還往前）要依情勢給出相稱的傷勢，重傷是常態；主角已經重傷或瀕死時還冒險，就給出足以致命的傷勢，讓程式判定死亡。程度最高就是「重」：既有的重傷再惡化時，要另外新增新的傷勢（例如失血、內傷、新的骨折），只回報原本的重傷不會讓情況變得更危險。謹慎、聰明的選擇則要能避開或減輕傷害，玩家才能從選擇中感受到風險。
 - 傷勢會隨時間自然好轉：輕微的幾小時後痊癒，中度的要休養幾天；重傷不會自己好，只有劇情中真的得到治療（包紮、縫合、就醫、用藥）時，才能用相同名稱回報降一級。
 - 每回合用 time_passed 標出這段劇情經過了多久，並讓敘述符合「遊戲狀態」裡的時間（日夜、天色）。時間流逝也會推動世界：長時間休息時，飢餓、天候、其他角色的行動都可能帶來新的發展。
 - 狀態變化要與敘述一致：敘述裡受傷就要加入對應的狀態，撿到東西就要列進 items_gained。
@@ -156,6 +157,7 @@ def condition_list(who: Holder) -> list[tuple[str, str]]:
     return [(c.name, c.severity) for c in body_conditions(who) + mind_conditions(who)]
 
 
+LEVEL_NAMES = ("良好", "輕傷", "受傷", "重傷", "瀕死", "死亡")  # body_level() 的整體狀態
 WARNING_LEVELS = ("重傷", "瀕死")  # 整體狀態到這個程度要警告玩家：再受傷就有生命危險
 
 
@@ -224,7 +226,7 @@ def apply_condition_changes(who: Holder, changed: list, removed_names: list[str]
 
     for change in changed:
         name = change.name.strip()[:MAX_CONDITION_LEN]
-        if not name:
+        if not name or name in LEVEL_NAMES:  # 「良好」「重傷」這類是整體狀態的評語，不是一種傷勢
             continue
         existing = next((c for c in who.conditions if c.name == name), None)
         if existing:

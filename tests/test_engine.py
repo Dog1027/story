@@ -13,6 +13,7 @@ from story.core.engine import (
     MIN_ENDING_TURN,
     MIN_TIME_LIMIT,
     TARGET_TURNS,
+    apply_condition_changes,
     body_level,
     body_score,
     clock_text,
@@ -432,6 +433,16 @@ def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):
     call = turn["calls"][0]
     assert call["seconds"] >= 0
     assert (call["prompt"], call["cached"], call["output"], call["thinking"]) == (1200, 800, 300, 50)
+
+
+def test_overall_level_words_are_not_conditions():
+    """AI 偶爾把狀態列的評語（良好、重傷……）當成傷勢名稱回報：直接忽略。"""
+    from story.core.models import ConditionChange
+
+    state = GameState(premise="x")
+    changes = [ConditionChange(**cond(name, "重")) for name in ("良好", "重傷", "右臂撕裂傷")]
+    apply_condition_changes(state, changes, [], 0)
+    assert [c.name for c in state.conditions] == ["右臂撕裂傷"]
 
 
 # ---------- 串流 ----------
