@@ -20,3 +20,6 @@ party_log.jsonl
 # just start 的背景伺服器
 .server.pid
 server.log
+
+# just eval 的結果
+eval_results/

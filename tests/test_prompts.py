@@ -14,7 +14,7 @@ PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 def test_every_prompt_file_loads():
     for name in ("system", "party_system"):
         assert prompts.load(name).startswith("你是")
-    for name in ("context", "turn", "party_turn", "progress", "plan", "premise", "memory", "schema"):
+    for name in ("context", "turn", "party_turn", "progress", "plan", "premise", "memory", "schema", "eval"):
         parts = prompts.sections(name)
         assert parts and all(body.strip() for body in parts.values()), name
 

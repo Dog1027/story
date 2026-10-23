@@ -56,6 +56,10 @@ stop:
 prompts *args:
     @uv run python -m story.preview {{args}}
 
+# 評估 AI 寫得好不好（會呼叫真的 API，改了提示詞之後手動跑）：just eval、just eval reveal agency、just eval --runs 5
+eval *args:
+    @uv run python -m story.evals {{args}}
+
 # 全部測試（可以加 pytest 參數，例如 just test -k party）
 test *args:
     uv run pytest {{args}}

@@ -37,9 +37,12 @@ HISTORY = [
 ]
 
 
+PREMISE = "你是一名失憶的旅人，在暴風雨夜醒來，發現自己躺在一座廢棄燈塔的底層。"
+
+
 def sample_state(party: bool, genre: str, **fields) -> GameState:
     state = GameState(
-        premise="你是一名失憶的旅人，在暴風雨夜醒來，發現自己躺在一座廢棄燈塔的底層。",
+        premise=PREMISE,
         genre=genre,
         turn=8,
         minutes=22 * 60,
