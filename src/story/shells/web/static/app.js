@@ -2,7 +2,7 @@
 // 訊息格式見 story/shells/web/view.py。
 "use strict";
 
-const CHAR_DELAY = 50; // 每個字的間隔（毫秒），大約一秒 20 個字
+const CHAR_DELAY = 50; // 每個字的間隔（毫秒），大約一秒 20 個字（跟終端機版一樣）
 const FAST_FACTOR = 0.15; // 按一次 Enter 後，間隔縮成原本的幾倍
 const PAUSE_AFTER = { "。": 250, "！": 250, "？": 250, "，": 100, "、": 80, "…": 150, "\n": 100 };
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
