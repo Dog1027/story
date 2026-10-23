@@ -45,7 +45,7 @@ class Player:
 @pytest.fixture
 async def room(isolated):
     engine = FakePartyEngine()
-    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=engine))
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine))
     room.engine = engine
     yield room
     await room.stop()
@@ -157,7 +157,7 @@ class TimedEngine(FakePartyEngine):
 
 
 async def test_countdown_starts_after_everyone_has_read_then_times_out(isolated):
-    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=TimedEngine()))
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=TimedEngine()))
     try:
         host, guest = await start_story(room)
         await host.reply()
@@ -189,7 +189,7 @@ async def test_game_end_returns_to_lobby(room, monkeypatch):
 
 async def test_failed_timeout_round_restarts_the_countdown(isolated):
     engine = TimedEngine()
-    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=engine))
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine))
     try:
         host, guest = await start_story(room)
         await host.reply()
@@ -223,7 +223,7 @@ class SlowOpeningEngine(FakePartyEngine):
 
 
 async def test_everyone_sees_the_opening_progress(isolated):
-    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=SlowOpeningEngine()))
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=SlowOpeningEngine()))
     try:
         host, guest = await start_story(room)
         for stage in ("規劃故事大綱", "寫開場"):
@@ -239,7 +239,7 @@ async def test_host_genre_choice_reaches_the_core(isolated):
     class GenreEngine(FakePartyEngine):
         genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}
 
-    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=GenreEngine()))
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=GenreEngine()))
     try:
         host, guest = await join(room, "阿明"), await join(room, "小華")
         await host.send("1")
@@ -287,7 +287,7 @@ class StreamingPartyEngine(FakePartyEngine):
 
 
 async def test_everyone_sees_the_narration_while_it_is_written(isolated):
-    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=StreamingPartyEngine()))
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=StreamingPartyEngine()))
     try:
         host, guest = await start_story(room)
         await host.reply()

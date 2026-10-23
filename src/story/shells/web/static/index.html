@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=9">
+  <link rel="stylesheet" href="/static/style.css?v=10">
   <script>
     // 外觀：跟隨系統，或玩家在選單裡選的淺色／深色（只存在這個瀏覽器）
     try {
@@ -32,7 +32,6 @@
 
     <footer id="dock">
       <div id="timer" class="timer" hidden><div class="timer-track"><div id="timer-fill" class="timer-fill"></div></div><span id="timer-text" class="timer-text"></span></div>
-      <div id="choices-title" class="choices-title" hidden></div>
       <ol id="choices" class="choices"></ol>
       <form id="input-form" class="input-row" autocomplete="off">
         <input id="input" type="text" enterkeyhint="send" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="連線中…" disabled>
@@ -60,6 +59,6 @@
   <div id="toasts" class="toasts" aria-live="assertive"></div>
 
   <!-- ?v= 是版本號：改了 app.js 或 style.css 就加一，瀏覽器才會丟掉快取的舊檔 -->
-  <script src="/static/app.js?v=9"></script>
+  <script src="/static/app.js?v=10"></script>
 </body>
 </html>

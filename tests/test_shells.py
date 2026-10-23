@@ -21,21 +21,6 @@ def test_plain_shell_plays_a_whole_story(monkeypatch, capsys):
     assert "已存檔，下次見。" in out
 
 
-def test_plain_shell_party_mode(monkeypatch, capsys):
-    from conftest import FakePartyEngine
-    from story.core import PartyCore
-
-    monkeypatch.setenv("GEMINI_API_KEY", "test")
-    monkeypatch.setattr(plain, "PartyCore", lambda api_key, players: PartyCore(api_key, players, engine=FakePartyEngine()))
-    inputs = iter(["阿明,阿明", "阿明,小華", "", "1", "2", "/quit"])
-    monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
-    plain.main(party=True)
-    out = capsys.readouterr().out
-    assert "多人模式需要 1 到" in out  # 名字重複
-    assert "輪到 阿明 行動" in out and "輪到 小華 行動" in out
-    assert "阿明　獲得 油燈" in out
-
-
 def test_shells_only_use_the_public_core_interface():
     """外殼只能透過核心的公開介面溝通：只 import story.core 匯出的名稱，只用公開的方法與唯讀屬性。
     直接讀核心內部（core.state、core.engine……）時這裡會失敗，核心內部怎麼改才不會弄壞外殼。"""

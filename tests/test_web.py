@@ -115,7 +115,7 @@ async def test_sessions_are_limited(isolated, monkeypatch):
 
 
 async def test_party_mode_puts_every_tab_in_one_lobby(isolated):
-    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=FakePartyEngine()))
+    room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=FakePartyEngine()))
     async with TestClient(TestServer(web.make_app(room))) as client:
         host, guest = Browser(await client.ws_connect("/ws")), Browser(await client.ws_connect("/ws"))
         await host.answer((await host.expect("name"))["id"], "阿明")
@@ -130,5 +130,3 @@ async def test_party_mode_puts_every_tab_in_one_lobby(isolated):
         await guest.expect("choices", lambda m: m["choices"] == ["小華往上爬", "小華躲起來"])
         status = (await guest.expect("status", lambda m: m["status"]))["status"]
         assert status["party"] and [c["name"] for c in status["characters"]] == ["阿明", "小華"]
-        # 線上多人沒有輪流的順序：選項區不標「輪到誰」
-        assert all(m["title"] == "接下來" for m in guest.seen if m["t"] == "hint")

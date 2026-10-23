@@ -126,9 +126,7 @@ const handlers = {
       renderChoices(choices);
     }
   },
-  hint({ title, placeholder }) {
-    $("choices-title").textContent = title === "接下來" ? "" : title;
-    $("choices-title").hidden = title === "接下來";
+  hint({ placeholder }) {
     if (!state.waitingEnter) input.placeholder = placeholder;
   },
   status({ status }) { renderStatus(status); },

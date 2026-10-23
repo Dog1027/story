@@ -10,8 +10,8 @@ PartyEngine 繼承單人的 Engine，PartyCore 繼承單人的 StoryCore，只�
 - /timeout 會把還沒行動的人都當作「時間到」，直接推進這一回合
 - /away 是這位角色暫時離開（例如線上多人斷線），這回合不行動；給 AI 的文字是 AWAY_ACTION
 
-同一台電腦輪流輸入時用 send()，照隊伍順序收行動；線上多人用 send_as(名字, 文字)，誰先送誰先記，
-再用 view(名字) 取得某位玩家眼中的畫面（自己的選項）。
+線上多人（story.shells.room）用 send_as(名字, 文字) 送每位玩家的輸入，誰先送誰先記，
+再用 view(名字) 取得某位玩家眼中的畫面（自己的選項）。不屬於某位玩家的輸入（時間到、房主的回答、寫尾聲）用 send()。
 """
 
 import json
@@ -47,8 +47,6 @@ from story.core.session import Reply, Status, StoryCore, render_text
 PARTY_SYSTEM_PROMPT = prompts.load("party_system")
 PARTY_TURN = prompts.sections("party_turn")
 
-PARTY_SAVE_PATH = Path("party_save.json")
-PARTY_LOG_PATH = Path("party_log.jsonl")
 MIN_PLAYERS, MAX_PLAYERS = 1, 4  # 一個人也能開線上多人的房間先玩，其他人之後再一起玩下一局
 AWAY_ACTION = PARTY_TURN["away_action"]  # /away：角色暫時不在（線上多人斷線時由房間送出），這句會寫進劇情紀錄給 AI
 
@@ -176,8 +174,9 @@ class PartyCore(StoryCore):
         self,
         api_key: str,
         players: list[str],
-        save_path: Path = PARTY_SAVE_PATH,
-        log_path: Path = PARTY_LOG_PATH,
+        *,
+        save_path: Path,
+        log_path: Path,
         engine: Engine | None = None,
     ):
         names = [n.strip() for n in players if n.strip()]

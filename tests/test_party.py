@@ -1,5 +1,7 @@
 """多人模式：engine 的隊伍規則，以及 PartyCore 的輪流輸入流程。"""
 
+from pathlib import Path
+
 import pytest
 from conftest import ARC, FakePartyEngine, InvalidKeyError, cond, make_engine, pbeat, upd
 
@@ -137,14 +139,14 @@ def engine():
 
 @pytest.fixture
 def core(engine, isolated):
-    return PartyCore("test", NAMES, save_path=isolated / "party.json", engine=engine)
+    return PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine)
 
 
 def test_needs_one_to_four_unique_players():
-    PartyCore("test", ["阿明"], engine=FakePartyEngine())  # 一個人也能開始
+    PartyCore("test", ["阿明"], save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakePartyEngine())  # 一個人也能開始
     for players in ([], ["阿明", "阿明"], ["a", "b", "c", "d", "e"]):
         with pytest.raises(ValueError):
-            PartyCore("test", players, engine=FakePartyEngine())
+            PartyCore("test", players, save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakePartyEngine())
 
 
 def test_players_take_turns_before_the_round_resolves(core, engine):
@@ -233,27 +235,27 @@ def test_party_ending(core):
 
 
 def test_resume_party_save(engine, isolated):
-    first = PartyCore("test", NAMES, save_path=isolated / "party.json", engine=engine)
+    first = PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine)
     first.start()
     first.send("")
     first.send("1")
     first.send("1")
     assert load(isolated / "party.json").turn == 2
 
-    same = PartyCore("test", NAMES, save_path=isolated / "party.json", engine=FakePartyEngine())
+    same = PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=FakePartyEngine())
     assert same.start().phase == "ask_continue"
     reply = same.send("1")
     assert reply.resumed and reply.actor == "阿明"
 
-    others = PartyCore("test", ["阿明", "小美"], save_path=isolated / "party.json", engine=FakePartyEngine())
+    others = PartyCore("test", ["阿明", "小美"], save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=FakePartyEngine())
     assert others.start().phase == "ask_premise"  # 玩家不同就開新局
 
 
 def test_resume_ignores_player_order(engine, isolated):
-    first = PartyCore("test", NAMES, save_path=isolated / "party.json", engine=engine)
+    first = PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine)
     first.start()
     first.send("")
-    reversed_order = PartyCore("test", NAMES[::-1], save_path=isolated / "party.json", engine=FakePartyEngine())
+    reversed_order = PartyCore("test", NAMES[::-1], save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=FakePartyEngine())
     assert reversed_order.start().phase == "ask_continue"  # 線上多人加入的順序不同也能接續
 
 
@@ -326,7 +328,7 @@ def test_party_core_with_real_engine(isolated):
         pbeat(upd("阿明", choices=["推門", "點燈"]), upd("小華", choices=["守門", "搜索"]), narration="兩人醒來。"),
         pbeat(upd("阿明", conditions_changed=lethal), upd("小華", items_gained=["鑰匙"], choices=["逃走"]), narration="惡犬撲來。"),
     )
-    core = PartyCore("test", NAMES, save_path=isolated / "party.json", engine=engine)
+    core = PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine)
     core.start()
     reply = core.send("")
     assert reply.narration == "兩人醒來。" and reply.actor == "阿明" and reply.choices == ["推門", "點燈"]

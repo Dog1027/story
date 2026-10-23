@@ -58,8 +58,8 @@ class RecordingView(View):
     def show_choices(self, choices):
         self.record("show_choices", choices)
 
-    def set_hint(self, title, placeholder):
-        self.record("set_hint", title, placeholder)
+    def set_hint(self, placeholder):
+        self.record("set_hint", placeholder)
 
     def set_status(self, status):
         self.record("set_status", status)
@@ -175,19 +175,6 @@ async def test_invalid_key_asks_for_a_new_one_and_retries(engine):
     assert any(c[0] == "ask_api_key" and "無效" in c[1] for c in view.calls)
     assert engine.keys == ["新的 key"] and client.core.phase == "playing"
     assert ("show_choices", ["點亮油燈", "躲起來"]) in view.calls  # 換了 key 之後重送成功
-
-
-async def test_local_party_shows_whose_action_it_is(engine, monkeypatch):
-    monkeypatch.setattr(client_module, "PartyCore", lambda api_key, players: PartyCore(api_key, players, engine=FakePartyEngine()))
-    view = RecordingView()
-    client = Client(view, party=True)
-    await client.run()
-    assert client.actor == "阿明"
-    assert ("set_hint", "輪到 阿明", "輪到 阿明：↑↓ 選擇，或寫下行動") in view.calls
-    view.calls.clear()
-    await client.act("1")
-    assert ("show_action", "阿明：阿明往上爬") in view.calls
-    assert "stop_timer" not in view.names()  # 多人的倒數以整回合為單位，換人時繼續跑
 
 
 def test_status_line_lists_conditions_and_the_core_warning():

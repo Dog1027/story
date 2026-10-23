@@ -113,7 +113,6 @@ button { cursor: pointer; }
 .timer-fill { height: 100%; background: var(--sev-1); width: 100%; transition: width 0.1s linear; }
 .timer.urgent .timer-fill { background: var(--sev-3); }
 .timer-text { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
-.choices-title { font-size: 12px; letter-spacing: 0.1em; color: var(--muted); }
 .choices { list-style: none; margin: 0 auto; padding: 0; display: grid; gap: 6px; max-height: 40vh; overflow-y: auto; }
 .choices.hidden { visibility: hidden; }
 .choices.reveal { animation: fade-in 0.4s ease-out; }

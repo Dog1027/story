@@ -14,13 +14,13 @@
 import asyncio
 from dataclasses import dataclass, field
 
-from story.core import MIN_PLAYERS, ChangeGroups, Ending, PartyCore, Reply, Status, StoryCore, pick_choice
+from story.core import MIN_PLAYERS, ChangeGroups, Ending, Reply, Status, StoryCore, pick_choice
 from story.shells.apikey import KEY_PATH, forget_api_key, get_saved_api_key, save_api_key
 from story.shells.players import MAX_NAME_LEN, InvalidName, Player, check_name
 from story.shells.room import START, Connection, Room
 
 # 介面的對話框也會用到的規則（名字怎樣才能用、key 存在哪裡），一律從這裡取用
-__all__ = ["KEY_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "InvalidName", "StatusLine", "View", "check_name", "status_line"]
+__all__ = ["KEY_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "StatusLine", "View", "status_line"]
 
 BUSY_DELAY = 0.15  # 核心超過這麼久還沒回覆才顯示「故事生成中」，很快的回覆就不閃一下
 DRAFT_POLL = 0.1  # 等核心時每隔幾秒看一次 AI 寫到哪裡（串流），有新的字就先顯示
@@ -117,8 +117,8 @@ class View:
         """顯示選項（prepare_choices 放好的就是讓它出現）。"""
         raise NotImplementedError
 
-    def set_hint(self, title: str, placeholder: str) -> None:
-        """選項區的標題（例如「輪到 阿明」）與輸入框的提示。"""
+    def set_hint(self, placeholder: str) -> None:
+        """輸入框的提示，例如線上多人行動完之後的「等待 小華 行動…」。"""
         raise NotImplementedError
 
     def set_status(self, status: StatusLine | None) -> None:
@@ -170,9 +170,6 @@ class View:
         """回傳 (key, 要不要存起來)。"""
         raise NotImplementedError
 
-    async def ask_party_names(self) -> list[str] | None:
-        raise NotImplementedError
-
     def exit(self) -> None:
         raise NotImplementedError
 
@@ -181,16 +178,15 @@ class View:
 
 
 class Client:
-    def __init__(self, view: View, web: bool = False, party: bool = False, room: Room | None = None):
+    def __init__(self, view: View, web: bool = False, room: Room | None = None):
         self.view = view
         self.web = web  # 網頁版：先問名字，存檔依名字分開，API key 不存到伺服器
-        self.party = party  # 多人模式：大家輪流在這台電腦上輸入行動
         self.shared_room = room  # 線上多人：伺服器裡的房間；這時不建立自己的核心
         self.core: StoryCore | None = None
         self.room: Connection | None = None  # 連進房間後，和房間的連線
         self.player: Player | None = None
         self.my_name = ""  # 線上多人：自己的名字
-        self.actor = ""  # 多人模式：現在輪到誰（線上多人：輪到自己時是自己的名字）
+        self.actor = ""  # 線上多人：自己這回合還沒行動時是自己的名字，行動完是空的
         self.waiting: list[str] = []  # 線上多人：這回合還沒行動的人
         self.choices: list[str] = []
         self.draft = ""  # 已經交給介面、還在串流中的劇情
@@ -233,13 +229,7 @@ class Client:
         if key is None:
             self.view.exit()
             return
-        if self.party:
-            names = await self.view.ask_party_names()
-            if names is None:
-                self.view.exit()
-                return
-            self.core = PartyCore(api_key=key, players=names)
-        elif self.player:
+        if self.player:
             self.core = StoryCore(api_key=key, save_path=self.player.save_path, log_path=self.player.log_path)
         else:
             self.core = StoryCore(api_key=key)
@@ -292,14 +282,12 @@ class Client:
             await self.send("/timeout", echo=self.core.action_for("/timeout") or "")
 
     def echo_for(self, text: str) -> str:
-        """送出前先顯示的行動；多人模式加上是誰的行動。"""
-        if self.room:  # 線上多人沒有自己的核心：輪到自己時，照畫面上的選項對應
+        """送出前先顯示的行動。"""
+        if self.room:  # 線上多人沒有自己的核心：還沒行動時，照畫面上的選項對應
             if not self.actor or text.startswith("/"):
                 return ""
-            action = pick_choice(text, self.choices) or text
-        else:
-            action = self.core.action_for(text) or ""
-        return f"{self.actor}：{action}" if action and self.actor else action
+            return pick_choice(text, self.choices) or text
+        return self.core.action_for(text) or ""
 
     # ---------- 和核心對話 ----------
 
@@ -307,8 +295,7 @@ class Client:
         """送一句文字給核心並顯示回覆。echo 是要先顯示在故事區的玩家行動。"""
         if self.busy:
             return
-        if not self.party:  # 多人模式的倒數以整回合為單位，換人輸入時繼續跑
-            self.view.stop_timer()
+        self.view.stop_timer()
         if echo:
             self.set_choices([])
             self.view.show_action(echo)
@@ -491,14 +478,11 @@ class Client:
         self.view.set_status(status_line(turn, characters, self.timed))
 
     def refresh_hint(self) -> None:
-        """選項區的標題與輸入框的提示。同一台電腦的多人模式標出輪到誰；
-        線上多人沒有順序、每個人只看到自己的選項，所以不標，行動完改成提示還在等誰。"""
-        turn_taking = self.actor and not self.room
-        title = f"輪到 {self.actor}" if turn_taking else "接下來"
-        placeholder = f"輪到 {self.actor}：↑↓ 選擇，或寫下行動" if turn_taking else "↑↓ 選擇，或寫下你的行動"
+        """輸入框的提示：線上多人自己行動完之後，改成提示還在等誰。"""
         if self.room and not self.actor and self.waiting:
-            placeholder = f"等待 {'、'.join(self.waiting)} 行動…"
-        self.view.set_hint(title, placeholder)
+            self.view.set_hint(f"等待 {'、'.join(self.waiting)} 行動…")
+        else:
+            self.view.set_hint("↑↓ 選擇，或寫下你的行動")
 
     # ---------- 線上多人：和房間對話 ----------
 
@@ -586,4 +570,4 @@ class Client:
         else:
             self.set_choices([])
             placeholder = f"等房主 {host} 開始遊戲…"
-        self.view.set_hint("接下來", placeholder)
+        self.view.set_hint(placeholder)

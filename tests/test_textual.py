@@ -242,35 +242,6 @@ async def test_leaving_the_key_dialog_quits(monkeypatch):
         await wait_until(pilot, lambda: app.return_code is not None)
 
 
-async def test_party_mode_takes_turns(monkeypatch):
-    from conftest import FakePartyEngine
-    from story.core import PartyCore
-    from story.shells.textual.dialogs import PartyNamesDialog
-
-    monkeypatch.setattr(client_module, "PartyCore", lambda api_key, players: PartyCore(api_key, players, engine=FakePartyEngine()))
-    app = StoryApp(party=True)
-    async with app.run_test(size=(110, 32)) as pilot:
-        await wait_until(pilot, lambda: isinstance(app.screen, PartyNamesDialog))
-        app.screen.query_one("#names", Input).value = "甲 乙 丙 丁 戊"
-        await pilot.press("enter")
-        assert "1 到 4" in str(app.screen.query_one("#error").render())
-        app.screen.query_one("#names", Input).value = "阿明，小華"
-        await pilot.press("enter")
-        await start_game(pilot, app)
-        assert app.client.actor == "阿明" and app.choices == ["阿明往上爬", "阿明躲起來"]
-        assert "阿明" in status_text(app) and "小華" in status_text(app)
-        assert app.query_one("#choices").border_title == "輪到 阿明"
-
-        await pilot.press("1", "enter")
-        await wait_until(pilot, lambda: app.client.actor == "小華")
-        assert "› 阿明：阿明往上爬" in log_lines(app)
-        await pilot.press("2", "enter")
-        await wait_until(pilot, lambda: app.client.actor == "阿明" and not app.typing and app.client.core.state.turn == 2)
-        lines = log_lines(app)
-        assert "› 小華：小華躲起來" in lines
-        assert any(line.startswith("阿明　獲得 油燈") for line in lines)
-
-
 async def test_narration_uses_chinese_line_breaking(monkeypatch):
     class EnglishNameEngine(FakeEngine):
         def start(self, state):
@@ -384,34 +355,23 @@ def test_every_builtin_theme_gives_valid_status_colors():
             Style.parse(f"bold {color}")  # 認不得會拋出錯誤
 
 
-async def test_party_status_columns_line_up():
-    """多人模式的狀態列：名字長短、狀態多寡不同，狀態欄仍然對齊；手機上「⚠ 重傷」這類小區塊不會被拆開。"""
-    from rich.cells import cell_len
-
+async def test_status_chips_are_never_split_on_narrow_screens():
+    """狀態很多、畫面很窄（手機）時：狀態移到第二排並換行，但「⚠ 重傷」這類小區塊不會被拆到兩行。"""
     from story.core.session import Status
 
-    party = [
-        Status(conditions=[("右臂撕裂傷", "重"), ("小腿挫傷", "中"), ("恐懼", "中"), ("失眠", "輕")], warning="重傷", name="阿民"),
-        Status(conditions=[], name="10快快俠"),
-    ]
-
-    def column(line: str, word: str) -> int:  # 在畫面上的第幾格（中文字佔兩格）
-        return cell_len(line[: line.index(word)])
-
+    me = [Status(conditions=[("右臂撕裂傷", "重"), ("小腿挫傷", "中"), ("恐懼", "中"), ("失眠", "輕")], warning="重傷")]
     for width in (100, 40):
         app = StoryApp()
         async with app.run_test(size=(width, 30)) as pilot:
             await pilot.pause()
-            app.set_status(status_line(7, party, timed=False))
+            app.set_status(status_line(7, me, timed=False))
             await pilot.pause()
             lines = status_text(app).splitlines()
-            first, second = lines[1], next(line for line in lines[2:] if line.startswith("10快快俠"))
-            assert "限時模式" not in lines[0] and "一般模式" in lines[0]
-            assert column(first, "⚠ 重傷") == column(second, "良好")  # 狀態欄對齊
+            assert "一般模式" in lines[0]
+            for chip in ("⚠ 重傷", "右臂撕裂傷", "小腿挫傷", "恐懼", "失眠"):
+                assert any(chip in line for line in lines), (width, chip, lines)
             if width < 60:
-                assert len(lines) > 3  # 窄畫面放不下就換行，但每個狀態都完整
-            for word in ("右臂撕裂傷", "小腿挫傷", "恐懼", "失眠"):
-                assert any(word in line for line in lines)
+                assert len(lines) > 2  # 窄畫面放不下就換行
 
 
 async def test_premise_dialog_lets_you_pick_a_genre(monkeypatch):

@@ -145,8 +145,8 @@ class WebView(View):
     def show_choices(self, choices: list[str]) -> None:
         self.post("choices", choices=choices)
 
-    def set_hint(self, title: str, placeholder: str) -> None:
-        self.post("hint", title=title, placeholder=placeholder)
+    def set_hint(self, placeholder: str) -> None:
+        self.post("hint", placeholder=placeholder)
 
     def set_status(self, status: StatusLine | None) -> None:
         self.post("status", status=asdict(status) if status else None)
@@ -211,9 +211,6 @@ class WebView(View):
     async def ask_api_key(self, reason: str, can_save: bool) -> tuple[str, bool] | None:
         key = await self.ask("api_key", reason=reason)
         return (str(key).strip(), False) if key and str(key).strip() else None
-
-    async def ask_party_names(self) -> list[str] | None:
-        return None  # 網頁版沒有「同一台電腦輪流玩」的多人模式
 
     def exit(self) -> None:
         self.post("exit")

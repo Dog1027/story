@@ -4,15 +4,13 @@ import sys
 
 
 def main() -> None:
-    """依參數選外殼：預設是 Textual 終端機介面，--plain 是純文字。加上 --party 是多人模式（大家輪流在同一台電腦上輸入）。
-    網頁版是另一個指令：story-web（story.shells.web）。"""
-    args = sys.argv[1:]
-    party = "--party" in args
-    if "--plain" in args:
+    """依參數選外殼：預設是 Textual 終端機介面，--plain 是純文字。
+    網頁版（包括線上多人）是另一個指令：story-web（story.shells.web）。"""
+    if "--plain" in sys.argv[1:]:
         from story.shells.plain import main as plain_main
 
-        plain_main(party=party)
+        plain_main()
         return
     from story.shells.textual import StoryApp
 
-    StoryApp(party=party).run()
+    StoryApp().run()

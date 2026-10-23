@@ -8,8 +8,6 @@ import asyncio
 import time
 
 from rich.cells import cell_len
-from rich.console import Group
-from rich.table import Table
 from rich.text import Text
 from textual import events, on
 from textual.app import App, ComposeResult, SystemCommand
@@ -21,7 +19,7 @@ from textual.widgets import Input, OptionList, Static
 from story.core import ChangeGroups, Reply
 from story.shells.client import CharacterLine, Client, StatusLine, View
 from story.shells.textual.commands import COMMANDS, help_text
-from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, PartyNamesDialog, PremiseDialog
+from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, PremiseDialog
 from story.shells.textual.prose import Marked, Prose
 from story.shells.prefs import get_saved_theme, save_theme
 from story.shells.textual.style import CHAR_DELAY, FAST_FACTOR, PAUSE_AFTER, SPINNER, THEME, palette
@@ -118,9 +116,9 @@ class StoryApp(App, View):
         Binding("down", "move_choice(1)", show=False),
     ]
 
-    def __init__(self, party: bool = False) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.client = Client(self, party=party)
+        self.client = Client(self)
         self.choices: list[str] = []
         self.choices_hidden = False  # prepare_choices 放好、還看不見的選項
         self.busy = False
@@ -192,9 +190,6 @@ class StoryApp(App, View):
     async def ask_api_key(self, reason: str, can_save: bool) -> tuple[str, bool] | None:
         return await self.push_screen_wait(ApiKeyDialog(reason))
 
-    async def ask_party_names(self) -> list[str] | None:
-        return await self.push_screen_wait(PartyNamesDialog())
-
     def show_info(self, title: str, body: str) -> None:
         self.push_screen(InfoDialog(title, body))
 
@@ -205,10 +200,6 @@ class StoryApp(App, View):
             if not lasting:
                 kwargs["title"] = "出錯了"
         super().notify(message, **kwargs)
-
-    def show_lobby(self, members: list[str]) -> None:
-        self.status_shown = None
-        self.query_one("#status", Static).update(Text.assemble(("大廳  ", "dim"), (" · ".join(members), "bold")))
 
     # ---------- 狀態列 ----------
 
@@ -233,18 +224,6 @@ class StoryApp(App, View):
         if status is None:
             bar.update(Text("Story", style="dim"))
             return
-        if status.party:
-            # 第一排是回合與模式，下面每位角色一列：名字一欄、狀態一欄，名字長短不同也會對齊
-            table = Table.grid(padding=(0, 2))
-            table.add_column(no_wrap=True)
-            table.add_column()
-            name_width = max(cell_len(c.name) for c in status.characters) + 2
-            for c in status.characters:
-                name = Text(c.name, style="bold dim" if not c.alive else "bold")
-                cell = Text("已倒下", style="dim") if not c.alive else pack(self.condition_parts(c), width - name_width, sep)
-                table.add_row(name, cell)
-            bar.update(Group(self.turn_line(status), table))
-            return
         parts = self.condition_parts(status.characters[0])
         head = Text.assemble(self.turn_line(status), ("     狀態 ", "dim"))
         line = pack(parts, width - cell_len(head.plain), sep)
@@ -256,7 +235,7 @@ class StoryApp(App, View):
     # ---------- 故事區 ----------
 
     def clear_story(self, premise: str) -> None:
-        """新故事開始：清空故事區、選項與狀態列，並先顯示故事前提（等 AI 寫開場時可以先讀，線上多人的其他人也知道要玩什麼）。"""
+        """新故事開始：清空故事區、選項與狀態列，並先顯示故事前提（等 AI 寫開場時可以先讀）。"""
         log = self.query_one("#log", VerticalScroll)
         log.remove_children()
         self.busy_line = None  # 已經跟著被移除了，之後要重新顯示
@@ -394,8 +373,7 @@ class StoryApp(App, View):
         self.choices_hidden = False
         self.query_one("#choices", OptionList).styles.animate("opacity", 1.0, duration=0.4)
 
-    def set_hint(self, title: str, placeholder: str) -> None:
-        self.query_one("#choices", OptionList).border_title = title
+    def set_hint(self, placeholder: str) -> None:
         self.query_one("#cmd", Input).placeholder = placeholder
 
     # ---------- 等待 ----------

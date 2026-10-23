@@ -1,4 +1,4 @@
-"""Textual 外殼的對話框：API key、多人的名字、新故事、確認、結局、說明。"""
+"""Textual 外殼的對話框：API key、新故事、確認、結局、說明。"""
 
 import asyncio
 from collections.abc import Callable
@@ -12,8 +12,8 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Select, Static, TextArea
 
-from story.core import GENRE_AUTO, GENRE_NONE, MAX_PLAYERS, MIN_PLAYERS, Reply
-from story.shells.client import KEY_PATH, InvalidName, check_name
+from story.core import GENRE_AUTO, GENRE_NONE, Reply
+from story.shells.client import KEY_PATH
 
 
 class Dialog(ModalScreen):
@@ -107,41 +107,6 @@ class ApiKeyDialog(Dialog):
         key = self.query_one("#key", Input).value.strip()
         if key:
             self.dismiss((key, self.query_one("#save", Checkbox).value))
-
-
-class PartyNamesDialog(Dialog):
-    """多人模式：輸入每位玩家的名字。回傳名字清單或 None。"""
-
-    def compose(self) -> ComposeResult:
-        with Vertical():
-            yield Static("多人模式", classes="title")
-            yield Static(
-                f"每位玩家扮演一位角色，大家輪流在這台電腦上輸入行動。\n輸入 {MIN_PLAYERS} 到 {MAX_PLAYERS} 位玩家的名字，用逗號或空白隔開。",
-                classes="hint",
-            )
-            yield Input(placeholder="例如：阿明，小華", id="names")
-            yield Static("", id="error", classes="hint")
-            with Horizontal():
-                yield Button("離開", id="cancel", compact=True)
-                yield Button("開始", variant="primary", id="ok", compact=True)
-
-    @on(Input.Submitted)
-    @on(Button.Pressed, "#ok")
-    def submit(self) -> None:
-        error = self.query_one("#error", Static)
-        raw = self.query_one("#names", Input).value.replace("，", " ").replace(",", " ").replace("、", " ")
-        try:
-            names = [check_name(n) for n in raw.split()]
-        except InvalidName as e:
-            error.update(str(e))
-            return
-        if not MIN_PLAYERS <= len(names) <= MAX_PLAYERS:
-            error.update(f"需要 {MIN_PLAYERS} 到 {MAX_PLAYERS} 位玩家。")
-            return
-        if len(set(names)) != len(names):
-            error.update("名字不能重複。")
-            return
-        self.dismiss(names)
 
 
 class PremiseArea(TextArea):
