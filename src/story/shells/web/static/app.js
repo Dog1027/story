@@ -510,14 +510,19 @@ const GENRE_AUTO = "自動", GENRE_NONE = "不套用";
 function premiseSheet({ id, default: initial, timed, genre, genres }) {
   openSheet((sheet, close) => {
     const descriptions = Object.fromEntries(genres);
-    let latest = 0, nextReq = 0;
-    const defaultBox = tag("div", "default");
-    const setDefault = (text) => { defaultBox.replaceChildren(tag("b", "", "留白則使用"), text); defaultBox.dataset.value = text; };
-    setDefault(initial);
+    let latest = 0, nextReq = 0, current = initial;
+    const squash = (text) => text.split(/\s+/).join(" ").trim();
 
+    // 故事前提的文字框一開始就填好預設的開頭；玩家改了才用玩家寫的
     const area = tag("textarea");
     area.id = "premise-input";
     area.placeholder = "例如：你是一名在末日城市送信的郵差……";
+    area.value = initial;
+    // 換了預設的開頭：玩家還沒改過文字框（或 replace）就換上新的，改過的就保留玩家寫的
+    const setDefault = (text, replace = false) => {
+      if (replace || ["", squash(current)].includes(squash(area.value))) area.value = text;
+      current = text;
+    };
     area.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); start(); } });
 
     const timedBox = tag("input");
@@ -565,7 +570,7 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
     reroll.type = "button";
     reroll.onclick = async () => {
       const reply = await request([`/genre ${chosenGenre()}`, "/random"]);
-      if (reply && !reply.error) setDefault(reply.default);
+      if (reply && !reply.error) setDefault(reply.default, true); // 按了「換一個」：文字框一定換掉
     };
     const suggest = tag("button", "btn", "幫我想");
     suggest.type = "button";
@@ -576,19 +581,20 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
       suggest.disabled = false;
       suggest.textContent = "幫我想";
       if (reply.error) toast(reply.error, { error: true, title: "AI 沒有想出開頭" });
-      else { area.value = reply.suggestion; if (!TOUCH) area.focus(); }
+      else { setDefault(reply.suggestion, true); if (!TOUCH) area.focus(); }
     };
     const startButton = tag("button", "btn primary", "開始");
     startButton.type = "button";
-    const start = () => close([area.value.trim() || defaultBox.dataset.value, timedBox.checked, chosenGenre()]);
+    const start = () => close([area.value.trim() || current, timedBox.checked, chosenGenre()]);
     startButton.onclick = start;
 
     const row = tag("div", "buttons");
     reroll.classList.add("spacer");
     row.append(reroll, suggest, startButton);
-    sheet.append(tag("h2", "", "新的故事"), area, defaultBox, timedLabel);
+    // 由上到下：題材、題材介紹、故事前提、限時模式
+    sheet.append(tag("h2", "", "新的故事"));
     if (genres.length) sheet.append(select, genreHint);
-    sheet.append(row);
+    sheet.append(tag("p", "hint", "故事前提：可以直接修改，或按「換一個」「幫我想」"), area, timedLabel, row);
   }, (value) => {
     state.premise = null;
     answer(id, value);

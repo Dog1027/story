@@ -238,7 +238,8 @@ class GenreSelect(Select, inherit_bindings=False):
 
 
 class PremiseDialog(Dialog):
-    """輸入故事前提並選擇模式與題材。回傳 (前提, 是否限時, 題材)；前提空白就用預設值。"""
+    """選擇題材、輸入故事前提、選擇模式。回傳 (前提, 是否限時, 題材)；前提空白就用預設值。
+    由上到下：題材、題材介紹、故事前提（一開始就填好預設的開頭，玩家改了才用玩家寫的）、限時模式。"""
 
     DEFAULT_CSS = """
     PremiseDialog > Vertical { width: 84; }
@@ -248,7 +249,7 @@ class PremiseDialog(Dialog):
     }
     PremiseDialog TextArea:focus { border: round $primary; background-tint: $foreground 0%; }
     PremiseDialog Select { margin-bottom: 0; }
-    PremiseDialog #genre-hint { margin: 0 0 0 2; }
+    PremiseDialog #genre-hint { margin: 0 0 1 2; }
     """
 
     def __init__(self, reply: Reply, ask: Callable[..., Reply]):
@@ -263,15 +264,15 @@ class PremiseDialog(Dialog):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static("新的故事", classes="title")
-            yield Static(self.default_hint(), id="default-hint", classes="hint")
-            yield PremiseArea(placeholder="例如：你是一名在末日城市送信的郵差……", id="premise", highlight_cursor_line=False)
-            yield Checkbox("限時模式：情勢緊迫時，要在時間內做出決定", value=self.timed, id="timed")
             if self.genres:  # 有題材包才顯示題材選單
                 options = [("題材：自動（依故事前提挑選）", GENRE_AUTO), ("題材：不套用", GENRE_NONE)]
                 options += [(f"題材：{name}", name) for name in self.genres]
                 value = self.genre if self.genre in (GENRE_AUTO, GENRE_NONE, *self.genres) else GENRE_AUTO
                 yield GenreSelect(options, value=value, allow_blank=False, compact=True, id="genre")
                 yield Static(self.genre_hint(value), id="genre-hint", classes="hint")
+            yield Static("故事前提：可以直接修改，或按「換一個」「幫我想」", classes="hint")
+            yield PremiseArea(self.default, placeholder="例如：你是一名在末日城市送信的郵差……", id="premise", highlight_cursor_line=False)
+            yield Checkbox("限時模式：情勢緊迫時，要在時間內做出決定", value=self.timed, id="timed")
             with Horizontal():
                 yield Button("換一個", id="reroll", compact=True)
                 yield Button("幫我想", id="suggest", compact=True)
@@ -285,12 +286,18 @@ class PremiseDialog(Dialog):
             reply = await asyncio.to_thread(self.ask, *commands)
         return reply if not latest_only or mine == self.latest else None
 
-    def default_hint(self) -> str:
-        return f"輸入故事前提，留白則使用：\n{self.default}"
+    def on_mount(self) -> None:
+        field = self.query_one("#premise", PremiseArea)
+        field.focus()
+        field.move_cursor(field.document.end)
 
-    def set_default(self, premise: str) -> None:
+    def set_default(self, premise: str, replace: bool = False) -> None:
+        """換了預設的開頭：玩家還沒改過文字框（或 replace）就換上新的，改過的就保留玩家寫的。"""
+        field = self.query_one("#premise", PremiseArea)
+        if replace or " ".join(field.text.split()) in ("", " ".join(self.default.split())):
+            field.text = premise
+            field.move_cursor(field.document.end)
         self.default = premise
-        self.query_one("#default-hint", Static).update(self.default_hint())
 
     @on(Button.Pressed, "#suggest")
     @work
@@ -301,8 +308,7 @@ class PremiseDialog(Dialog):
             reply = await self.request(f"/genre {self.chosen_genre()}", "/suggest", latest_only=False)
             if reply.error:
                 raise RuntimeError(reply.notice)
-            field.text = reply.suggestion
-            field.move_cursor(field.document.end)
+            self.set_default(reply.suggestion, replace=True)
             field.focus()
         except Exception as e:  # 網路、key、額度等錯誤都只提示，不中斷開新局
             self.notify(str(e)[:200], title="AI 沒有想出開頭", severity="error")
@@ -314,7 +320,7 @@ class PremiseDialog(Dialog):
     async def reroll(self) -> None:
         """換一個：從題材包的開頭靈感裡重抽，不用等 AI。"""
         if reply := await self.request(f"/genre {self.chosen_genre()}", "/random"):
-            self.set_default(reply.premise_default)
+            self.set_default(reply.premise_default, replace=True)  # 玩家按了「換一個」：文字框一定換掉
 
     @on(Select.Changed, "#genre")
     @work

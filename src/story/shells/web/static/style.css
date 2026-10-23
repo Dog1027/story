@@ -164,8 +164,6 @@ button { cursor: pointer; }
   width: 100%; font-size: 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
 }
 .sheet textarea { resize: vertical; min-height: 6.5em; font-family: var(--serif); line-height: 1.7; }
-.sheet .default { background: var(--paper); border-radius: 10px; padding: 10px 12px; font-family: var(--serif); white-space: pre-wrap; font-size: 14px; }
-.sheet .default b { display: block; font-family: var(--sans); font-size: 12px; color: var(--muted); font-weight: 400; margin-bottom: 2px; }
 .sheet label.check { display: flex; gap: 8px; align-items: center; }
 .sheet .buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .sheet .buttons .spacer { margin-right: auto; }

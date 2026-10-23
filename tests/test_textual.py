@@ -78,8 +78,7 @@ async def test_suggest_button_fills_premise():
     async with app.run_test(size=SIZE) as pilot:
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog))
         app.screen.query_one("#suggest", Button).press()
-        await wait_until(pilot, lambda: app.screen.query_one("#premise").text)
-        assert app.screen.query_one("#premise").text == "你是月球礦坑的夜班工程師。"
+        await wait_until(pilot, lambda: app.screen.query_one("#premise").text == "你是月球礦坑的夜班工程師。")  # 換掉預設的開頭
 
 
 async def test_status_bar_waits_until_text_is_typed(monkeypatch):
@@ -429,11 +428,15 @@ async def test_premise_dialog_works_with_arrow_keys_only(monkeypatch):
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))
-        await pilot.press("down", "down")  # 前提輸入框 → 限時模式 → 題材選單
+        assert app.focused.id == "premise"  # 一開始在填好預設開頭的前提輸入框
+        for _ in range(5):  # 前提輸入框（預設的開頭有好幾行，先在框裡往上）→ 題材選單（在最上面）
+            if app.focused.id == "genre":
+                break
+            await pilot.press("up")
         assert app.focused.id == "genre"
         await pilot.press("right", "right")  # 自動 → 不套用 → 武俠
         assert app.screen.query_one("#genre", Select).value == "武俠"
-        await pilot.press("down")  # 題材選單 → 按鈕列（停在「開始」）
+        await pilot.press("down", "down", "down")  # 題材選單 → 前提 → 限時模式 → 按鈕列（停在「開始」）
         assert app.focused.id == "ok"
         await pilot.press("enter")
         await wait_until(pilot, lambda: app.choices and not app.typing)
@@ -458,7 +461,7 @@ async def test_premise_dialog_reroll_and_genre_change_update_the_default(monkeyp
         dialog = app.screen
         dialog.query_one("#genre", Select).value = "克蘇魯"
         await wait_until(pilot, lambda: dialog.default == "你收到舅舅的包裹。")
-        assert "你收到舅舅的包裹。" in str(dialog.query_one("#default-hint").render())
+        assert dialog.query_one("#premise").text == "你收到舅舅的包裹。"  # 還沒改過文字框：跟著換成新題材的開頭
         dialog.query_one("#genre", Select).value = "武俠"
         await wait_until(pilot, lambda: dialog.default in ("你是鏢師。", "你是捕快。"))
         before = dialog.default
@@ -468,6 +471,28 @@ async def test_premise_dialog_reroll_and_genre_change_update_the_default(monkeyp
         dialog.query_one("#ok", Button).press()
         await wait_until(pilot, lambda: app.choices and not app.typing)
         assert app.client.core.state.premise == chosen and app.client.core.state.genre == "武俠"
+
+
+async def test_premise_typed_by_the_player_is_kept_when_the_genre_changes(monkeypatch):
+    from textual.widgets import Select
+
+    from story.core.genres import Genre
+
+    class PackEngine(FakeEngine):
+        genres = {"克蘇魯": Genre(name="克蘇魯", description="恐怖", guide="暗示。", premises=["你收到舅舅的包裹。"])}
+
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=PackEngine(), **kw))
+    app = StoryApp()
+    async with app.run_test(size=SIZE) as pilot:
+        await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))
+        dialog = app.screen
+        dialog.query_one("#premise").text = "我自己寫的開頭"
+        dialog.query_one("#genre", Select).value = "克蘇魯"
+        await wait_until(pilot, lambda: dialog.default == "你收到舅舅的包裹。")
+        assert dialog.query_one("#premise").text == "我自己寫的開頭"  # 玩家改過的不會被換掉
+        dialog.query_one("#ok", Button).press()
+        await wait_until(pilot, lambda: app.choices and not app.typing)
+        assert app.client.core.state.premise == "我自己寫的開頭"
 
 
 async def test_rapid_genre_switching_shows_the_last_genres_premise(monkeypatch):
