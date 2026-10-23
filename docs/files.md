@@ -329,7 +329,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 | `handle()` | 依 `reply.phase` 決定要跳出哪個對話框、顯示劇情或結局 |
 | `show_turn()` | 先放好選項（看不見）→ 劇情 → 變化 → 選項出現 → 更新狀態列 → 開始倒數（線上多人改成告訴房間看完了） |
 | `show_ending()` | 按 Enter → 尾聲 → 按 Enter → 結局對話框（一段一段來，先讀完最後的劇情） |
-| `refresh_hint()`、`update_waiting()` | 輪到誰、還在等誰；線上多人有人行動時通知 |
+| `refresh_hint()`、`update_waiting()` | 同一台電腦的多人模式標出輪到誰；線上多人沒有順序，不標輪到誰，行動完提示還在等誰，有人行動時通知 |
 | `status_line()` | 把 `Status` 轉成狀態列要顯示的內容（`StatusLine`）：直接列出每個狀態與程度、核心判斷的警告（`Status.warning`）、沒有狀態時是「良好」，只說程度不說顏色。背包不放在狀態列（完整內容用 `/state` 看） |
 
 介面的對話框也會用到的規則（名字的檢查 `check_name()`、key 的存放位置 `KEY_PATH`）也從這裡取用。

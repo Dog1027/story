@@ -491,9 +491,11 @@ class Client:
         self.view.set_status(status_line(turn, characters, self.timed))
 
     def refresh_hint(self) -> None:
-        """選項區的標題與輸入框的提示：輪到誰；線上多人時還在等誰。"""
-        title = f"輪到 {self.actor}" if self.actor else "接下來"
-        placeholder = f"輪到 {self.actor}：↑↓ 選擇，或寫下行動" if self.actor else "↑↓ 選擇，或寫下你的行動"
+        """選項區的標題與輸入框的提示。同一台電腦的多人模式標出輪到誰；
+        線上多人沒有順序、每個人只看到自己的選項，所以不標，行動完改成提示還在等誰。"""
+        turn_taking = self.actor and not self.room
+        title = f"輪到 {self.actor}" if turn_taking else "接下來"
+        placeholder = f"輪到 {self.actor}：↑↓ 選擇，或寫下行動" if turn_taking else "↑↓ 選擇，或寫下你的行動"
         if self.room and not self.actor and self.waiting:
             placeholder = f"等待 {'、'.join(self.waiting)} 行動…"
         self.view.set_hint(title, placeholder)
