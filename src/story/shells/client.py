@@ -5,7 +5,7 @@
 - 這一層（Client）：「什麼時候顯示什麼」。開局要問什麼、連本機核心還是線上多人的房間、
   依回覆的階段跳出哪個對話框、打完字才顯示選項、大家看完才倒數、結局一段一段出現……
 - 介面（View 的實作，例如 Textual 的 StoryApp）：只負責「長什麼樣子」，把 View 的每個方法畫出來，
-  再把玩家的輸入交給 Client（act、command、choose、timeout）。
+  再把玩家的輸入交給 Client（act、command、timeout）。
 
 新功能盡量改在這一層；只有新的畫面元素才需要在每個介面各加一點顯示程式。
 判斷標準：改變遊戲結果或事實 → 核心；改變真人看到的順序、時機、流程 → 這一層；改變長相 → 介面。
@@ -57,11 +57,8 @@ def status_line(turn: int, characters: list[Status], timed: bool) -> StatusLine 
     """單人模式只有主角一位、沒有名字；多人模式每位角色一列。"""
     if not characters:
         return None
-    return StatusLine(turn, *_mode(timed), [character_line(s) for s in characters], party=bool(characters[0].name))
-
-
-def _mode(timed: bool) -> tuple[str, bool]:
-    return ("限時模式" if timed else "一般模式"), timed
+    mode = "限時模式" if timed else "一般模式"
+    return StatusLine(turn, mode, timed, [character_line(s) for s in characters], party=bool(characters[0].name))
 
 
 # ---------- 介面要實作的方法 ----------
@@ -344,26 +341,28 @@ class Client:
         self.view.set_busy(busy)
 
     def follow_draft(self, draft: str) -> None:
-        """AI 正在寫的劇情有新的字：先交給介面顯示。AI 重寫時（新的不是接在舊的後面）收回舊的重新開始。"""
-        if not draft or draft == self.draft:
-            return
-        if self.draft and not draft.startswith(self.draft):
-            self.view.discard_narration()
-            self.draft = ""
-        if not self.draft:
-            self.view.start_narration()
-        self.draft = draft
-        self.view.extend_narration(draft)
+        """AI 正在寫的劇情有新的字：先交給介面顯示。"""
+        if draft and draft != self.draft:
+            self._continue_narration(draft)
+            self.draft = draft
+            self.view.extend_narration(draft)
 
     async def narrate(self, text: str) -> None:
         """顯示一段完整的劇情；已經在串流顯示的就接著顯示完。"""
-        if self.draft and not text.startswith(self.draft):
-            self.view.discard_narration()
-            self.draft = ""
-        if not self.draft:
-            self.view.start_narration()
+        self._continue_narration(text)
         self.draft = ""
         await self.view.finish_narration(text)
+
+    def _continue_narration(self, text: str) -> None:
+        """text 接在已經顯示的劇情後面就繼續；不是的話（AI 重寫了）收回舊的，重新開始一段。"""
+        if self.draft and not text.startswith(self.draft):
+            self.discard_draft()
+        if not self.draft:
+            self.view.start_narration()
+
+    def discard_draft(self) -> None:
+        self.view.discard_narration()
+        self.draft = ""
 
     def busy_text(self) -> str:
         """等待提示的文字，例如「故事生成中：規劃故事大綱…」。"""
@@ -373,8 +372,7 @@ class Client:
     async def handle(self, reply: Reply) -> None:
         """依照回覆的階段決定接下來的流程。"""
         if self.draft and not reply.narration:  # 串流到一半出錯，這回合沒有推進：收回寫到一半的劇情
-            self.view.discard_narration()
-            self.draft = ""
+            self.discard_draft()
         if reply.timed != self.timed:
             self.timed = reply.timed
             self.view.set_status(status_line(*self.shown, self.timed))

@@ -116,6 +116,9 @@ def make_engine(*beats, engine_class=Engine, genres=None, **kwargs) -> tuple[Eng
 class FakeEngine:
     """取代 Engine，讓核心與外殼的測試可以精準控制每回合的結果。"""
 
+    genres: dict = {}  # 子類別可以換成自己的題材包
+    stage = draft = ""  # 跟 Engine 一樣：開場的進度、串流中的劇情
+
     def __init__(self):
         self.fail_with: Exception | None = None  # 下一次 act() 要拋出的錯誤
         self.compacted = 0
@@ -160,6 +163,9 @@ class FakeEngine:
 
 class FakePartyEngine:
     """取代 Engine 的多人部分，精準控制每回合。"""
+
+    genres: dict = {}
+    stage = draft = ""
 
     def __init__(self):
         self.rounds: list[dict] = []

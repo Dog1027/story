@@ -126,13 +126,13 @@ class StoryCore:
     def progress(self) -> str:
         """send() 執行中時，目前在做什麼（例如「規劃故事大綱」）；沒有特別的階段時是空字串。
         外殼可以在另一個執行緒讀取，顯示在等待畫面上。"""
-        return getattr(self.engine, "stage", "")
+        return self.engine.stage
 
     @property
     def draft(self) -> str:
         """send() 執行中時，AI 正在寫的劇情（串流中目前收到的部分）；沒有在寫時是空字串。
         外殼可以在另一個執行緒讀取，邊收邊顯示；send() 回傳的 Reply 才是最後的完整內容。"""
-        return getattr(self.engine, "draft", "")
+        return self.engine.draft
 
     # ---------- 對外介面 ----------
 
@@ -182,9 +182,10 @@ class StoryCore:
     # ---------- 各階段 ----------
 
     def _on_ask_continue(self, raw: str) -> Reply:
-        if self._pick(raw, ["繼續", "開新遊戲"]) == "繼續" or raw == "/continue":
+        answer = self._pick(raw, ["繼續", "開新遊戲"])
+        if answer == "繼續" or raw == "/continue":
             return self._resume()
-        if self._pick(raw, ["繼續", "開新遊戲"]) == "開新遊戲" or raw in ("/new", "/restart"):
+        if answer == "開新遊戲" or raw in ("/new", "/restart"):
             self.last_premise = self.state.premise if self.state else ""
             return self._ask_premise()
         return self._reply(choices=["繼續", "開新遊戲"], notice="請輸入 1（繼續）或 2（開新遊戲）。")
@@ -192,7 +193,7 @@ class StoryCore:
     def _on_ask_premise(self, raw: str) -> Reply:
         if raw == "/suggest":
             try:
-                chosen = self.genre if self.genre in self._genres() else ""
+                chosen = self.genre if self.genre in self.engine.genres else ""
                 suggestion = self.engine.suggest_premise(self.last_premise or DEFAULT_PREMISE, genre=chosen)
             except (errors.APIError, RuntimeError) as e:
                 return self._failed(e, self._ask_premise)
@@ -207,8 +208,8 @@ class StoryCore:
             return self._ask_premise(notice=f"已切換為{'限時' if self.timed else '一般'}模式。")
         if raw.startswith("/genre"):
             choice = raw.removeprefix("/genre").strip()
-            if choice not in (GENRE_AUTO, GENRE_NONE, *self._genres()):
-                options = "、".join([GENRE_AUTO, GENRE_NONE, *self._genres()])
+            if choice not in (GENRE_AUTO, GENRE_NONE, *self.engine.genres):
+                options = "、".join([GENRE_AUTO, GENRE_NONE, *self.engine.genres])
                 return self._ask_premise(notice=f"沒有「{choice}」這個題材，可以選：{options}")
             self.genre = choice
             if self.drawn and not self.suggested and self.drawn not in self._premise_pool():
@@ -300,7 +301,7 @@ class StoryCore:
         return self._reply(
             premise_default=self._default_premise(),
             genre=self.genre,
-            genres=[(g.name, g.description) for g in self._genres().values()],
+            genres=[(g.name, g.description) for g in self.engine.genres.values()],
             suggestion=suggestion,
             notice=notice,
             error=error,
@@ -315,14 +316,11 @@ class StoryCore:
     def _new_state(self, premise: str) -> GameState:
         return GameState(premise=premise, timed_mode=self.timed, **self._genre_fields())
 
-    def _genres(self) -> dict:
-        return getattr(self.engine, "genres", {})  # 測試用的假 engine 可能沒有題材包
-
     def _genre_fields(self) -> dict:
         """新局的題材欄位：指定題材就直接套用；選「自動」時，規劃大綱時由 AI 從目錄挑。"""
-        if self.genre in self._genres():
+        if self.genre in self.engine.genres:
             return {"genre": self.genre}
-        return {"genre_pending": self.genre == GENRE_AUTO and bool(self._genres())}
+        return {"genre_pending": self.genre == GENRE_AUTO and bool(self.engine.genres)}
 
     def _current_choices(self) -> list[str]:
         """現在要輸入行動的人的選項。"""
@@ -341,7 +339,7 @@ class StoryCore:
 
     def _premise_pool(self) -> list[str]:
         """可以隨機抽的開頭：指定了題材就用那個題材包的，否則用所有題材包的，再加上預設的前提。"""
-        genres = self._genres()
+        genres = self.engine.genres
         if self.genre in genres and genres[self.genre].premises:
             return list(genres[self.genre].premises)
         return [p for g in genres.values() for p in g.premises] + [DEFAULT_PREMISE]
@@ -387,11 +385,13 @@ class StoryCore:
         return [Status(conditions=condition_list(self.state), warning=warning_level(self.state))]
 
     def _reply(self, **fields) -> Reply:
-        timed = self.state.timed_mode if self.state and self._phase != "ask_premise" else self.timed
-        playing = self.state is not None and self._phase != "ask_premise"
+        in_story = self.state is not None and self._phase != "ask_premise"  # 有一局在進行（等前提時還沒有）
         reply = Reply(
-            phase=self._phase, turn=self.state.turn if playing else 0, timed=timed,
-            characters=self._characters() if playing else [], **fields,
+            phase=self._phase,
+            turn=self.state.turn if in_story else 0,
+            timed=self.state.timed_mode if in_story else self.timed,
+            characters=self._characters() if in_story else [],
+            **fields,
         )
         reply.text = render_text(reply)
         return reply

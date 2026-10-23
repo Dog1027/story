@@ -289,8 +289,6 @@ async def test_one_player_can_start_alone(room):
 class StreamingPartyEngine(FakePartyEngine):
     """推進回合時慢慢寫劇情（更新 draft），像真的 AI 在串流。"""
 
-    draft = ""
-
     def act(self, state, actions):
         import time
 

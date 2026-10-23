@@ -5,14 +5,15 @@ import random
 import re
 import time
 from pathlib import Path
+from typing import get_args
 
 import httpx
 from google import genai
 from google.genai import types
 
 from story.core.genres import Genre, load_genres
-from story.core.models import Character, Condition, Epilogue, GameState, GenrePick, StoryArc, StoryBeat, Turn
 from story.core import prompts
+from story.core.models import Character, Condition, Epilogue, GameState, GenrePick, Severity, StoryArc, StoryBeat, Turn
 
 MODEL = "gemini-3.5-flash-lite"
 HISTORY_BUDGET = 20_000  # 劇情紀錄保留原文的字數上限；超過才把最舊的部分壓縮進摘要，一次壓到剩一半
@@ -32,7 +33,7 @@ SEVERITY_POINTS = {"輕": 1, "中": 2, "重": 4}
 DEATH_SCORE = 8  # 傷勢總分達到這個數字就死亡
 DYING_SCORE = 6  # 總分達到這個數字就是瀕死
 HEAVY_SCORE = 4  # 沒有重傷，但多處中傷累積到這個分數也算重傷
-SEVERITY_ORDER = ["輕", "中", "重"]
+SEVERITY_ORDER = list(get_args(Severity))  # 由輕到重
 
 # 遊戲內時間：AI 只挑類別，換算成分鐘由程式負責
 HOUR, DAY = 60, 24 * 60
@@ -47,17 +48,17 @@ HEAL_TIME = {
 }
 LOG_PATH = Path("story_log.jsonl")  # 每回合的狀態變化紀錄
 
-# 固定不變的 system prompt，放在最前面以利 prompt caching
-SYSTEM_PROMPT = prompts.load("system")  # 給 AI 的寫作與遊戲規則（story/prompts/system.md）
-CONTEXT = prompts.sections("context")  # 每回合送給 AI 的故事內容（前提、劇情紀錄、遊戲狀態……）
-TURN = prompts.sections("turn")  # 每回合的指示
-PROGRESS = prompts.sections("progress")  # 故事進度裡的提醒
-PLAN = prompts.sections("plan")  # 挑題材、規劃大綱
-PREMISE = prompts.sections("premise")  # 「幫我想」
-MEMORY = prompts.sections("memory")  # 記憶壓縮
+# 給 AI 的文字，都在 story/prompts/語言/ 裡同名的檔案
+SYSTEM_PROMPT = prompts.load("system")
+CONTEXT = prompts.sections("context")
+TURN = prompts.sections("turn")
+PROGRESS = prompts.sections("progress")
+PLAN = prompts.sections("plan")
+PREMISE = prompts.sections("premise")
+MEMORY = prompts.sections("memory")
 STATUS_KEYS = prompts.table(CONTEXT["status_keys"])  # 遊戲狀態 JSON 的欄位名稱：{代號: 給 AI 看的名稱}
 STATUS_EMPTY = prompts.table(CONTEXT["status_empty"])  # 遊戲狀態裡沒有東西時顯示的字
-TIMEOUT_ACTION = TURN["timeout_action"]  # 限時模式時間到時，代替玩家行動寫進劇情紀錄給 AI
+TIMEOUT_ACTION = TURN["timeout_action"]  # 限時模式時間到時，代替玩家的行動寫進劇情紀錄
 
 
 class EndingTooEarly(Exception):
@@ -261,20 +262,15 @@ def ending_allowed(state: GameState, turn: int) -> bool:
     return final and turn >= MIN_ENDING_TURN
 
 
-EARLY_ENDING_RETRY = TURN["early_ending_retry"]
-
-
 def clamp_time_limit(state: GameState, given: int) -> int:
     """限時與否由程式決定：非限時模式忽略 LLM 給的秒數，限時模式把秒數夾在合理範圍。"""
     limit = given if state.timed_mode and not state.game_over else 0
     return 0 if limit <= 0 else max(MIN_TIME_LIMIT, min(MAX_TIME_LIMIT, limit))
 
 
-# 讓 AI 想故事開頭時隨機指定題材，避免它每次都想出相似的故事
-PREMISE_GENRES = prompts.items(PREMISE["genres"])  # 「幫我想」隨機挑的題材（prompts/語言/premise.md）
-PREMISE_SETTINGS = prompts.items(PREMISE["settings"])  # 「幫我想」隨機挑的情境
-
-SUMMARY_SYSTEM = MEMORY["system"]  # 壓縮記憶時給 AI 的規則
+# 「幫我想」由程式隨機指定題材與情境，AI 才不會每次都想出相似的故事
+PREMISE_GENRES = prompts.items(PREMISE["genres"])
+PREMISE_SETTINGS = prompts.items(PREMISE["settings"])
 
 
 def history(state: GameState) -> list[Turn]:
@@ -312,6 +308,11 @@ def condition_fields(who: Holder) -> dict:
     }
 
 
+def to_compact(state: GameState) -> tuple[list[Turn], list[str], list[str]]:
+    """這次壓縮要併入摘要的東西：最舊的回合、較舊的重大事件、較舊的事實。"""
+    return oldest_turns_to_compact(history(state)), state.key_events[:-KEEP_EVENTS], state.flags[:-KEEP_FLAGS]
+
+
 def oldest_turns_to_compact(turns: list[Turn]) -> list[Turn]:
     """劇情紀錄超過預算時，要壓縮掉的最舊回合：壓到剩下不超過預算的一半。沒超過就不壓縮。"""
     if history_size(turns) <= HISTORY_BUDGET:
@@ -326,7 +327,7 @@ def oldest_turns_to_compact(turns: list[Turn]) -> list[Turn]:
 class Engine:
     """單人模式的 engine。多人模式（story.core.party.PartyEngine）繼承它，只覆寫下面這些掛勾。"""
 
-    system_prompt = SYSTEM_PROMPT  # 給 AI 的寫作與遊戲規則
+    system_prompt = SYSTEM_PROMPT
     beat_schema = StoryBeat  # 每回合強制 AI 回傳的格式
     turn_label = CONTEXT["turn_label"]  # 「劇情紀錄」裡行動那一行的標籤
     epilogue_look_back = TURN["epilogue_look_back"]
@@ -454,7 +455,7 @@ class Engine:
             return self._call(prompt, stop_on_ending=not ending_allowed(state, state.turn + 1))
         except EndingTooEarly:
             self.draft = ""
-            return self._call(prompt + "\n\n" + EARLY_ENDING_RETRY, kind="重寫")
+            return self._call(prompt + "\n\n" + TURN["early_ending_retry"], kind="重寫")
 
     def _advance(self, state: GameState, action: str | None) -> None:
         beat = self._next_beat(state, action)
@@ -493,7 +494,6 @@ class Engine:
         return "\n\n".join(self._context(state, action) + self._instruction_sections(state, action))
 
     def death_prompt(self, state: GameState) -> str:
-        """程式判定傷重死亡，但 AI 寫的劇情裡主角還活著：請 AI 接著寫死亡結局。"""
         return "\n\n".join(self._context(state, None) + [TURN["death"].format(narration=state.current_narration)])
 
     def epilogue_prompt(self, state: GameState) -> str:
@@ -536,8 +536,8 @@ class Engine:
 
     def compaction_prompt(self, state: GameState) -> str:
         """劇情紀錄太長時：把最舊的回合、較舊的重大事件與事實併入長期摘要。"""
-        turns = oldest_turns_to_compact(history(state))
-        old = state.key_events[:-KEEP_EVENTS] + state.flags[:-KEEP_FLAGS]
+        turns, old_events, old_flags = to_compact(state)
+        old = old_events + old_flags
         parts = [MEMORY["summary"].format(summary=state.summary or MEMORY["summary_none"])]
         if turns:
             parts.append(MEMORY["turns"].format(entries="\n\n".join(history_entry(t, CONTEXT["turn_label"]) for t in turns)))
@@ -555,7 +555,7 @@ class Engine:
         mode = TURN["mode_timed"].format(min=MIN_TIME_LIMIT, max=MAX_TIME_LIMIT) if state.timed_mode else TURN["mode_normal"]
         sections = [CONTEXT["premise"].format(premise=state.premise), CONTEXT["mode"].format(mode=mode)]
         genre = self.genres.get(state.genre)
-        if genre:  # 整局固定，放在前段不影響快取
+        if genre:
             sections.append(CONTEXT["genre_guide"].format(name=genre.name, guide=genre.guide))
         if state.summary:
             sections.append(CONTEXT["summary"].format(summary=state.summary))
@@ -757,16 +757,13 @@ class Engine:
         由介面在背景呼叫，玩家讀劇情時順便完成。很少發生：30 回合的故事大約只有七、八千字。"""
         if not self.needs_compaction(state):
             return
-        turns = oldest_turns_to_compact(history(state))
-        old_events = state.key_events[:-KEEP_EVENTS]
-        old_flags = state.flags[:-KEEP_FLAGS]
-
+        turns, old_events, old_flags = to_compact(state)
         response = self._generate(
             "壓縮",
             model=MODEL,
             contents=self.compaction_prompt(state),
             config=types.GenerateContentConfig(
-                system_instruction=SUMMARY_SYSTEM,
+                system_instruction=MEMORY["system"],
                 thinking_config=types.ThinkingConfig(thinking_level="low"),
             ),
         )

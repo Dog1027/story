@@ -44,9 +44,8 @@ from story.core.records import change_groups, snapshot
 from story.core import prompts
 from story.core.session import Reply, Status, StoryCore, render_text
 
-PARTY_SYSTEM_PROMPT = prompts.load("party_system")  # 多人模式的寫作與遊戲規則（story/prompts/party_system.md）
-PARTY_TURN = prompts.sections("party_turn")  # 多人模式每回合的指示
-
+PARTY_SYSTEM_PROMPT = prompts.load("party_system")
+PARTY_TURN = prompts.sections("party_turn")
 
 PARTY_SAVE_PATH = Path("party_save.json")
 PARTY_LOG_PATH = Path("party_log.jsonl")
@@ -76,7 +75,7 @@ class PartyEngine(Engine):
             key["turn"]: state.turn,
             key["time"]: time_text(state),
             key["flags"]: state.flags or [STATUS_EMPTY["flags"]],
-            key["characters"]: [character_status(c) for c in state.party],
+            key["characters"]: [prompt_status(c) for c in state.party],
         }
         return PARTY_TURN["status"].format(json=json.dumps(party, ensure_ascii=False, separators=(",", ":")))
 
@@ -134,7 +133,6 @@ class PartyEngine(Engine):
         return "\n\n".join(self._context(state, None) + [PARTY_TURN["death"].format(narration=state.current_narration, who=who)])
 
     def _write_deaths(self, state: GameState, names: list[str]) -> None:
-        """程式判定有角色傷重死亡：請 AI 接著寫一小段倒下的場景。"""
         prefix = state.current_narration + "\n\n"
 
         def on_text(text: str) -> None:  # 串流時接在剛才的劇情後面
@@ -165,8 +163,8 @@ def format_actions(actions: dict[str, str]) -> str:
     return "\n".join(f"{name}：{action}" for name, action in actions.items())
 
 
-def character_status(c: Character) -> dict:
-    """提示詞裡一位角色的狀態，格式和單人模式的「遊戲狀態」一致。"""
+def prompt_status(c: Character) -> dict:
+    """給 AI 看的一位角色的狀態（提示詞「隊伍」裡的一項），格式和單人模式的「遊戲狀態」一致。"""
     key = STATUS_KEYS
     if not c.alive:
         return {key["name"]: c.name, key["state"]: STATUS_EMPTY["dead"]}
@@ -216,7 +214,7 @@ class PartyCore(StoryCore):
         else:
             actor = self._actor()
             self.pending[actor.name] = action
-            if self._waiting():  # 還有人沒輸入：換下一位
+            if self._waiting():
                 return self._reply(notice=f"已記下 {actor.name} 的行動。", **self._screen())
 
         return self._play_turn({c.name: self.pending[c.name] for c in self.state.party if c.name in self.pending})
@@ -252,7 +250,7 @@ class PartyCore(StoryCore):
         }
 
     def _characters(self) -> list[Status]:
-        return [_character_status(c) for c in self.state.party]
+        return [reply_status(c) for c in self.state.party]
 
     # ---------- 線上多人：每位玩家各自送行動 ----------
 
@@ -307,5 +305,6 @@ class PartyCore(StoryCore):
         return waiting[0] if waiting else None
 
 
-def _character_status(c: Character) -> Status:
+def reply_status(c: Character) -> Status:
+    """給外殼顯示的一位角色的狀態（Reply.characters 裡的一項）。"""
     return Status(conditions=condition_list(c), warning=warning_level(c) if c.alive else "", name=c.name, alive=c.alive)

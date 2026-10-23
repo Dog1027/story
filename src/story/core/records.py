@@ -6,11 +6,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Literal
 
-from story.core.engine import DAY, PREMISE, body_level
+from story.core.engine import DAY, PREMISE, SEVERITY_ORDER, body_level
 from story.core.models import GameState
 
 SAVE_PATH = Path("save.json")
-DEFAULT_PREMISE = PREMISE["default"]  # 沒有題材包可以抽、玩家也沒輸入時用的前提（prompts/語言/premise.md）
+DEFAULT_PREMISE = PREMISE["default"]  # 沒有題材包可以抽、玩家也沒輸入時用的前提
 
 
 def save(state: GameState, path: Path = SAVE_PATH) -> None:
@@ -84,13 +84,13 @@ def change_groups(before: Snapshot, state: GameState) -> ChangeGroups:
     """比較回合前後，列出狀態與背包的變化。只回傳有內容的分組。"""
     old_conds, old_items = before
     new_conds, new_items = snapshot(state)
-    order = ["輕", "中", "重"]
+    rank = SEVERITY_ORDER.index
     groups: ChangeGroups = [
         ("新增", [(f"{n}（{v}）", v) for n, v in new_conds.items() if n not in old_conds]),
         ("惡化", [(f"{n}（{old_conds[n]}→{v}）", "bad") for n, v in new_conds.items()
-                if n in old_conds and order.index(v) > order.index(old_conds[n])]),
+                if n in old_conds and rank(v) > rank(old_conds[n])]),
         ("好轉", [(f"{n}（{old_conds[n]}→{v}）", "good") for n, v in new_conds.items()
-                if n in old_conds and order.index(v) < order.index(old_conds[n])]),
+                if n in old_conds and rank(v) < rank(old_conds[n])]),
         ("痊癒", [(n, "good") for n in old_conds if n not in new_conds]),
         ("獲得", [(n, "plain") for n in (new_items - old_items).elements()]),
         ("失去", [(n, "muted") for n in (old_items - new_items).elements()]),
