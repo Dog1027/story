@@ -1,6 +1,5 @@
 """網頁版的玩家：依名字分開存檔，並確保同一個名字同時只有一個連線。"""
 
-import os
 import re
 from pathlib import Path
 
@@ -26,38 +25,26 @@ def check_name(raw: str) -> str:
 
 
 class Player:
+    """網頁版（每個人各自玩）的一位玩家。同一個名字同時只能有一個分頁在玩，不然兩邊會互相蓋掉存檔。"""
+
+    online: set[str] = set()  # 正在玩的名字；整個網頁伺服器是同一個程式，伺服器重開時自然清空
+
     def __init__(self, name: str):
         self.name = name
         self.save_path = SAVES_DIR / f"{name}.json"
         self.log_path = SAVES_DIR / f"{name}.log.jsonl"
-        self.lock_path = SAVES_DIR / f"{name}.lock"
         self.locked = False
 
     def acquire(self) -> bool:
         """佔用這個名字。已經有人以這個名字在線上就回傳 False。"""
+        if self.name in Player.online:
+            return False
         SAVES_DIR.mkdir(exist_ok=True)
-        try:
-            fd = os.open(self.lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
-        except FileExistsError:
-            if _lock_owner_alive(self.lock_path):
-                return False
-            self.lock_path.unlink(missing_ok=True)  # 上一個連線異常結束留下的鎖，可以接手
-            return self.acquire()
-        with os.fdopen(fd, "w") as f:
-            f.write(str(os.getpid()))
+        Player.online.add(self.name)
         self.locked = True
         return True
 
     def release(self) -> None:
         if self.locked:
-            self.lock_path.unlink(missing_ok=True)
+            Player.online.discard(self.name)
             self.locked = False
-
-
-def _lock_owner_alive(lock_path: Path) -> bool:
-    try:
-        pid = int(lock_path.read_text())
-        os.kill(pid, 0)  # 只檢查程序是否存在，不會真的送出訊號
-    except (ValueError, OSError):
-        return False
-    return True

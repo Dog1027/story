@@ -28,9 +28,3 @@ def test_same_name_can_only_be_used_once():
     first.release()
     assert second.acquire()
     second.release()
-
-
-def test_stale_lock_from_dead_process_is_taken_over(isolated):
-    (isolated / "saves").mkdir()
-    (isolated / "saves" / "小華.lock").write_text("999999999")
-    assert Player("小華").acquire()

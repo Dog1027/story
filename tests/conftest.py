@@ -17,6 +17,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr("story.shells.apikey.KEY_PATH", tmp_path / "api_key")
     monkeypatch.setattr("story.shells.prefs.THEME_PATH", tmp_path / "theme")
     monkeypatch.setattr("story.core.genres.PERSONAL_DIR", tmp_path / "genres")  # 看不到你個人的題材包
+    monkeypatch.setattr("story.shells.players.Player.online", set())  # 每個測試的在線名單各自獨立
     return tmp_path
 
 
