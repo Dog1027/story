@@ -2,7 +2,7 @@
 // 訊息格式見 story/shells/web/view.py。
 "use strict";
 
-const CHAR_DELAY = 30; // 每個字的間隔（毫秒），跟終端機版一樣
+const CHAR_DELAY = 50; // 每個字的間隔（毫秒），大約一秒 20 個字
 const FAST_FACTOR = 0.15; // 按一次 Enter 後，間隔縮成原本的幾倍
 const PAUSE_AFTER = { "。": 250, "！": 250, "？": 250, "，": 100, "、": 80, "…": 150, "\n": 100 };
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -116,6 +116,11 @@ const handlers = {
     if (choicesList.classList.contains("hidden") && same(choices, state.choices)) {
       choicesList.classList.remove("hidden");
       choicesList.classList.add("reveal");
+    } else if (!choices.length && choicesList.children.length) {
+      // 選完選項：保留原本選項的位置，只是完全看不見（連框線都不畫），故事區才不會忽高忽低、文字往下掉
+      state.choices = [];
+      state.active = -1;
+      choicesList.classList.add("hidden");
     } else {
       renderChoices(choices);
     }
