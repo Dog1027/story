@@ -189,9 +189,6 @@ class WebView(View):
     def show_info(self, title: str, body: str) -> None:
         self.post("info", title=title, body=body)
 
-    def show_fatal(self, text: str) -> None:
-        self.post("fatal", text=text)
-
     async def ask_confirm(self, question: str, yes: str = "確定", no: str = "取消") -> bool:
         return bool(await self.ask("confirm", question=question, yes=yes, no=no))
 

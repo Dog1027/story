@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from story.core import MIN_PLAYERS, ChangeGroups, Ending, PartyCore, Reply, Status, StoryCore, pick_choice
 from story.shells.apikey import KEY_PATH, forget_api_key, get_saved_api_key, save_api_key
 from story.shells.players import MAX_NAME_LEN, InvalidName, Player, check_name
-from story.shells.room import START, RoomConnection
+from story.shells.room import START, Connection, Room
 
 # 介面的對話框也會用到的規則（名字怎樣才能用、key 存在哪裡），一律從這裡取用
 __all__ = ["KEY_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "InvalidName", "StatusLine", "View", "check_name", "status_line"]
@@ -150,10 +150,6 @@ class View:
     def show_info(self, title: str, body: str) -> None:
         raise NotImplementedError
 
-    def show_fatal(self, text: str) -> None:
-        """沒辦法繼續的錯誤，例如連不上遊戲房間。"""
-        raise NotImplementedError
-
     async def ask_confirm(self, question: str, yes: str = "確定", no: str = "取消") -> bool:
         raise NotImplementedError
 
@@ -185,13 +181,13 @@ class View:
 
 
 class Client:
-    def __init__(self, view: View, web: bool = False, party: bool = False, room: str | None = None):
+    def __init__(self, view: View, web: bool = False, party: bool = False, room: Room | None = None):
         self.view = view
         self.web = web  # 網頁版：先問名字，存檔依名字分開，API key 不存到伺服器
         self.party = party  # 多人模式：大家輪流在這台電腦上輸入行動
-        self.room_path = room  # 線上多人：房間的 socket；這時不建立自己的核心
+        self.shared_room = room  # 線上多人：伺服器裡的房間；這時不建立自己的核心
         self.core: StoryCore | None = None
-        self.room: RoomConnection | None = None
+        self.room: Connection | None = None  # 連進房間後，和房間的連線
         self.player: Player | None = None
         self.my_name = ""  # 線上多人：自己的名字
         self.actor = ""  # 多人模式：現在輪到誰（線上多人：輪到自己時是自己的名字）
@@ -216,14 +212,14 @@ class Client:
 
     def close(self) -> None:
         if self.player:
-            self.player.release()  # 連線異常中斷沒跑到這裡也沒關係：下次會發現鎖的程序已不存在而接手
+            self.player.release()
         if self.room:
             self.room.close()
 
     # ---------- 啟動：取得 key，建立核心 ----------
 
     async def run(self) -> None:
-        if self.room_path:
+        if self.shared_room:
             await self.join_room()
             return
         if self.web:
@@ -505,11 +501,7 @@ class Client:
     # ---------- 線上多人：和房間對話 ----------
 
     async def join_room(self) -> None:
-        try:
-            self.room = await RoomConnection.open(self.room_path)
-        except OSError:
-            self.view.show_fatal("連不上遊戲房間，請稍後重新整理。")
-            return
+        self.room = self.shared_room.connect()
         name = await self.ask_name(self.claim_seat, hint="大家在同一局裡，每個名字就是一位角色。中途斷線可以用同一個名字回來。")
         if name is None:
             self.view.exit()

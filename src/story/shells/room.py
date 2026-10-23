@@ -1,13 +1,14 @@
 """線上多人的房間：網頁伺服器裡唯一的一局多人遊戲。
 
-每個瀏覽器分頁的共用層 Client 透過 Unix socket 連到網頁伺服器裡的房間。
+每個瀏覽器分頁的共用層 Client 用 connect() 連到房間，拿到一端 Connection，彼此用訊息溝通。
+房間和所有分頁都在網頁伺服器這個程式裡，訊息直接在記憶體裡傳。
 房間持有一份 PartyCore：把每位玩家的輸入交給核心，再把回覆送給每位玩家（各自看到自己的選項）。
 API key 用伺服器的，玩家不用輸入。
 
 流程：大廳（等人加入，房主按開始）→ 房主回答「繼續存檔／故事前提」→ 遊戲中（每個人各自行動，到齊才推進）
 → 結局 → 回到大廳。房主是第一位加入的人；房主離線時交給下一位在線的玩家。
 
-訊息都是一行一個 JSON。
+訊息是可以轉成 JSON 的 dict。
 玩家 → 房間
   {"type": "join", "name": "阿明"}        第一則訊息
   {"type": "send", "text": "1"}           玩家的輸入：行動、指令，或房主回答對話框
@@ -37,27 +38,47 @@ from story.shells.players import SAVES_DIR, InvalidName, check_name
 START = "開始遊戲"
 READY_WAIT = 90  # 等大家看完劇情最多幾秒，超過就直接開始倒數
 TIMEOUT_GRACE = 1  # 倒數結束後多等一下，抵銷網路延遲
-LINE_LIMIT = 2**20
 PROGRESS_POLL = 0.1  # 呼叫 AI 時每隔幾秒看一次進度與 AI 寫到哪裡
 
 
-async def write(writer: asyncio.StreamWriter, message: dict) -> None:
-    writer.write(json.dumps(message, ensure_ascii=False).encode() + b"\n")
-    await writer.drain()
+class Connection:
+    """玩家與房間之間連線的一端：send() 的訊息由另一端的 receive() 收到。
+    任一端 close() 之後，另一端的 receive() 回傳 None，再 send() 會丟出 ConnectionError。"""
 
+    def __init__(self, inbox: asyncio.Queue, outbox: asyncio.Queue):
+        self.inbox, self.outbox = inbox, outbox
+        self.peer: Connection | None = None
+        self.closed = False
 
-async def read(reader: asyncio.StreamReader) -> dict | None:
-    """讀一則訊息；連線結束時回傳 None。"""
-    try:
-        line = await reader.readline()
-    except (ConnectionError, ValueError):
-        return None
-    return json.loads(line) if line else None
+    @staticmethod
+    def pair() -> tuple["Connection", "Connection"]:
+        a, b = asyncio.Queue(), asyncio.Queue()
+        one, other = Connection(a, b), Connection(b, a)
+        one.peer, other.peer = other, one
+        return one, other
+
+    async def send(self, message: dict) -> None:
+        if self.closed or self.peer.closed:
+            raise ConnectionError("連線已經關閉")
+        # 轉成 JSON 再轉回來：兩端不會共用同一個物件，收到的內容也跟以前經過網路時一樣（tuple 變成 list）
+        self.outbox.put_nowait(json.loads(json.dumps(message, ensure_ascii=False)))
+
+    async def receive(self) -> dict | None:
+        """收下一則訊息；連線結束時回傳 None。"""
+        if self.closed:
+            return None
+        return await self.inbox.get()
+
+    def close(self) -> None:
+        if not self.closed:
+            self.closed = True
+            self.outbox.put_nowait(None)  # 讓另一端的 receive() 結束
+            self.inbox.put_nowait(None)  # 自己這端還在等的 receive() 也結束
 
 
 class Member:
-    def __init__(self, name: str, writer: asyncio.StreamWriter):
-        self.name, self.writer = name, writer
+    def __init__(self, name: str, conn: Connection):
+        self.name, self.conn = name, conn
         self.online = True
 
 
@@ -74,7 +95,7 @@ class Room:
         self.waiting_ready = False  # 倒數還沒開始，在等大家看完劇情
         self.deadline = 0.0  # 倒數結束的時間（loop.time()），給中途連線的人接著倒數
         self.time_limit = 0  # 這回合的限時秒數（從核心的回覆記下來）
-        self.server: asyncio.AbstractServer | None = None
+        self.links: dict[Connection, asyncio.Task] = {}  # 房間這一端的每條連線，與處理它的工作
 
     @staticmethod
     def for_server(api_key: str) -> "Room":
@@ -82,32 +103,35 @@ class Room:
         save_path, log_path = SAVES_DIR / "party.json", SAVES_DIR / "party.log.jsonl"
         return Room(lambda players: PartyCore(api_key, players, save_path=save_path, log_path=log_path))
 
-    async def start(self, path: str) -> None:
-        self.server = await asyncio.start_unix_server(self.serve, path=path, limit=LINE_LIMIT)
+    def connect(self) -> Connection:
+        """一位玩家連進來：回傳玩家那一端，房間這一端交給 serve() 處理。"""
+        player_end, room_end = Connection.pair()
+        self.links[room_end] = asyncio.create_task(self.serve(room_end))
+        return player_end
 
     async def stop(self) -> None:
         self._stop_countdown()
-        if self.server:
-            self.server.close()
-            self.server.close_clients()  # 不然 wait_closed() 會等到每個玩家自己斷線
-            await self.server.wait_closed()
+        for conn, task in list(self.links.items()):
+            conn.close()
+            task.cancel()
+        await asyncio.gather(*self.links.values(), return_exceptions=True)
 
     # ---------- 連線 ----------
 
-    async def serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def serve(self, conn: Connection) -> None:
         name = None
         try:
             while name is None:  # 名字不能用時讓玩家換一個再試
-                message = await read(reader)
+                message = await conn.receive()
                 if not message or message.get("type") != "join":
                     return
                 async with self.lock:
                     if error := self._join_error(message.get("name", "")):
-                        await write(writer, {"type": "rejected", "reason": error})
+                        await conn.send({"type": "rejected", "reason": error})
                         continue
                     name = check_name(message["name"])
-                    await self._join(name, writer)
-            while message := await read(reader):
+                    await self._join(name, conn)
+            while message := await conn.receive():
                 async with self.lock:
                     await self._on_message(name, message)
         except ConnectionError:
@@ -116,7 +140,8 @@ class Room:
             if name:
                 async with self.lock:
                     await self._leave(name)
-            writer.close()
+            conn.close()
+            self.links.pop(conn, None)
 
     def _join_error(self, raw: str) -> str:
         try:
@@ -133,11 +158,11 @@ class Room:
             return f"房間已滿（最多 {MAX_PLAYERS} 人）。"
         return ""
 
-    async def _join(self, name: str, writer: asyncio.StreamWriter) -> None:
-        self.members[name] = Member(name, writer)
+    async def _join(self, name: str, conn: Connection) -> None:
+        self.members[name] = Member(name, conn)
         if not self.host or not self.members[self.host].online:
             self.host = name
-        await write(writer, {"type": "joined"})
+        await conn.send({"type": "joined"})
         if self.core is None:
             await self._broadcast_lobby()
             return
@@ -148,7 +173,7 @@ class Room:
             if self.countdown and not self.waiting_ready:
                 left = round(self.deadline - asyncio.get_running_loop().time())
                 if left > 0:
-                    await write(writer, {"type": "timer", "seconds": left})
+                    await conn.send({"type": "timer", "seconds": left})
         elif name == self.host and self.host_reply:
             await self._send_reply(name, self.host_reply)
         else:
@@ -195,7 +220,7 @@ class Room:
         elif text.startswith(("/suggest", "/random", "/timed", "/genre")):  # 前提對話框裡的操作，不用推給其他人
             reply = await self._call(lambda: self.core.send(text))
             if answer:
-                await write(self.members[name].writer, {"type": "premise", "reply": reply.to_dict()})
+                await self._safe_write(self.members[name], {"type": "premise", "reply": reply.to_dict()})
         else:
             starting = self.core.phase == "ask_premise" and not text.startswith("/")
             if starting:
@@ -364,26 +389,6 @@ class Room:
     @staticmethod
     async def _safe_write(member: Member, message: dict) -> None:
         try:
-            await write(member.writer, message)
+            await member.conn.send(message)
         except ConnectionError:
             pass  # 對方已經斷線，serve() 結束時會處理離開
-
-
-class RoomConnection:
-    """遊戲程序這一端：連到房間，收發訊息。"""
-
-    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        self.reader, self.writer = reader, writer
-
-    @classmethod
-    async def open(cls, path: str) -> "RoomConnection":
-        return cls(*await asyncio.open_unix_connection(path, limit=LINE_LIMIT))
-
-    async def send(self, message: dict) -> None:
-        await write(self.writer, message)
-
-    async def receive(self) -> dict | None:
-        return await read(self.reader)
-
-    def close(self) -> None:
-        self.writer.close()

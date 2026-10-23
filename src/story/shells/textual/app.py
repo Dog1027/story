@@ -206,9 +206,6 @@ class StoryApp(App, View):
                 kwargs["title"] = "出錯了"
         super().notify(message, **kwargs)
 
-    def show_fatal(self, text: str) -> None:
-        self.query_one("#status", Static).update(Text(text, style="bold red"))
-
     def show_lobby(self, members: list[str]) -> None:
         self.status_shown = None
         self.query_one("#status", Static).update(Text.assemble(("大廳  ", "dim"), (" · ".join(members), "bold")))

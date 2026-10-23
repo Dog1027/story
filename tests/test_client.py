@@ -85,8 +85,6 @@ class RecordingView(View):
     def show_info(self, title, body):
         self.record("show_info", title)
 
-    def show_fatal(self, text):
-        self.record("show_fatal", text)
 
     async def ask_confirm(self, question, yes="確定", no="取消"):
         self.record("ask_confirm", question)

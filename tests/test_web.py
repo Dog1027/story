@@ -1,6 +1,5 @@
 """網頁版：用 aiohttp 的測試工具連上 WebSocket，扮演瀏覽器走完流程。核心用真的 StoryCore／PartyCore，engine 用假的。"""
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -117,8 +116,7 @@ async def test_sessions_are_limited(isolated, monkeypatch):
 
 async def test_party_mode_puts_every_tab_in_one_lobby(isolated):
     room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=FakePartyEngine()))
-    path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
-    async with TestClient(TestServer(web.make_app(room, path))) as client:
+    async with TestClient(TestServer(web.make_app(room))) as client:
         host, guest = Browser(await client.ws_connect("/ws")), Browser(await client.ws_connect("/ws"))
         await host.answer((await host.expect("name"))["id"], "阿明")
         await host.expect("lobby")  # 阿明先進房間（第一個進來的是房主），小華才送出名字

@@ -5,14 +5,13 @@
 流程都在共用層，跟終端機版是同一份。
 
 沒加 --party：每個人各自玩，先輸入名字（每個名字有自己的存檔）與自己的 Gemini API key。
-加上 --party：線上多人，伺服器裡開一個房間（room.py），大家一起玩同一局，呼叫 AI 用伺服器的 API key。
+加上 --party：線上多人，伺服器裡開一個房間（room.py），每個分頁的 Client 都連進這個房間，大家一起玩同一局，呼叫 AI 用伺服器的 API key。
 """
 
 import argparse
 import asyncio
 import json
 import sys
-import tempfile
 from pathlib import Path
 
 from aiohttp import WSMsgType, web
@@ -27,8 +26,8 @@ MAX_SESSIONS = 10  # 同時在線的人數上限，避免太多人同時連線�
 STATIC = Path(__file__).parent / "static"
 
 
-def make_app(room: Room | None = None, room_path: str = "") -> web.Application:
-    """建立網頁伺服器。給了 room 就是線上多人：房間跟著伺服器一起啟動與關閉。"""
+def make_app(room: Room | None = None) -> web.Application:
+    """建立網頁伺服器。給了 room 就是線上多人：伺服器關閉時房間跟著關閉。"""
     app = web.Application()
     sessions = 0  # 目前在線的分頁數
 
@@ -51,7 +50,7 @@ def make_app(room: Room | None = None, room_path: str = "") -> web.Application:
             return ws
         sessions += 1
         view = WebView(ws)
-        client = Client(view, web=room is None, room=room_path or None)
+        client = Client(view, web=room is None, room=room)
         view.client = client
         writer = asyncio.create_task(view.write_loop())
         game = asyncio.create_task(client.run())
@@ -78,7 +77,6 @@ def make_app(room: Room | None = None, room_path: str = "") -> web.Application:
     app.router.add_get("/ws", websocket)
     app.router.add_static("/static", STATIC)
     if room:
-        app.on_startup.append(lambda _: room.start(room_path))
         app.on_cleanup.append(lambda _: room.stop())
     return app
 
@@ -90,16 +88,15 @@ def main() -> None:
     parser.add_argument("--party", action="store_true", help="線上多人：所有連進來的人一起玩同一局，使用伺服器的 API key")
     args = parser.parse_args()
 
-    room, room_path = None, ""
+    room = None
     if args.party:
         key = get_saved_api_key()
         if not key:
             sys.exit("線上多人使用伺服器的 API key：請先設定環境變數 GEMINI_API_KEY，或執行一次 uv run story 儲存 key。")
         room = Room.for_server(key)
-        room_path = str(Path(tempfile.mkdtemp(prefix="story-")) / "room.sock")
 
     if args.host != "127.0.0.1":
         print("⚠ 已開放其他電腦連線。目前沒有 HTTPS，玩家輸入的 API key 會以明文傳送，只建議在信任的網路使用。", flush=True)
     mode = "線上多人（大家一起玩同一局）" if args.party else "單人（每個人各自玩）"
     print(f"伺服器已啟動：http://{args.host}:{args.port}　模式：{mode}　按 Ctrl+C 結束。", flush=True)
-    web.run_app(make_app(room, room_path), host=args.host, port=args.port, print=None)
+    web.run_app(make_app(room), host=args.host, port=args.port, print=None)

@@ -1,8 +1,6 @@
-"""線上多人的房間：用真的 Unix socket 連線，模擬好幾位玩家一起玩同一局。核心用真的 PartyCore，engine 用假的。"""
+"""線上多人的房間：用 connect() 連進房間，模擬好幾位玩家一起玩同一局。核心用真的 PartyCore，engine 用假的。"""
 
 import asyncio
-import tempfile
-from pathlib import Path
 
 import pytest
 from conftest import FakePartyEngine
@@ -10,13 +8,13 @@ from conftest import FakePartyEngine
 import story.shells.room as room_module
 from story.core import PartyCore, Reply
 from story.core.party import AWAY_ACTION
-from story.shells.room import Room, RoomConnection
+from story.shells.room import Connection, Room
 
 
 class Player:
     """一位連到房間的玩家：收到的訊息都留著，方便檢查。"""
 
-    def __init__(self, conn: RoomConnection):
+    def __init__(self, conn: Connection):
         self.conn = conn
         self.messages: list[dict] = []
 
@@ -49,15 +47,12 @@ async def room(isolated):
     engine = FakePartyEngine()
     room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=engine))
     room.engine = engine
-    path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")  # socket 路徑有長度限制，不用 tmp_path
-    await room.start(path)
-    room.path = path
     yield room
     await room.stop()
 
 
 async def join(room, name: str) -> Player:
-    conn = await RoomConnection.open(room.path)
+    conn = room.connect()
     await conn.send({"type": "join", "name": name})
     answer = await conn.receive()
     assert answer == {"type": "joined"}, answer
@@ -95,7 +90,7 @@ async def test_two_players_play_a_round_in_any_order(room):
 
 async def test_names_are_checked_and_room_has_a_limit(room):
     players = [await join(room, "阿明")]
-    conn = await RoomConnection.open(room.path)
+    conn = room.connect()
     await conn.send({"type": "join", "name": "阿明"})
     assert "已經在房間裡" in (await conn.receive())["reason"]
     await conn.send({"type": "join", "name": "../x"})
@@ -104,7 +99,7 @@ async def test_names_are_checked_and_room_has_a_limit(room):
     assert await conn.receive() == {"type": "joined"}
 
     players += [await join(room, "小美"), await join(room, "阿華")]  # 第 4 人
-    fifth = await RoomConnection.open(room.path)
+    fifth = room.connect()
     await fifth.send({"type": "join", "name": "阿強"})
     assert "房間已滿" in (await fifth.receive())["reason"]
 
@@ -112,7 +107,7 @@ async def test_names_are_checked_and_room_has_a_limit(room):
 async def test_only_party_members_can_rejoin_after_start(room):
     host, guest = await start_story(room)
     await guest.reply()
-    conn = await RoomConnection.open(room.path)
+    conn = room.connect()
     await conn.send({"type": "join", "name": "路人"})
     assert "遊戲進行中" in (await conn.receive())["reason"]
 
@@ -163,8 +158,6 @@ class TimedEngine(FakePartyEngine):
 
 async def test_countdown_starts_after_everyone_has_read_then_times_out(isolated):
     room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=TimedEngine()))
-    room.path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
-    await room.start(room.path)
     try:
         host, guest = await start_story(room)
         await host.reply()
@@ -197,8 +190,6 @@ async def test_game_end_returns_to_lobby(room, monkeypatch):
 async def test_failed_timeout_round_restarts_the_countdown(isolated):
     engine = TimedEngine()
     room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=engine))
-    room.path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
-    await room.start(room.path)
     try:
         host, guest = await start_story(room)
         await host.reply()
@@ -233,8 +224,6 @@ class SlowOpeningEngine(FakePartyEngine):
 
 async def test_everyone_sees_the_opening_progress(isolated):
     room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=SlowOpeningEngine()))
-    room.path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
-    await room.start(room.path)
     try:
         host, guest = await start_story(room)
         for stage in ("規劃故事大綱", "寫開場"):
@@ -251,8 +240,6 @@ async def test_host_genre_choice_reaches_the_core(isolated):
         genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}
 
     room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=GenreEngine()))
-    room.path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
-    await room.start(room.path)
     try:
         host, guest = await join(room, "阿明"), await join(room, "小華")
         await host.send("1")
@@ -301,8 +288,6 @@ class StreamingPartyEngine(FakePartyEngine):
 
 async def test_everyone_sees_the_narration_while_it_is_written(isolated):
     room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", engine=StreamingPartyEngine()))
-    room.path = str(Path(tempfile.mkdtemp(prefix="story-test-")) / "room.sock")
-    await room.start(room.path)
     try:
         host, guest = await start_story(room)
         await host.reply()
