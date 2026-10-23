@@ -4,6 +4,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from story.core import prompts
+
+SCHEMA = prompts.sections("schema")  # 欄位說明（story/prompts/語言/schema.md），跟著回傳格式送給 AI
+
 Severity = Literal["輕", "中", "重"]
 ConditionKind = Literal["身體", "精神"]
 TimeSpan = Literal["瞬間", "片刻", "一陣子", "數小時", "一夜", "數天"]
@@ -13,9 +17,9 @@ TimeOfDay = Literal["清晨", "上午", "中午", "下午", "傍晚", "夜晚", 
 class ConditionChange(BaseModel):
     """LLM 回報的狀態：新出現的，或程度改變的。"""
 
-    name: str = Field(description="狀態名稱，2-8 字，例如「右腿骨折」「中毒」「恐懼」")
-    kind: ConditionKind = Field(description="身體＝受傷、疲勞、中毒、疾病；精神＝恐懼、驚慌、絕望、憤怒")
-    severity: Severity = Field(description="輕＝不影響行動；中＝明顯妨礙行動；重＝危及性命")
+    name: str = Field(description=SCHEMA["ConditionChange.name"])
+    kind: ConditionKind = Field(description=SCHEMA["ConditionChange.kind"])
+    severity: Severity = Field(description=SCHEMA["ConditionChange.severity"])
 
 
 class Condition(BaseModel):
@@ -31,63 +35,59 @@ class StoryBeat(BaseModel):
     """LLM 每回合必須回傳的結構。程式會驗證後才套用到狀態。
     欄位順序就是 AI 輸出的順序：先決定是不是結局，接著是劇情（串流時邊收邊顯示），其他變化最後由程式驗證後套用。"""
 
-    game_over: bool = Field(description="寫劇情之前先決定：故事是否在本回合結束（死亡、達成結局等）")
-    narration: str = Field(description="本回合的劇情敘述，第二人稱，150-300 字")
-    choices: list[str] = Field(description="給玩家的 2-4 個行動選項，每個一句話")
-    conditions_changed: list[ConditionChange] = Field(description="新出現的狀態，或程度改變的既有狀態")
-    conditions_removed: list[str] = Field(description="痊癒或消失的既有狀態名稱")
-    time_passed: TimeSpan = Field(
-        description="本回合經過的時間：瞬間＝打鬥閃避；片刻＝對話、搜索；一陣子＝趕路，約一小時；一夜＝睡覺"
-    )
-    start_time_of_day: TimeOfDay = Field(description="現在的時段；只在開場或時間「尚未確定」時採用")
-    time_limit: int = Field(description="限時模式下緊迫時的反應秒數，否則為 0")
-    milestone_reached: bool = Field(description="本回合是否達成了「故事進度」中目前這一幕的里程碑")
-    items_gained: list[str] = Field(description="玩家本回合獲得的物品名稱")
-    items_lost: list[str] = Field(description="玩家本回合失去或用掉的物品名稱")
-    flags_set: list[str] = Field(description="新確立的長期事實，例如「與守門人結仇」；通常為空")
-    key_event: str = Field(description="改變故事走向的大事，一句話；大多數回合為空字串")
+    game_over: bool = Field(description=SCHEMA["StoryBeat.game_over"])
+    narration: str = Field(description=SCHEMA["StoryBeat.narration"])
+    choices: list[str] = Field(description=SCHEMA["StoryBeat.choices"])
+    conditions_changed: list[ConditionChange] = Field(description=SCHEMA["StoryBeat.conditions_changed"])
+    conditions_removed: list[str] = Field(description=SCHEMA["StoryBeat.conditions_removed"])
+    time_passed: TimeSpan = Field(description=SCHEMA["StoryBeat.time_passed"])
+    start_time_of_day: TimeOfDay = Field(description=SCHEMA["StoryBeat.start_time_of_day"])
+    time_limit: int = Field(description=SCHEMA["StoryBeat.time_limit"])
+    milestone_reached: bool = Field(description=SCHEMA["StoryBeat.milestone_reached"])
+    items_gained: list[str] = Field(description=SCHEMA["StoryBeat.items_gained"])
+    items_lost: list[str] = Field(description=SCHEMA["StoryBeat.items_lost"])
+    flags_set: list[str] = Field(description=SCHEMA["StoryBeat.flags_set"])
+    key_event: str = Field(description=SCHEMA["StoryBeat.key_event"])
 
 
 class CharacterUpdate(BaseModel):
     """多人模式：AI 回報某一位角色這回合的變化與下一步的選項。"""
 
-    name: str = Field(description="角色名字，必須是「隊伍」裡的名字")
-    choices: list[str] = Field(description="給這位角色的 2-4 個行動選項，每個一句話；角色已死亡時留空")
-    conditions_changed: list[ConditionChange] = Field(description="這位角色新出現的狀態，或程度改變的既有狀態")
-    conditions_removed: list[str] = Field(description="這位角色痊癒或消失的既有狀態名稱")
-    items_gained: list[str] = Field(description="這位角色本回合獲得的物品名稱")
-    items_lost: list[str] = Field(description="這位角色本回合失去或用掉的物品名稱")
+    name: str = Field(description=SCHEMA["CharacterUpdate.name"])
+    choices: list[str] = Field(description=SCHEMA["CharacterUpdate.choices"])
+    conditions_changed: list[ConditionChange] = Field(description=SCHEMA["CharacterUpdate.conditions_changed"])
+    conditions_removed: list[str] = Field(description=SCHEMA["CharacterUpdate.conditions_removed"])
+    items_gained: list[str] = Field(description=SCHEMA["CharacterUpdate.items_gained"])
+    items_lost: list[str] = Field(description=SCHEMA["CharacterUpdate.items_lost"])
 
 
 class PartyBeat(BaseModel):
     """多人模式每回合的回傳：一段包含所有角色的劇情，加上每位角色各自的變化。欄位順序同 StoryBeat。"""
 
-    game_over: bool = Field(description="寫劇情之前先決定：故事是否在本回合自然走到結局")
-    narration: str = Field(description="本回合的劇情敘述，包含每位角色行動的結果，200-400 字；提到角色時用名字")
-    character_updates: list[CharacterUpdate] = Field(description="隊伍中每位角色各一筆，順序和「隊伍」相同")
-    time_passed: TimeSpan = Field(
-        description="本回合經過的時間：瞬間＝打鬥閃避；片刻＝對話、搜索；一陣子＝趕路，約一小時；一夜＝睡覺"
-    )
-    start_time_of_day: TimeOfDay = Field(description="現在的時段；只在開場或時間「尚未確定」時採用")
-    time_limit: int = Field(description="限時模式下緊迫時的反應秒數，否則為 0")
-    milestone_reached: bool = Field(description="本回合是否達成了「故事進度」中目前這一幕的里程碑")
-    flags_set: list[str] = Field(description="新確立的長期事實，例如「與守門人結仇」；通常為空")
-    key_event: str = Field(description="改變故事走向的大事，一句話；大多數回合為空字串")
+    game_over: bool = Field(description=SCHEMA["PartyBeat.game_over"])
+    narration: str = Field(description=SCHEMA["PartyBeat.narration"])
+    character_updates: list[CharacterUpdate] = Field(description=SCHEMA["PartyBeat.character_updates"])
+    time_passed: TimeSpan = Field(description=SCHEMA["PartyBeat.time_passed"])
+    start_time_of_day: TimeOfDay = Field(description=SCHEMA["PartyBeat.start_time_of_day"])
+    time_limit: int = Field(description=SCHEMA["PartyBeat.time_limit"])
+    milestone_reached: bool = Field(description=SCHEMA["PartyBeat.milestone_reached"])
+    flags_set: list[str] = Field(description=SCHEMA["PartyBeat.flags_set"])
+    key_event: str = Field(description=SCHEMA["PartyBeat.key_event"])
 
 
 class Act(BaseModel):
-    name: str = Field(description="這一幕的名稱，4-8 字")
-    milestone: str = Field(description="這一幕結束前必須發生的關鍵事件，一句話，要具體可判斷")
+    name: str = Field(description=SCHEMA["Act.name"])
+    milestone: str = Field(description=SCHEMA["Act.milestone"])
 
 
 class StoryArc(BaseModel):
     """隱藏的故事大綱：AI 依照它推進劇情，程式依照它控制節奏。不顯示給玩家。"""
 
-    goal: str = Field(description="主角在這個故事裡的核心目標或要解開的謎團，一句話")
-    twist: str = Field(description="隱藏的真相：玩家一開始不知道、第三幕才揭露，會顛覆玩家對處境的理解。出人意料但合理，不能決定玩家角色的生死，一句話")
-    clues: list[str] = Field(description="2-3 個伏筆：第一、二幕可以自然出現在環境、NPC、物品或文件上的細節，當下看似無關，事後回想都指向真相，各一句話")
-    acts: list[Act] = Field(description="剛好四幕：起（建立處境）、承（深入與阻礙）、轉（揭露隱藏的真相，里程碑就是揭露它）、合（高潮與結局）")
-    endings: list[str] = Field(description="2-3 種可能的結局方向，依玩家的抉擇而定，各一句話")
+    goal: str = Field(description=SCHEMA["StoryArc.goal"])
+    twist: str = Field(description=SCHEMA["StoryArc.twist"])
+    clues: list[str] = Field(description=SCHEMA["StoryArc.clues"])
+    acts: list[Act] = Field(description=SCHEMA["StoryArc.acts"])
+    endings: list[str] = Field(description=SCHEMA["StoryArc.endings"])
 
     @model_validator(mode="before")
     @classmethod
@@ -101,14 +101,14 @@ class StoryArc(BaseModel):
 class GenrePick(BaseModel):
     """玩家選「自動」題材時，AI 依故事前提挑一個。"""
 
-    genre: str = Field(description="照抄「題材目錄」裡最適合這個故事前提的題材名稱；都不適合就留空")
+    genre: str = Field(description=SCHEMA["GenrePick.genre"])
 
 
 class Epilogue(BaseModel):
     """故事結束後的尾聲。"""
 
-    title: str = Field(description="結局名稱，4-10 字，像小說的章名，例如「燈塔守望者」「未寄出的信」")
-    text: str = Field(description="尾聲，150-250 字：回顧主角這趟旅程的關鍵抉擇，交代結局帶來的餘韻，可以提到其他角色之後的命運")
+    title: str = Field(description=SCHEMA["Epilogue.title"])
+    text: str = Field(description=SCHEMA["Epilogue.text"])
 
 
 class Turn(BaseModel):

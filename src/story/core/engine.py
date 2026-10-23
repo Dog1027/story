@@ -12,6 +12,7 @@ from google.genai import types
 
 from story.core.genres import Genre, load_genres
 from story.core.models import Character, Condition, Epilogue, GameState, GenrePick, StoryArc, StoryBeat, Turn
+from story.core import prompts
 
 MODEL = "gemini-3.5-flash-lite"
 HISTORY_BUDGET = 20_000  # 劇情紀錄保留原文的字數上限；超過才把最舊的部分壓縮進摘要，一次壓到剩一半
@@ -45,29 +46,18 @@ HEAL_TIME = {
     "精神": {"輕": 2 * HOUR, "中": 12 * HOUR, "重": 2 * DAY},
 }
 LOG_PATH = Path("story_log.jsonl")  # 每回合的狀態變化紀錄
-TIMEOUT_ACTION = "（時間到：你遲疑太久，沒有在時限內做出反應）"
 
 # 固定不變的 system prompt，放在最前面以利 prompt caching
-SYSTEM_PROMPT = """你是一個互動式文字冒險遊戲的敘事者。
-
-規則：
-- 用繁體中文、第二人稱（「你」）敘述，文風生動但精簡。
-- 每回合根據玩家的行動推進劇情，行動要有合理的後果，好壞都可能。
-- 「遊戲狀態」區塊是唯一的事實來源。不要讓玩家使用不在背包裡的物品；若玩家嘗試，描述他們發現自己沒有。
-- 尊重已確立的劇情事實與重大事件，不要自相矛盾。
-- 提供 2-4 個彼此有明顯差異的選項；可以有一個朝「故事進度」中目前的里程碑前進，但不要每回合都急著達成，先讓劇情鋪陳開來。不要每次都只有逃跑、躲藏、戰鬥。玩家也可能不照選項自由行動。
-- 依照「故事進度」的大綱推進劇情。節奏要張弛有度：危機過後給主角喘息、整理線索、與人互動的空間，並帶出新的發展；同一類場景（追逐、躲藏、戰鬥）不要連續超過三回合。
-- 主角沒有生命值，而是用狀態描述，並標上程度（輕、中、重）與類別：身體（受傷、疲勞、中毒、疾病）或精神（恐懼、驚慌、絕望、憤怒）。
-  精神狀態不會致命，但要影響主角的判斷與表現，例如恐懼時手抖、驚慌時聽不進別人的話；危機解除後可以直接移除。痊癒或消失時移除；惡化或好轉時用相同名稱回報新的程度。
-  已有的狀態一律沿用「遊戲狀態」裡的原名，不要改名或換個說法重新新增。名稱只描述是什麼狀態（例如「右臂撕裂傷」），不要包含程度詞（輕傷、重傷、嚴重等），程度只用 severity 表示。狀態要影響後續劇情與行動的成敗。
-- 主角會不會因傷勢而死，由程式依傷勢總分判定（見「遊戲狀態」）。不要自行讓主角因傷而死；傷勢接近致命時，在敘述中呈現危險。game_over 只用於劇情自然走到結局。
-- 選擇要有真實的代價，不要手下留情：魯莽、危險的行動（正面硬拚強敵、從高處跳下、傷重還硬撐、明知有陷阱還往前）要依情勢給出相稱的傷勢，重傷是常態；主角已經重傷或瀕死時還冒險，就給出足以致命的傷勢，讓程式判定死亡。程度最高就是「重」：既有的重傷再惡化時，要另外新增新的傷勢（例如失血、內傷、新的骨折），只回報原本的重傷不會讓情況變得更危險。謹慎、聰明的選擇則要能避開或減輕傷害，玩家才能從選擇中感受到風險。
-- 傷勢會隨時間自然好轉：輕微的幾小時後痊癒，中度的要休養幾天；重傷不會自己好，只有劇情中真的得到治療（包紮、縫合、就醫、用藥）時，才能用相同名稱回報降一級。
-- 每回合用 time_passed 標出這段劇情經過了多久，並讓敘述符合「遊戲狀態」裡的時間（日夜、天色）。時間流逝也會推動世界：長時間休息時，飢餓、天候、其他角色的行動都可能帶來新的發展。
-- 狀態變化要與敘述一致：敘述裡受傷就要加入對應的狀態，撿到東西就要列進 items_gained。
-- key_event 只記真正改變故事走向的大事（結盟、背叛、重要發現、失去重要的人或物），大多數回合應該留空。flags_set 只記之後還會用到的長期事實，不要重複已有的事實，也不要記當下的動作。
-- 若「模式」區塊說明是限時模式：當情勢緊迫（追逐、墜落、對峙、倒數）時設定 time_limit，越危急越短；平靜的場景設 0。非限時模式一律設 0。
-- 若玩家行動是「（時間到……）」，代表玩家沒能及時反應，要描述猶豫帶來的後果。"""
+SYSTEM_PROMPT = prompts.load("system")  # 給 AI 的寫作與遊戲規則（story/prompts/system.md）
+CONTEXT = prompts.sections("context")  # 每回合送給 AI 的故事內容（前提、劇情紀錄、遊戲狀態……）
+TURN = prompts.sections("turn")  # 每回合的指示
+PROGRESS = prompts.sections("progress")  # 故事進度裡的提醒
+PLAN = prompts.sections("plan")  # 挑題材、規劃大綱
+PREMISE = prompts.sections("premise")  # 「幫我想」
+MEMORY = prompts.sections("memory")  # 記憶壓縮
+STATUS_KEYS = prompts.table(CONTEXT["status_keys"])  # 遊戲狀態 JSON 的欄位名稱：{代號: 給 AI 看的名稱}
+STATUS_EMPTY = prompts.table(CONTEXT["status_empty"])  # 遊戲狀態裡沒有東西時顯示的字
+TIMEOUT_ACTION = TURN["timeout_action"]  # 限時模式時間到時，代替玩家行動寫進劇情紀錄給 AI
 
 
 class EndingTooEarly(Exception):
@@ -132,7 +122,7 @@ def clock_text(minutes: int) -> str:
     """例如「第 2 天 傍晚（18:30）」。只放進給 AI 的提示，不顯示給玩家。"""
     day, hour, minute = minutes // DAY + 1, minutes % DAY // HOUR, minutes % HOUR
     period = next((name for start, name in reversed(TIME_OF_DAY_RANGES) if hour >= start), "深夜")
-    return f"第 {day} 天 {period}（{hour:02d}:{minute:02d}）"
+    return CONTEXT["clock"].format(day=day, period=period, hour=hour, minute=minute)
 
 
 # 下面的規則函式都只用到 conditions／inventory：單人模式傳 GameState（主角），多人模式傳 Character
@@ -271,10 +261,7 @@ def ending_allowed(state: GameState, turn: int) -> bool:
     return final and turn >= MIN_ENDING_TURN
 
 
-EARLY_ENDING_RETRY = (
-    "# 注意\n上一次的回覆太早結束了故事。故事還不能結束：重寫這一回合，不要寫出結局，"
-    "game_over 設為 false，帶出新的發展並給出選項。"
-)
+EARLY_ENDING_RETRY = TURN["early_ending_retry"]
 
 
 def clamp_time_limit(state: GameState, given: int) -> int:
@@ -284,13 +271,10 @@ def clamp_time_limit(state: GameState, given: int) -> int:
 
 
 # 讓 AI 想故事開頭時隨機指定題材，避免它每次都想出相似的故事
-PREMISE_GENRES = [
-    "奇幻冒險", "賽博龐克", "克蘇魯式恐怖", "武俠江湖", "末日求生", "蒸氣龐克", "太空探索",
-    "偵探推理", "民俗怪談", "海盜航海", "宮廷權謀", "童話黑化", "校園怪談", "西部荒野",
-]
-PREMISE_SETTINGS = ["深夜", "暴風雨中", "一場葬禮上", "逃亡途中", "剛醒來時", "一封信送達時", "節慶當天", "一切看似平靜時"]
+PREMISE_GENRES = prompts.items(PREMISE["genres"])  # 「幫我想」隨機挑的題材（prompts/語言/premise.md）
+PREMISE_SETTINGS = prompts.items(PREMISE["settings"])  # 「幫我想」隨機挑的情境
 
-SUMMARY_SYSTEM = "你負責壓縮文字冒險遊戲的劇情紀錄。用繁體中文純文字（不要用 Markdown 或 LaTeX），保留人物、地點、承諾、恩怨、伏筆等之後可能用到的資訊，捨棄修辭。"
+SUMMARY_SYSTEM = MEMORY["system"]  # 壓縮記憶時給 AI 的規則
 
 
 def history(state: GameState) -> list[Turn]:
@@ -300,6 +284,32 @@ def history(state: GameState) -> list[Turn]:
 
 def history_size(turns: list[Turn]) -> int:
     return sum(len(t.narration) + len(t.action) for t in turns)
+
+
+def history_entry(turn: Turn, label: str) -> str:
+    """劇情紀錄裡的一回合：那時的劇情，與玩家看完後做的事。"""
+    return CONTEXT["history_entry"].format(narration=turn.narration, label=label, action=turn.action)
+
+
+def overall_text(who: Holder) -> str:
+    """遊戲狀態裡的「整體」：讓 AI 知道離死亡還有多遠。"""
+    return CONTEXT["overall"].format(level=body_level(who), score=body_score(who), death=DEATH_SCORE)
+
+
+def time_text(state: GameState) -> str:
+    return STATUS_EMPTY["time_unknown"] if state.minutes is None else clock_text(state.minutes)
+
+
+def condition_fields(who: Holder) -> dict:
+    """遊戲狀態裡主角（或一位角色）的身體、精神與整體狀況。"""
+    def listed(conditions: list[Condition], empty: str) -> list[str]:
+        return [CONTEXT["condition"].format(name=c.name, severity=c.severity) for c in conditions] or [STATUS_EMPTY[empty]]
+
+    return {
+        STATUS_KEYS["body"]: listed(body_conditions(who), "body"),
+        STATUS_KEYS["mind"]: listed(mind_conditions(who), "mind"),
+        STATUS_KEYS["overall"]: overall_text(who),
+    }
 
 
 def oldest_turns_to_compact(turns: list[Turn]) -> list[Turn]:
@@ -318,8 +328,8 @@ class Engine:
 
     system_prompt = SYSTEM_PROMPT  # 給 AI 的寫作與遊戲規則
     beat_schema = StoryBeat  # 每回合強制 AI 回傳的格式
-    turn_label = "玩家"  # 「劇情紀錄」裡行動那一行的標籤
-    epilogue_look_back = "回顧主角做過的關鍵抉擇與付出的代價；若主角死去，寫出主角留下的痕跡。"
+    turn_label = CONTEXT["turn_label"]  # 「劇情紀錄」裡行動那一行的標籤
+    epilogue_look_back = TURN["epilogue_look_back"]
 
     def __init__(
         self,
@@ -356,13 +366,12 @@ class Engine:
 
     def pick_genre(self, state: GameState) -> None:
         """玩家選「自動」：給 AI 題材目錄，請它依故事前提挑一個。先挑好，規劃大綱時才用得上題材的指引與轉折靈感。"""
-        catalog = "\n".join(f"- {g.name}：{g.description}" for g in self.genres.values())
         picked = ""
-        if catalog:
+        if self.genres:
             response = self._generate(
                 "題材",
                 model=MODEL,
-                contents=f"為這個互動文字冒險故事挑一個題材。\n# 故事前提\n{state.premise}\n\n# 題材目錄\n{catalog}",
+                contents=self.genre_prompt(state),
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=GenrePick,
@@ -375,36 +384,12 @@ class Engine:
 
     def plan_arc(self, state: GameState) -> None:
         """請 AI 規劃故事大綱。舊存檔沒有大綱時，依目前的劇情補一份，並依回合數決定從哪一幕接著走。"""
-        if state.turn == 0:
-            situation = "故事還沒開始。"
-        else:
-            situation = (
-                f"故事已經進行了 {state.turn} 回合，大綱要接續目前的劇情，已經發生的事放在前面的幕裡。\n"
-                f"# 先前劇情摘要\n{state.summary or '（無）'}\n# 重大事件\n" + "\n".join(state.key_events)
-            )
-        cast = self._cast_section(state)
-        prompt = (
-            f"為這個互動文字冒險故事規劃大綱，預定約 {TARGET_TURNS} 回合。\n# 故事前提\n{state.premise}\n{cast}{situation}\n"
-            "里程碑要具體、可以判斷是否達成。結局方向要依玩家的抉擇而不同，不要只有逃脫成功。\n"
-            "先想好隱藏的真相（twist），第三幕的里程碑就是揭露它；再設計前兩幕能自然出現的伏筆（clues），"
-            "讓真相揭露時玩家回想起來覺得「原來如此」，而不是突然冒出來的。避免老套的「同伴背叛」「幕後還有黑手」，除非有新意。\n"
-            "真相不能決定玩家角色的生死，也不能讓玩家角色其實不是人（例如早就死了、是鬼、被寄生）：角色的生死與狀態由程式判定。"
-            "真相要關係到所有主角，不要只落在某一位身上；可以是關於 NPC、事件、地點、物品或主角們的過去。"
-            "伏筆要放在環境、NPC、物品或文件上，不要寫成玩家角色自己的感受或行動，那些由玩家決定。"
-        )
         if state.genre_pending:
             self.pick_genre(state)
-        if genre := self.genres.get(state.genre):  # 大綱要符合題材
-            prompt += f"\n\n# 題材：{genre.name}\n{genre.guide}"
-            if genre.names:
-                prompt += f"\n\n# 命名素材（可以參考，不必全用）\n{genre.names}"
-            if genre.twists:  # 每局隨機抽幾則，同一個題材玩很多次也不會總是同一招
-                ideas = "\n".join(f"- {t}" for t in random.sample(genre.twists, min(TWIST_IDEAS, len(genre.twists))))
-                prompt += f"\n\n# 轉折靈感（挑一則改寫成適合這個故事的版本，或想出更好的；不要照抄）\n{ideas}"
         response = self._generate(
             "大綱",
             model=MODEL,
-            contents=prompt,
+            contents=self.arc_prompt(state),
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=StoryArc,
@@ -431,25 +416,10 @@ class Engine:
     def suggest_premise(self, avoid: str = "", genre: str = "") -> str:
         """請 AI 想一個新的故事開頭。題材由程式隨機挑選（玩家指定了題材就用那個），AI 負責發揮。
         挑到題材包時，附上它的描述與幾則開頭靈感（premises.md）。"""
-        if genre not in self.genres:
-            genre = random.choice([*self.genres, *(g for g in PREMISE_GENRES if g not in self.genres)])
-        setting = random.choice(PREMISE_SETTINGS)
-        prompt = f"為互動文字冒險遊戲想一個原創的故事前提。題材：{genre}；故事開始於：{setting}。\n"
-        if pack := self.genres.get(genre):
-            prompt += f"題材說明：{pack.description}\n"
-            if pack.premises:
-                ideas = "\n".join(f"- {p}" for p in random.sample(pack.premises, min(3, len(pack.premises))))
-                prompt += f"靈感（不要照抄，寫出新的）：\n{ideas}\n"
-        prompt += (
-            "用繁體中文、第二人稱（「你」），一到兩句、80 字以內。交代主角身分、所在處境，並留下一個引人好奇的謎團或危機。"
-            "只輸出前提本身，不要標題或其他說明。"
-        )
-        if avoid:
-            prompt += f"\n不要和這個前提相似：{avoid}"
         response = self._generate(
             "幫我想",
             model=MODEL,
-            contents=prompt,
+            contents=self.premise_prompt(avoid, genre),
             config=types.GenerateContentConfig(thinking_config=types.ThinkingConfig(thinking_level="low")),
         )
         text = (response.text or "").strip().strip("「」\"")
@@ -459,15 +429,10 @@ class Engine:
 
     def write_epilogue(self, state: GameState) -> None:
         """故事結束後，請 AI 回顧整段旅程寫出尾聲與結局名稱。"""
-        prompt = self._build_prompt(state, None).rsplit("# 指示", 1)[0] + (
-            f"# 故事的最後一段\n{state.current_narration}\n\n"
-            "# 指示\n故事已經結束。寫一段尾聲，為這趟旅程收尾，並為這個結局取一個名稱。"
-            f"{self.epilogue_look_back}不要開啟新的劇情。"
-        )
         response = self._generate(
             "尾聲",
             model=MODEL,
-            contents=prompt,
+            contents=self.epilogue_prompt(state),
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,
                 response_mime_type="application/json",
@@ -483,7 +448,7 @@ class Engine:
 
     def _next_beat(self, state: GameState, action) -> StoryBeat:
         """請 AI 寫這一回合。太早寫出結局時請它重寫一次；重寫後還是結局的話，_apply() 會忽略結局的宣告。"""
-        prompt = self._build_prompt(state, action)
+        prompt = self.turn_prompt(state, action)
         try:
             # game_over 是 AI 第一個輸出的欄位：太早的結局在劇情出現之前就會發現，玩家不會看到被換掉的版本
             return self._call(prompt, stop_on_ending=not ending_allowed(state, state.turn + 1))
@@ -514,50 +479,102 @@ class Engine:
 
     def _write_death(self, state: GameState) -> None:
         """程式判定傷重死亡，但 LLM 寫的劇情裡主角還活著：請 LLM 接著寫死亡結局。"""
-        prompt = self._build_prompt(state, action=None).rsplit("# 指示", 1)[0] + (
-            f"# 剛才發生的事\n{state.current_narration}\n\n"
-            "# 指示\n主角的傷勢已經致命。接續上面的敘述，寫出主角傷重死亡的結局，choices 留空，game_over 設為 true。"
-        )
-        ending = self._call(prompt, kind="倒下", prefix=state.current_narration + "\n\n")  # 串流時接在剛才的劇情後面
+        ending = self._call(self.death_prompt(state), kind="倒下", prefix=state.current_narration + "\n\n")  # 串流時接在剛才的劇情後面
         state.current_narration += "\n\n" + ending.narration
         state.current_choices = []
         state.current_time_limit = 0
         state.game_over = True
 
-    def _build_prompt(self, state: GameState, action: str | None) -> str:
-        """把程式記得的所有東西組成本回合的輸入。每次呼叫都是無狀態的，記憶全靠這裡。
+    # ---------- 提示詞：每一種 AI 呼叫各自怎麼組（文字在 story/prompts/，just prompts 可以預覽） ----------
+
+    def turn_prompt(self, state: GameState, action: str | None) -> str:
+        """把程式記得的所有東西組成本回合的輸入：故事內容加上這回合的指示（action 是 None 時是開場）。
+        每次呼叫都是無狀態的，記憶全靠這裡。"""
+        return "\n\n".join(self._context(state, action) + self._instruction_sections(state, action))
+
+    def death_prompt(self, state: GameState) -> str:
+        """程式判定傷重死亡，但 AI 寫的劇情裡主角還活著：請 AI 接著寫死亡結局。"""
+        return "\n\n".join(self._context(state, None) + [TURN["death"].format(narration=state.current_narration)])
+
+    def epilogue_prompt(self, state: GameState) -> str:
+        epilogue = TURN["epilogue"].format(narration=state.current_narration, look_back=self.epilogue_look_back)
+        return "\n\n".join(self._context(state, None) + [epilogue])
+
+    def genre_prompt(self, state: GameState) -> str:
+        catalog = "\n".join(f"- {g.name}：{g.description}" for g in self.genres.values())
+        return PLAN["pick_genre"].format(premise=state.premise, catalog=catalog)
+
+    def arc_prompt(self, state: GameState) -> str:
+        if state.turn == 0:
+            situation = PLAN["arc_new"]
+        else:
+            situation = PLAN["arc_resume"].format(turn=state.turn, summary=state.summary or PLAN["summary_none"], events="\n".join(state.key_events))
+        prompt = PLAN["arc"].format(target_turns=TARGET_TURNS, premise=state.premise, cast=self._cast_section(state), situation=situation)
+        if genre := self.genres.get(state.genre):  # 大綱要符合題材
+            prompt += "\n\n" + PLAN["genre"].format(name=genre.name, guide=genre.guide)
+            if genre.names:
+                prompt += "\n\n" + PLAN["names"].format(names=genre.names)
+            if genre.twists:  # 每局隨機抽幾則，同一個題材玩很多次也不會總是同一招
+                ideas = "\n".join(f"- {t}" for t in random.sample(genre.twists, min(TWIST_IDEAS, len(genre.twists))))
+                prompt += "\n\n" + PLAN["twist_ideas"].format(ideas=ideas)
+        return prompt
+
+    def premise_prompt(self, avoid: str = "", genre: str = "") -> str:
+        """「幫我想」：題材由程式隨機挑選（玩家指定了題材就用那個）；挑到題材包時附上它的描述與幾則開頭靈感。"""
+        if genre not in self.genres:
+            genre = random.choice([*self.genres, *(g for g in PREMISE_GENRES if g not in self.genres)])
+        parts = [PREMISE["intro"].format(genre=genre, setting=random.choice(PREMISE_SETTINGS))]
+        if pack := self.genres.get(genre):
+            parts.append(PREMISE["pack"].format(description=pack.description))
+            if pack.premises:
+                ideas = "\n".join(f"- {p}" for p in random.sample(pack.premises, min(3, len(pack.premises))))
+                parts.append(PREMISE["pack_ideas"].format(ideas=ideas))
+        parts.append(PREMISE["rules"])
+        if avoid:
+            parts.append(PREMISE["avoid"].format(avoid=avoid))
+        return "\n".join(parts)
+
+    def compaction_prompt(self, state: GameState) -> str:
+        """劇情紀錄太長時：把最舊的回合、較舊的重大事件與事實併入長期摘要。"""
+        turns = oldest_turns_to_compact(history(state))
+        old = state.key_events[:-KEEP_EVENTS] + state.flags[:-KEEP_FLAGS]
+        parts = [MEMORY["summary"].format(summary=state.summary or MEMORY["summary_none"])]
+        if turns:
+            parts.append(MEMORY["turns"].format(entries="\n\n".join(history_entry(t, CONTEXT["turn_label"]) for t in turns)))
+        if old:
+            parts.append(MEMORY["old_facts"].format(items="\n".join(f"- {x}" for x in old)))
+        parts.append(MEMORY["compact"])
+        return "\n\n".join(parts)
+
+    def _context(self, state: GameState, action: str | None) -> list[str]:
+        """故事內容（指示以外的部分）。尾聲、傷重死亡的場景也用它，再接上各自的指示。
 
         順序：不常變的在前、會變的在後，讓 Gemini 的自動快取（只認開頭完全相同的部分）命中得越多越好：
-        前提、模式 → 摘要（很少變）→ 劇情紀錄（只往後追加）→ 重大事件、故事進度、狀態、本回合行動（隨劇情改變）。
+        前提、模式 → 摘要（很少變）→ 劇情紀錄（只往後追加）→ 重大事件、故事進度、狀態（隨劇情改變）。
         """
-        mode = (
-            f"限時模式：緊迫時用 time_limit 給玩家 {MIN_TIME_LIMIT}-{MAX_TIME_LIMIT} 秒反應時間。"
-            if state.timed_mode
-            else "一般模式：time_limit 一律為 0。"
-        )
-        sections = [f"# 故事前提\n{state.premise}", f"# 模式\n{mode}"]
+        mode = TURN["mode_timed"].format(min=MIN_TIME_LIMIT, max=MAX_TIME_LIMIT) if state.timed_mode else TURN["mode_normal"]
+        sections = [CONTEXT["premise"].format(premise=state.premise), CONTEXT["mode"].format(mode=mode)]
         genre = self.genres.get(state.genre)
         if genre:  # 整局固定，放在前段不影響快取
-            sections.append(f"# 題材：{genre.name}（寫作指引）\n{genre.guide}")
+            sections.append(CONTEXT["genre_guide"].format(name=genre.name, guide=genre.guide))
         if state.summary:
-            sections.append(f"# 先前劇情摘要\n{state.summary}")
+            sections.append(CONTEXT["summary"].format(summary=state.summary))
 
         turns = history(state)
         if turns:
-            lines = [f"[敘述] {t.narration}\n[{self.turn_label}] {t.action}" for t in turns]
-            if action is not None:  # 最後一筆的行動就是本回合行動，下面另外列出，不重複
-                lines[-1] = f"[敘述] {turns[-1].narration}"
-            sections.append("# 劇情紀錄（由舊到新）\n" + "\n\n".join(lines))
+            entries = [history_entry(t, self.turn_label) for t in turns]
+            if action is not None:  # 最後一筆的行動就是本回合行動，在指示裡另外列出，不重複
+                entries[-1] = CONTEXT["history_last"].format(narration=turns[-1].narration)
+            sections.append(CONTEXT["history"].format(entries="\n\n".join(entries)))
 
         if state.key_events:
-            sections.append("# 重大事件\n" + "\n".join(f"- {e}" for e in state.key_events))
+            sections.append(CONTEXT["key_events"].format(events="\n".join(f"- {e}" for e in state.key_events)))
         if progress := self._progress_section(state):
             sections.append(progress)
         if genre and genre.names and action is None and state.turn == 0:  # 開場要介紹人物與地點：附上命名素材
-            sections.append(f"# 命名素材（可以參考，不必全用）\n{genre.names}")
+            sections.append(PLAN["names"].format(names=genre.names))
         sections.append(self._status_section(state))
-        sections += self._instruction_sections(state, action)
-        return "\n\n".join(sections)
+        return sections
 
     # ---------- 多人模式覆寫的掛勾（下面是單人模式的版本） ----------
 
@@ -570,61 +587,61 @@ class Engine:
         return action
 
     def _status_section(self, state: GameState) -> str:
+        key, empty = STATUS_KEYS, STATUS_EMPTY
         status = {
-            "回合": state.turn,
-            "時間": "尚未確定" if state.minutes is None else clock_text(state.minutes),
-            "身體狀況": [f"{c.name}（{c.severity}）" for c in body_conditions(state)] or ["良好"],
-            "精神狀況": [f"{c.name}（{c.severity}）" for c in mind_conditions(state)] or ["平穩"],
-            "整體": f"{body_level(state)}（身體傷勢 {body_score(state)}/{DEATH_SCORE}，達 {DEATH_SCORE} 即死亡；輕=1 中=2 重=4）",
-            "背包": state.inventory or ["（空）"],
-            "已確立的事實": state.flags or ["（無）"],
+            key["turn"]: state.turn,
+            key["time"]: time_text(state),
+            **condition_fields(state),
+            key["inventory"]: state.inventory or [empty["inventory"]],
+            key["flags"]: state.flags or [empty["flags"]],
         }
-        return "# 遊戲狀態\n" + json.dumps(status, ensure_ascii=False, separators=(",", ":"))
+        return CONTEXT["status"].format(json=json.dumps(status, ensure_ascii=False, separators=(",", ":")))
 
     def _instruction_sections(self, state: GameState, action) -> list[str]:
         if action is None:
-            return ["# 指示\n這是故事的開場。介紹場景與主角處境，給出第一組選項。"]
-        return [f"# 玩家本回合的行動\n{action}\n\n# 指示\n敘述這個行動的結果並推進劇情。"]
+            return [TURN["opening"]]
+        return [TURN["action"].format(action=action)]
 
     def _progress_section(self, state: GameState) -> str:
         """隱藏的故事大綱與節奏提醒。只給 AI 看。"""
         arc = state.arc
         if arc is None:
             return ""
-        lines = [f"目標：{arc.goal}"]
+        lines = [PROGRESS["goal"].format(goal=arc.goal)]
         for i, act in enumerate(arc.acts):
-            mark = "→ 目前" if i == state.act else ("✓ 已完成" if i < state.act else "")
-            lines.append(f"第{i + 1}幕「{act.name}」：{act.milestone} {mark}")
-        lines.append("可能的結局：" + "；".join(arc.endings))
+            mark = PROGRESS["act_current"] if i == state.act else (PROGRESS["act_done"] if i < state.act else "")
+            lines.append(PROGRESS["act"].format(number=i + 1, name=act.name, milestone=act.milestone, mark=mark))
+        lines.append(PROGRESS["endings"].format(endings="；".join(arc.endings)))
         if arc.twist:
             lines += self._twist_lines(arc, state.act)
 
         final = state.act == len(arc.acts) - 1
         if not final and state.act_turns + 1 < MIN_ACT_TURNS:
             left = MIN_ACT_TURNS - state.act_turns - 1
-            lines.append(f"節奏提醒：這一幕剛開始，至少還要鋪陳 {left} 回合；這回合不要達成里程碑，milestone_reached 設為 false。")
+            lines.append(PROGRESS["act_just_started"].format(left=left))
         if not ending_allowed(state, state.turn + 1):
-            lines.append(f"結局限制：故事最早要到第 {MIN_ENDING_TURN} 回合、進入最後一幕之後才能結束；在那之前 game_over 一律設為 false，也不要寫出結局。")
+            lines.append(PROGRESS["ending_locked"].format(min_ending_turn=MIN_ENDING_TURN))
         if state.turn >= TARGET_TURNS:
-            lines.append(f"收尾提醒：故事已經超過預定的 {TARGET_TURNS} 回合。這一兩回合內就要寫出高潮與結局，達成時設 game_over 為 true。不要再開啟新的支線或危機。")
+            lines.append(PROGRESS["overdue"].format(target_turns=TARGET_TURNS))
         elif final:
-            lines.append("收尾提醒：已進入最後一幕。朝高潮與結局推進，不要再開啟新的支線；最後的里程碑達成時寫出結局並設 game_over 為 true。")
+            lines.append(PROGRESS["final_act"])
         elif state.act_turns >= ACT_TURNS:
-            lines.append("節奏提醒：這一幕已經拖太久了。本回合就要出現轉折，明顯朝目前的里程碑推進。")
-        return "# 故事進度（玩家看不到）\n" + "\n".join(lines)
+            lines.append(PROGRESS["act_too_long"])
+        return PROGRESS["header"].format(lines="\n".join(lines))
 
     @staticmethod
     def _twist_lines(arc: StoryArc, act: int) -> list[str]:
         """隱藏的真相：前兩幕只埋伏筆，第三幕揭露，之後當作已知的事。"""
         clues = "\n".join(f"- {c}" for c in arc.clues)
         if act < 2:
-            lines = [f"隱藏的真相（第三幕才揭露，在那之前不要說破，也不要暗示得太明顯）：{arc.twist}"]
+            lines = [PROGRESS["twist_hidden"].format(twist=arc.twist)]
             if clues:
-                lines.append(f"伏筆（前兩幕找合適的時機自然帶到，一次一個，不要解釋它的意義）：\n{clues}")
+                lines.append(PROGRESS["twist_clues"].format(clues=clues))
             return lines
         if act == 2:
-            return [f"本幕要揭露隱藏的真相：{arc.twist}" + (f"\n揭露時呼應之前埋下的伏筆：\n{clues}" if clues else "")]
-        return [f"已揭露的真相：{arc.twist}"]
+            reveal = PROGRESS["twist_reveal"].format(twist=arc.twist)
+            return [reveal + ("\n" + PROGRESS["twist_reveal_clues"].format(clues=clues) if clues else "")]
+        return [PROGRESS["twist_known"].format(twist=arc.twist)]
 
     def _generate(self, kind: str, **request):
         """所有一次拿完整結果的 AI 呼叫都經過這裡：記下種類、花了幾秒與 Gemini 回報的 token 用量
@@ -744,17 +761,10 @@ class Engine:
         old_events = state.key_events[:-KEEP_EVENTS]
         old_flags = state.flags[:-KEEP_FLAGS]
 
-        parts = [f"# 目前的摘要\n{state.summary or '（尚無）'}"]
-        if turns:
-            parts.append("# 新增的劇情紀錄\n" + "\n\n".join(f"[敘述] {t.narration}\n[玩家] {t.action}" for t in turns))
-        if old_events or old_flags:
-            parts.append("# 要併入的舊事件與事實\n" + "\n".join(f"- {x}" for x in old_events + old_flags))
-        parts.append("把以上內容併入摘要，輸出更新後的完整摘要（500 字以內），只輸出摘要本身。")
-
         response = self._generate(
             "壓縮",
             model=MODEL,
-            contents="\n\n".join(parts),
+            contents=self.compaction_prompt(state),
             config=types.GenerateContentConfig(
                 system_instruction=SUMMARY_SYSTEM,
                 thinking_config=types.ThinkingConfig(thinking_level="low"),

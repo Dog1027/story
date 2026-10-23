@@ -6,11 +6,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Literal
 
-from story.core.engine import DAY, body_level
+from story.core.engine import DAY, PREMISE, body_level
 from story.core.models import GameState
 
 SAVE_PATH = Path("save.json")
-DEFAULT_PREMISE = "你是一名失憶的旅人，在暴風雨夜醒來，發現自己躺在一座廢棄燈塔的底層，手裡握著一把不屬於你的鑰匙。"
+DEFAULT_PREMISE = PREMISE["default"]  # 沒有題材包可以抽、玩家也沒輸入時用的前提（prompts/語言/premise.md）
 
 
 def save(state: GameState, path: Path = SAVE_PATH) -> None:

@@ -23,52 +23,35 @@ from google.genai import types
 from story.core.engine import (
     DEATH_SCORE,
     MODEL,
+    STATUS_EMPTY,
+    STATUS_KEYS,
     Engine,
     advance_clock,
     apply_condition_changes,
     apply_items,
     apply_story_progress,
-    body_conditions,
-    body_level,
     body_score,
     clamp_time_limit,
     clock_text,
-    ending_allowed,
-    mind_conditions,
+    condition_fields,
     condition_list,
+    ending_allowed,
+    time_text,
     warning_level,
 )
 from story.core.models import Character, GameState, PartyBeat
 from story.core.records import change_groups, snapshot
+from story.core import prompts
 from story.core.session import Reply, Status, StoryCore, render_text
 
-# 多人模式的 system prompt：規則和單人相同，只是主角變成一支隊伍
-PARTY_SYSTEM_PROMPT = """你是一個多人互動式文字冒險遊戲的敘事者。每位玩家扮演隊伍中的一位角色。
-
-規則：
-- 用繁體中文敘述，文風生動但精簡。提到角色時用名字，不要用「你」；也不要用「他」「她」稱呼角色，直接用名字。
-- 每回合會收到每位角色各自的行動。把所有人的行動編織成一段連貫的劇情，交代每個人行動的結果，好壞都可能；角色之間可以互相幫助、牽制或產生衝突。
-- 「焦點」區塊指定的角色本回合要多一些描寫與抉擇的分量，但其他角色也要有交代。
-- 「隊伍」區塊是唯一的事實來源。不要讓角色使用不在自己背包裡的物品；物品屬於個人，交給別人時用 items_lost／items_gained 分別記錄。
-- 尊重已確立的劇情事實與重大事件，不要自相矛盾。
-- 為每位還活著的角色提供 2-4 個彼此有明顯差異的選項；可以有一個朝「故事進度」中目前的里程碑前進，但不要每回合都急著達成，先讓劇情鋪陳開來。不要每次都只有逃跑、躲藏、戰鬥。已死亡的角色不要給選項。
-- 依照「故事進度」的大綱推進劇情。節奏要張弛有度：危機過後給角色喘息、整理線索、互相交談的空間，並帶出新的發展；同一類場景（追逐、躲藏、戰鬥）不要連續超過三回合。
-- 角色沒有生命值，而是用狀態描述，並標上程度（輕、中、重）與類別：身體（受傷、疲勞、中毒、疾病）或精神（恐懼、驚慌、絕望、憤怒）。痊癒或消失時移除；惡化或好轉時用相同名稱回報新的程度。
-  已有的狀態一律沿用「隊伍」裡的原名，不要改名或換個說法重新新增。名稱只描述是什麼狀態，不要包含程度詞，程度只用 severity 表示。狀態要影響後續劇情與行動的成敗。
-  精神狀態不會致命，但要影響角色的判斷與表現；危機解除後可以直接移除。
-- 角色會不會因傷勢而死，由程式依傷勢總分判定。不要自行讓角色因傷而死；傷勢接近致命時，在敘述中呈現危險。game_over 只用於劇情自然走到結局。
-- 選擇要有真實的代價，不要手下留情：魯莽、危險的行動要依情勢給出相稱的傷勢，重傷是常態；角色已經重傷或瀕死時還冒險，就給出足以致命的傷勢，讓程式判定死亡。程度最高就是「重」：既有的重傷再惡化時，要另外新增新的傷勢（例如失血、內傷），只回報原本的重傷不會讓情況變得更危險。謹慎、聰明的選擇則要能避開或減輕傷害。代價落在做出選擇的那位角色身上。
-- 傷勢會隨時間自然好轉：輕微的幾小時後痊癒，中度的要休養幾天；重傷不會自己好，只有劇情中真的得到治療時，才能用相同名稱回報降一級。
-- 每回合用 time_passed 標出這段劇情經過了多久，並讓敘述符合「隊伍」裡的時間（日夜、天色）。
-- 狀態變化要與敘述一致，並記在對應角色的 character_updates 裡。key_event 只記真正改變故事走向的大事，大多數回合應該留空。flags_set 只記之後還會用到的長期事實。
-- 若「模式」區塊說明是限時模式：當情勢緊迫時設定 time_limit，越危急越短；平靜的場景設 0。非限時模式一律設 0。
-- 若某位角色的行動是「（時間到……）」，代表那位玩家沒能及時反應，要描述猶豫帶來的後果。"""
+PARTY_SYSTEM_PROMPT = prompts.load("party_system")  # 多人模式的寫作與遊戲規則（story/prompts/party_system.md）
+PARTY_TURN = prompts.sections("party_turn")  # 多人模式每回合的指示
 
 
 PARTY_SAVE_PATH = Path("party_save.json")
 PARTY_LOG_PATH = Path("party_log.jsonl")
 MIN_PLAYERS, MAX_PLAYERS = 1, 4  # 一個人也能開線上多人的房間先玩，其他人之後再一起玩下一局
-AWAY_ACTION = "（暫時離開了，這回合沒有行動）"  # /away：角色暫時不在（線上多人斷線時由房間送出），這句會寫進劇情紀錄給 AI
+AWAY_ACTION = PARTY_TURN["away_action"]  # /away：角色暫時不在（線上多人斷線時由房間送出），這句會寫進劇情紀錄給 AI
 
 
 class PartyEngine(Engine):
@@ -76,35 +59,36 @@ class PartyEngine(Engine):
 
     system_prompt = PARTY_SYSTEM_PROMPT
     beat_schema = PartyBeat
-    turn_label = "行動"
-    epilogue_look_back = "回顧每位角色做過的關鍵抉擇與付出的代價；死去的角色，寫出他們留下的痕跡。"
+    turn_label = PARTY_TURN["turn_label"]
+    epilogue_look_back = PARTY_TURN["epilogue_look_back"]
 
     # ---------- 提示詞的掛勾 ----------
 
     def _cast_section(self, state: GameState) -> str:
-        return f"# 主角（多人，各由一位玩家扮演）\n{'、'.join(c.name for c in state.party)}\n"
+        return PARTY_TURN["cast"].format(names="、".join(c.name for c in state.party)) + "\n"
 
     def _action_text(self, action: dict[str, str]) -> str:
         return format_actions(action)
 
     def _status_section(self, state: GameState) -> str:
+        key = STATUS_KEYS
         party = {
-            "回合": state.turn,
-            "時間": "尚未確定" if state.minutes is None else clock_text(state.minutes),
-            "已確立的事實": state.flags or ["（無）"],
-            "角色": [character_status(c) for c in state.party],
+            key["turn"]: state.turn,
+            key["time"]: time_text(state),
+            key["flags"]: state.flags or [STATUS_EMPTY["flags"]],
+            key["characters"]: [character_status(c) for c in state.party],
         }
-        return "# 隊伍\n" + json.dumps(party, ensure_ascii=False, separators=(",", ":"))
+        return PARTY_TURN["status"].format(json=json.dumps(party, ensure_ascii=False, separators=(",", ":")))
 
     def _instruction_sections(self, state: GameState, action: dict[str, str] | None) -> list[str]:
         sections = []
         alive = [c.name for c in state.party if c.alive]
         if alive:  # 焦點由程式輪流指定，避免 AI 老是讓同一個人當主角
-            sections.append(f"# 焦點\n本回合多給「{alive[state.turn % len(alive)]}」一些描寫與抉擇的分量。")
+            sections.append(PARTY_TURN["focus"].format(name=alive[state.turn % len(alive)]))
         if action is None:
-            sections.append("# 指示\n這是故事的開場。介紹場景與每位角色的處境，並給每位角色各自的第一組選項。")
+            sections.append(PARTY_TURN["opening"])
         else:
-            sections.append(f"# 本回合每位角色的行動\n{format_actions(action)}\n\n# 指示\n敘述這些行動的結果並推進劇情。")
+            sections.append(PARTY_TURN["action"].format(actions=format_actions(action)))
         return sections
 
     # ---------- 套用：每位角色各自套用單人的規則 ----------
@@ -144,13 +128,13 @@ class PartyEngine(Engine):
         state.current_time_limit = clamp_time_limit(state, beat.time_limit)
         return newly_dead
 
-    def _write_deaths(self, state: GameState, names: list[str]) -> None:
+    def deaths_prompt(self, state: GameState, names: list[str]) -> str:
         """程式判定有角色傷重死亡：請 AI 接著寫一小段倒下的場景。"""
         who = "、".join(names)
-        prompt = self._build_prompt(state, None).rsplit("# 焦點", 1)[0] + (
-            f"# 剛才發生的事\n{state.current_narration}\n\n"
-            f"# 指示\n{who} 的傷勢已經致命。接續上面的敘述，寫一小段（100 字以內）{who} 傷重倒下的場景，只輸出敘述本身。"
-        )
+        return "\n\n".join(self._context(state, None) + [PARTY_TURN["death"].format(narration=state.current_narration, who=who)])
+
+    def _write_deaths(self, state: GameState, names: list[str]) -> None:
+        """程式判定有角色傷重死亡：請 AI 接著寫一小段倒下的場景。"""
         prefix = state.current_narration + "\n\n"
 
         def on_text(text: str) -> None:  # 串流時接在剛才的劇情後面
@@ -160,7 +144,7 @@ class PartyEngine(Engine):
             "倒下",
             on_text,
             model=MODEL,
-            contents=prompt,
+            contents=self.deaths_prompt(state, names),
             config=types.GenerateContentConfig(system_instruction=self.system_prompt),
         )
         if text := text.strip():
@@ -183,15 +167,10 @@ def format_actions(actions: dict[str, str]) -> str:
 
 def character_status(c: Character) -> dict:
     """提示詞裡一位角色的狀態，格式和單人模式的「遊戲狀態」一致。"""
+    key = STATUS_KEYS
     if not c.alive:
-        return {"名字": c.name, "狀態": "已死亡"}
-    return {
-        "名字": c.name,
-        "身體狀況": [f"{x.name}（{x.severity}）" for x in body_conditions(c)] or ["良好"],
-        "精神狀況": [f"{x.name}（{x.severity}）" for x in mind_conditions(c)] or ["平穩"],
-        "整體": f"{body_level(c)}（身體傷勢 {body_score(c)}/{DEATH_SCORE}，達 {DEATH_SCORE} 即死亡；輕=1 中=2 重=4）",
-        "背包": c.inventory or ["（空）"],
-    }
+        return {key["name"]: c.name, key["state"]: STATUS_EMPTY["dead"]}
+    return {key["name"]: c.name, **condition_fields(c), key["inventory"]: c.inventory or [STATUS_EMPTY["inventory"]]}
 
 
 class PartyCore(StoryCore):

@@ -115,9 +115,9 @@ def test_party_prompt_contents():
 def test_spotlight_rotates_between_alive_characters():
     engine, _ = make_party_engine()
     state = party_state(turn=1, minutes=0)
-    assert "「小華」" in engine._build_prompt(state, {}).split("# 焦點")[1]
+    assert "「小華」" in engine.turn_prompt(state, {}).split("# 焦點")[1]
     state.turn = 2
-    assert "「阿明」" in engine._build_prompt(state, {}).split("# 焦點")[1]
+    assert "「阿明」" in engine.turn_prompt(state, {}).split("# 焦點")[1]
 
 
 def test_party_epilogue_uses_party_prompt():
