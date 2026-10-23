@@ -402,12 +402,14 @@ setInterval(() => {
 let closeCurrent = null;
 const sheetQueue = []; // 已經有對話框開著時，後來的排隊，不會蓋掉正在回答的那個
 
-function openSheet(build, onClose, dismissible = true) {
+// top：要打字的對話框（名字、key、故事前提）出現在畫面上方，手機的鍵盤從下面彈出來才不會蓋住
+function openSheet(build, onClose, dismissible = true, top = false) {
   if (closeCurrent) {
-    sheetQueue.push([build, onClose, dismissible]);
+    sheetQueue.push([build, onClose, dismissible, top]);
     return;
   }
   const overlay = $("overlay"), sheet = $("sheet");
+  overlay.classList.toggle("top", top);
   sheet.replaceChildren();
   let done = false;
   const close = (value) => {
@@ -486,7 +488,7 @@ function nameSheet({ id, hint, error }) {
     name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
     sheet.append(tag("h2", "", "你的名字"), tag("p", "hint", hint || "每個名字有自己的存檔，下次用同一個名字進來就能接著玩。"), name, errorLine);
     sheet.append(buttons([["離開", () => close(null)], ["進入", submit, true]]));
-  }, (value) => answer(id, value), false);
+  }, (value) => answer(id, value), false, true);
 }
 
 function apiKeySheet({ id, reason }) {
@@ -502,7 +504,7 @@ function apiKeySheet({ id, reason }) {
     a.rel = "noopener";
     link.append(a, " 免費申請。key 只用於這次連線，不會存到伺服器上；下次進來要重新輸入。");
     sheet.append(tag("h2", "", reason), link, key, buttons([["離開", () => close(null)], ["確定", submit, true]]));
-  }, (value) => answer(id, value), false);
+  }, (value) => answer(id, value), false, true);
 }
 
 const GENRE_AUTO = "自動", GENRE_NONE = "不套用";
@@ -598,7 +600,7 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
   }, (value) => {
     state.premise = null;
     answer(id, value);
-  }, false);
+  }, false, true);
 }
 
 // ---------- 通知 ----------
