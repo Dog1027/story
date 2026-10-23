@@ -23,7 +23,6 @@ BUSY_POLL = 0.3  # 等待時每隔幾秒看一次進度文字有沒有變
 
 
 def premise_fields(reply: Reply) -> dict:
-    """前提對話框需要的欄位。"""
     return {
         "default": reply.premise_default,
         "suggestion": reply.suggestion,
@@ -71,7 +70,6 @@ class WebView(View):
             self.pending.pop(mine, None)
 
     def receive(self, message: dict) -> None:
-        """處理瀏覽器送來的一則訊息。"""
         kind = message.get("t")
         if kind == "answer":
             future = self.pending.get(message.get("id"))

@@ -108,7 +108,7 @@ class StoryApp(App, View):
     Screen.-narrow #timer, Screen.-narrow #choices { margin: 0 0; }
     Screen.-narrow #cmd { margin: 0 0; }
     """
-    HORIZONTAL_BREAKPOINTS = [(0, "-narrow"), (NARROW_WIDTH, "-wide")]  # 60 格以下（手機直式）用窄畫面的樣式
+    HORIZONTAL_BREAKPOINTS = [(0, "-narrow"), (NARROW_WIDTH, "-wide")]
     BINDINGS = [
         Binding(key, name.lstrip("/"), desc, priority=key.startswith("ctrl"))
         for name, (key, desc) in COMMANDS.items()
@@ -120,8 +120,8 @@ class StoryApp(App, View):
 
     def __init__(self, party: bool = False) -> None:
         super().__init__()
-        self.client = Client(self, party=party)  # 流程都在共用層，這裡只負責畫面
-        self.choices: list[str] = []  # 畫面上的選項
+        self.client = Client(self, party=party)
+        self.choices: list[str] = []
         self.choices_hidden = False  # prepare_choices 放好、還看不見的選項
         self.busy = False
         self.busy_line: Static | None = None  # 故事區裡的「故事生成中」那一行
@@ -135,9 +135,9 @@ class StoryApp(App, View):
         self.typing = False
         self.speed = 1.0
         self.skip = False
-        self.narration: Prose | None = None  # 正在顯示的劇情
+        self.narration: Prose | None = None
         self.narration_text = ""  # 這段劇情目前收到的全文（AI 還在寫時會越來越長）
-        self.narration_done = False  # 已經收到完整內容
+        self.narration_done = False
         self.narration_task: asyncio.Task | None = None
 
     def compose(self) -> ComposeResult:
@@ -302,7 +302,7 @@ class StoryApp(App, View):
         if self.busy_line is not None:
             self.busy_line.remove()
             self.busy_line = None
-        self.narration = Prose(classes="narration")  # 懂中文換行規則的文字區塊
+        self.narration = Prose(classes="narration")
         self.query_one("#log", VerticalScroll).mount(self.narration)
         self.narration_text, self.narration_done = "", False
         self.typing, self.speed, self.skip = True, 1.0, False
@@ -436,7 +436,6 @@ class StoryApp(App, View):
         self.query_one("#timer", Static).remove_class("show")
 
     def render_timer(self) -> None:
-        """選項上方的倒數條。"""
         width = 24
         filled = round(width * self.time_left / self.time_limit)
         color = self.colors["重"] if self.time_left <= 5 else self.colors["輕"]
@@ -474,7 +473,7 @@ class StoryApp(App, View):
         raw = event.value.strip()
         event.input.value = ""
 
-        if self.continue_event is not None:  # 正在等玩家按 Enter 繼續
+        if self.continue_event is not None:
             self.continue_event.set()
             return
         if self.typing:  # 文字顯示中：Enter 用來加速或跳過

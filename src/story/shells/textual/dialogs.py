@@ -17,7 +17,7 @@ from story.shells.client import KEY_PATH, InvalidName, check_name
 
 
 class Dialog(ModalScreen):
-    """所有對話框共用的外框樣式。"""
+    """所有對話框共用：外框樣式、「離開」按鈕與 Esc、方向鍵怎麼移動。"""
 
     DEFAULT_CSS = """
     Dialog { align: center middle; background: $background 30%; }
@@ -218,7 +218,7 @@ class PremiseDialog(Dialog):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static("新的故事", classes="title")
-            if self.genres:  # 有題材包才顯示題材選單
+            if self.genres:
                 options = [("題材：自動（依故事前提挑選）", GENRE_AUTO), ("題材：不套用", GENRE_NONE)]
                 options += [(f"題材：{name}", name) for name in self.genres]
                 value = self.genre if self.genre in (GENRE_AUTO, GENRE_NONE, *self.genres) else GENRE_AUTO

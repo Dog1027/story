@@ -60,7 +60,7 @@ class Connection:
     async def send(self, message: dict) -> None:
         if self.closed or self.peer.closed:
             raise ConnectionError("連線已經關閉")
-        # 轉成 JSON 再轉回來：兩端不會共用同一個物件，收到的內容也跟以前經過網路時一樣（tuple 變成 list）
+        # 轉成 JSON 再轉回來：兩端不會共用同一個物件，收到的只有 JSON 的型別（tuple 變成 list），訊息格式才是唯一的約定
         self.outbox.put_nowait(json.loads(json.dumps(message, ensure_ascii=False)))
 
     async def receive(self) -> dict | None:

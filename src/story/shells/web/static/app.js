@@ -18,7 +18,7 @@ const state = {
   busy: false,
   typing: null, // 正在打字：{ speed, skip }
   narration: null, // 正在顯示的劇情：{ el, text, done, finished }（AI 還在寫時 text 會越來越長）
-  waitingEnter: null, // 等玩家按 Enter：回覆的 id
+  waitingEnter: null, // 等玩家按 Enter 時：按下後要執行的函式
   choices: [],
   active: -1, // 用 ↑↓ 移到的選項
   follow: true, // 故事區停在最底時，新內容出現就跟著捲
@@ -522,7 +522,6 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
     let latest = 0, nextReq = 0, current = initial;
     const squash = (text) => text.split(/\s+/).join(" ").trim();
 
-    // 故事前提的文字框一開始就填好預設的開頭；玩家改了才用玩家寫的
     const area = tag("textarea");
     area.id = "premise-input";
     area.placeholder = "例如：你是一名在末日城市送信的郵差……";
@@ -600,7 +599,6 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
     const row = tag("div", "buttons");
     reroll.classList.add("spacer");
     row.append(reroll, suggest, startButton);
-    // 由上到下：題材、題材介紹、故事前提、限時模式
     sheet.append(tag("h2", "", "新的故事"));
     if (genres.length) sheet.append(select, genreHint);
     sheet.append(tag("p", "hint", "故事前提：可以直接修改，或按「換一個」「幫我想」"), area, timedLabel, row);
