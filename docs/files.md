@@ -32,11 +32,14 @@ src/story/
 ├── __init__.py          main()：依參數選外殼
 ├── __main__.py          python -m story
 ├── genres/              題材包（每個題材一個資料夾，見 docs/genres.md）
+├── prompts/             給 AI 的提示詞，每種語言一個資料夾（zh-TW/）；怎麼改見 prompts/README.md
+├── preview.py           預覽送給 AI 的完整提示詞（just prompts），不會呼叫 AI
 ├── core/                核心：完全不知道有任何介面，也不 import shells/
 │   ├── __init__.py      對外只匯出 StoryCore、Reply、Status 等
 │   ├── session.py       StoryCore（單人）
 │   ├── party.py         多人模式：PartyEngine（繼承 Engine）、PartyCore（繼承 StoryCore）
 │   ├── genres.py        題材包的讀取與檢查
+│   ├── prompts.py       讀取 prompts/ 的提示詞
 │   ├── engine.py        遊戲規則與 AI
 │   ├── models.py        資料結構
 │   └── records.py       存讀檔、回合變化、結局紀錄
@@ -124,7 +127,7 @@ src/story/
 
 | 方法 | 做什麼 |
 |---|---|
-| `_build_prompt()` | 把 `GameState` 組成每回合的提示詞。Gemini 的自動快取只認開頭完全相同的部分，所以順序是：前提、模式 → 摘要（很少變）→ 劇情紀錄（只往後追加）→ 重大事件、故事進度、狀態、本回合行動（隨劇情改變） |
+| `_build_prompt()`、`_context()` | 把 `GameState` 組成每回合的提示詞：故事內容（`_context()`）加上這回合的指示。尾聲與傷重死亡的場景也是故事內容加上各自的指示。Gemini 的自動快取只認開頭完全相同的部分，所以順序是：前提、模式 → 摘要（很少變）→ 劇情紀錄（只往後追加）→ 重大事件、故事進度、狀態（隨劇情改變）→ 指示 |
 | `_progress_section()` | 隱藏的故事進度與節奏提醒（拖太久、進入最後一幕、超過預定長度） |
 | `_twist_lines()` | 隱藏的真相：前兩幕列出真相與伏筆、叫 AI 不要說破；第三幕要揭露；最後一幕當作已知 |
 | `_call()` | 串流呼叫 Gemini 取得結構化的 `StoryBeat`：收到劇情的同時更新 `draft`（外殼可以邊收邊顯示）。`game_over` 是 AI 第一個輸出的欄位，太早宣告結局時在劇情出現之前就中斷（`EndingTooEarly`），請 AI 重寫 |
@@ -158,8 +161,9 @@ src/story/
 | `TIME_SPANS` | AI 選的時間類別換算成幾分鐘 | 見程式 |
 | `MIN_TIME_LIMIT`、`MAX_TIME_LIMIT` | 限時模式的秒數範圍 | 8–60 秒 |
 | `REQUEST_TIMEOUT`、`REQUEST_ATTEMPTS` | 一次 AI 請求最多等幾秒；逾時或伺服器忙（429、5xx）時最多送幾次 | 40 秒、3 次 |
-| `PREMISE_GENRES`、`PREMISE_SETTINGS` | 「幫我想」隨機挑選的題材與情境 | 14 種、8 種 |
-| `SYSTEM_PROMPT` | 給 AI 的寫作與遊戲規則 | — |
+| `PREMISE_GENRES`、`PREMISE_SETTINGS` | 「幫我想」隨機挑選的題材與情境（`prompts/語言/premise.md`） | 14 種、8 種 |
+| `SYSTEM_PROMPT` | 給 AI 的寫作與遊戲規則（`prompts/語言/system.md`） | — |
+| `CONTEXT`、`TURN`、`PROGRESS`、`PLAN`、`PREMISE`、`MEMORY` | 故事內容、每回合的指示、故事進度的提醒、規劃大綱、幫我想、記憶壓縮的提示詞（`prompts/語言/` 裡同名的檔案） | — |
 
 ### `core/session.py`：最小核心
 
@@ -227,7 +231,7 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 
 多人模式疊在單人模式上：`PartyEngine` 繼承 `Engine`、`PartyCore` 繼承 `StoryCore`，只覆寫「主角變成一支隊伍」不一樣的地方。規則（傷勢、痊癒、時間、背包、限時）、記憶、大綱與節奏、存檔、文字指令、錯誤處理都直接沿用單人模式。
 
-**`PartyEngine`**：系統提示詞換成 `PARTY_SYSTEM_PROMPT`、回傳格式換成 `PartyBeat`；提示詞的狀態區塊改成「隊伍」，並由程式輪流指定「焦點」角色；`_apply()` 對每位角色各自套用單人的規則，傷重的角色倒下（`_write_deaths()` 請 AI 補寫倒下的場景），全員倒下就結束。
+**`PartyEngine`**：系統提示詞換成 `PARTY_SYSTEM_PROMPT`（`prompts/party_system.md`）、每回合的指示換成 `prompts/party_turn.md`、回傳格式換成 `PartyBeat`；提示詞的狀態區塊改成「隊伍」，並由程式輪流指定「焦點」角色；`_apply()` 對每位角色各自套用單人的規則，傷重的角色倒下（`_write_deaths()` 請 AI 補寫倒下的場景），全員倒下就結束。
 
 **`PartyCore(api_key, players)`**：介面一樣是 `send(文字) → Reply`。覆寫 `StoryCore` 的掛勾：
 
@@ -252,6 +256,34 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 | `waiting()` | 這回合還沒行動的角色名字 |
 
 接續存檔只看玩家名字是否相同，不看順序。`Reply` 可以用 `to_dict()`／`Reply.from_dict()` 轉成 JSON，在程序之間傳送。
+
+### `core/prompts.py`：提示詞
+
+給 AI 的所有文字都放在 `src/story/prompts/語言/` 的 markdown 檔（目前只有 `zh-TW/`），程式只負責把它們跟遊戲資料組合起來。想調整 AI 的寫法時改這些檔案就好，不用動程式；改了提示詞的地方也能單獨從 git 紀錄看出來。**給改提示詞的人看的說明在 `src/story/prompts/README.md`**：一次呼叫由哪些部分組成、「想改什麼 → 改哪裡」的對照、改完之後要做什麼。
+
+| 檔案 | 內容 |
+|---|---|
+| `system.md`、`party_system.md` | 單人、多人的寫作與遊戲規則（system prompt），兩邊的規則通常要一起改 |
+| `schema.md` | 回傳格式的欄位說明（劇情字數、選項個數……），段落名稱是「格式.欄位」，`models.py` 用 `SCHEMA` 讀 |
+| `context.md` | 每回合送給 AI 的故事內容：前提、模式、題材指引、摘要、劇情紀錄、重大事件、遊戲狀態的區塊標題與格式，遊戲狀態 JSON 的欄位名稱與空值、時間的寫法 |
+| `turn.md`、`party_turn.md` | 每回合的指示：模式、開場、一般回合、太早結局時重寫、傷重死亡、尾聲，以及時間到（`timeout_action`）、暫時離開（`away_action`）時代替玩家行動的那句話；多人另外有主角名單、焦點與「隊伍」狀態 |
+| `progress.md` | 「故事進度」裡的提醒：節奏、結局限制、收尾、隱藏的真相與伏筆 |
+| `plan.md` | 開新故事：挑題材、規劃大綱、補大綱（舊存檔）、命名素材、轉折靈感 |
+| `premise.md` | 預設的故事開頭、「幫我想」的規則與隨機挑的題材、情境 |
+| `memory.md` | 記憶壓縮：給 AI 的規則（system prompt）與各區塊 |
+
+| 名稱 | 做什麼 |
+|---|---|
+| `load(檔名)` | 整份檔案就是一段提示詞 |
+| `sections(檔名)` | 每段以 `## 名稱` 開頭的檔案，讀成 `{名稱: 內容}` |
+| `items(文字)`、`table(文字)` | 一段裡一行一項的清單；「代號: 文字」的對照表 |
+| `LANGUAGE` | 語言資料夾，用環境變數 `STORY_LANG` 選擇，預設 `zh-TW` |
+
+格式：開頭與每段上面的 `<!-- -->` 註解是給寫提示詞的人看的說明，不會送給 AI。`{名稱}` 是程式填入的變數，每段可用的變數寫在註解裡。
+
+每一種 AI 呼叫的提示詞都由 `Engine` 的一個方法組出來，不會呼叫 AI：`turn_prompt()`（一般回合與開場：故事內容 `_context()` 加上這回合的指示）、`death_prompt()`、`epilogue_prompt()`、`genre_prompt()`、`arc_prompt()`、`premise_prompt()`、`compaction_prompt()`，多人另外有 `deaths_prompt()`。`story/preview.py`（`just prompts`）用範例情境呼叫這些方法，把完整的提示詞印出來。
+
+留在程式裡、跟中文有關的只有遊戲詞彙（輕／中／重、片刻／一夜、清晨／傍晚……）：它們同時是 AI 回傳的值、程式規則的依據與存檔的內容，換語言時要改成語言無關的代號，見 `docs/roadmap.md` 的「多語言」。
 
 ### `core/genres.py`：題材包
 
@@ -421,6 +453,7 @@ uv run pytest                  # 全部（約 30 秒）
 | `test_engine.py` | 遊戲規則：狀態增減與好轉限制、身體／精神、整體狀態與死亡、時間與痊癒、限時秒數、背包與事實、大綱與節奏提醒、轉折的伏筆與揭露、提示詞內容、記憶壓縮；串流：從還沒生成完的 JSON 取出劇情、`draft` 跟著劇情變長、太早的結局在劇情出現之前就中斷重寫 |
 | `test_records.py` | 存讀檔、舊存檔相容、回合變化的語氣、結局紀錄 |
 | `test_core.py` | 核心的文字協定：開新局、幫我想、限時切換、`action_for()`、各種指令、key 失效與重送、重新開始、結局、讀檔接續 |
+| `test_prompts.py` | 提示詞檔案：每個檔案都讀得到、說明註解不會送給 AI、各種情境組出來的提示詞沒有留下沒填的變數、尾聲不會帶到一般回合的指示、`just prompts` 的每個情境（單人、多人、套用題材包）都組得出來 |
 | `test_genres.py` | 題材包：內建題材都通過檢查、資料夾解析、格式錯誤會略過並說明原因、個人覆蓋內建、指引在提示詞的位置、AI 先挑題材再規劃大綱、轉折靈感、「幫我想」、`/genre` 指令、隨機開頭與 `/random`、再玩一次延續前提 |
 | `test_party.py` | 多人模式：每位角色各自的規則、未知角色與漏掉的角色、單人倒下與全員倒下、焦點輪替、輪流輸入、時間到、失敗重試、讀檔；線上多人的 `send_as()`、`view()`、回覆轉 JSON；以及接上真的 engine 的整合測試 |
 | `test_room.py` | 線上多人的房間（真的 Unix socket）：不照順序行動、名字檢查與人數上限、遊戲中只有隊員能回來、只有房主能回答與重來、斷線重連與替離線的人行動、換房主、大家看完才倒數、結局回到大廳、一個人也能開始、AI 寫劇情時大家都收到串流的劇情 |

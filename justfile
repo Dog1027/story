@@ -52,6 +52,10 @@ stop:
     fi
     rm -f .server.pid
 
+# 預覽送給 AI 的完整提示詞（不會呼叫 AI）：just prompts、just prompts turn、just prompts --party、just prompts --genre 克蘇魯 opening
+prompts *args:
+    @uv run python -m story.preview {{args}}
+
 # 全部測試（可以加 pytest 參數，例如 just test -k party）
 test *args:
     uv run pytest {{args}}

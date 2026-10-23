@@ -4,7 +4,8 @@
 
 const CHAR_DELAY = 50; // 每個字的間隔（毫秒），大約一秒 20 個字（跟終端機版一樣）
 const FAST_FACTOR = 0.15; // 按一次 Enter 後，間隔縮成原本的幾倍
-const PAUSE_AFTER = { "。": 250, "！": 250, "？": 250, "，": 100, "、": 80, "…": 150, "\n": 100 };
+// 標點後面多停一下（中文與英文的標點都有，跟終端機版一樣）
+const PAUSE_AFTER = { "。": 250, "！": 250, "？": 250, "，": 100, "、": 80, "…": 150, "\n": 100, ".": 250, "!": 250, "?": 250, ",": 100, ";": 100 };
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
 // 手機、平板：不要自動把焦點移到輸入框，不然鍵盤會一直跳出來
 const TOUCH = matchMedia("(pointer: coarse)").matches || matchMedia("(hover: none)").matches;

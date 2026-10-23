@@ -114,6 +114,7 @@ uv run story
 常用的設定都是程式檔開頭的常數：
 
 - 故事長度、使用的模型、傷勢與痊癒規則：`src/story/core/engine.py`
+- 給 AI 的提示詞（寫作規則、劇情字數、節奏提醒、尾聲……）：`src/story/prompts/` 的 markdown 檔，改了不用動程式。先看 [src/story/prompts/README.md](src/story/prompts/README.md)，裡面有「想改什麼 → 改哪裡」的對照；改完用 `just prompts` 預覽送給 AI 的完整提示詞（不會呼叫 AI）
 - 終端機版的預設配色主題、打字速度：`src/story/shells/textual/style.py`。遊戲中按 F2 或輸入 `/theme` 可以換主題，傷勢與狀態的顏色會從主題的成功／警告／錯誤色算出來
 - 網頁版的配色、字型、打字速度：`src/story/shells/web/static/style.css` 開頭的顏色設定，與 `app.js` 開頭的常數
 

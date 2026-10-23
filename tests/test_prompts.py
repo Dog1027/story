@@ -49,3 +49,13 @@ def test_epilogue_prompt_is_story_content_plus_its_own_instruction():
     prompt = gemini.prompts[-1]
     assert "# 焦點" not in prompt and "這是故事的開場" not in prompt
     assert prompt.index("# 隊伍") < prompt.index("# 故事的最後一段")
+
+
+def test_preview_shows_every_scenario_without_calling_the_ai(capsys):
+    """just prompts：單人、多人、套用題材包的每個情境都組得出來，沒有留下沒填的變數。"""
+    from story.preview import main
+
+    for args in ([], ["--party"], ["--genre", "武俠"]):
+        main(args)
+        out = capsys.readouterr().out
+        assert out.count("═" * 60) == 30 and not PLACEHOLDER.search(out), args
