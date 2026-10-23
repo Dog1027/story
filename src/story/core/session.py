@@ -101,6 +101,13 @@ class Reply:
         return cls(**data)
 
 
+def pick_choice(raw: str, options: list[str]) -> str | None:
+    """把「2」或選項本身的文字對應到選項，對不上時回傳 None。線上多人的外殼也用它，先顯示自己選了什麼。"""
+    if raw.isdigit() and 1 <= int(raw) <= len(options):
+        return options[int(raw) - 1]
+    return raw if raw in options else None
+
+
 class StoryCore:
     def __init__(self, api_key: str, save_path: Path = SAVE_PATH, log_path: Path = LOG_PATH, engine: Engine | None = None):
         self.engine = engine or Engine(api_key=api_key, log_path=log_path)
@@ -157,7 +164,7 @@ class StoryCore:
             return TIMEOUT_ACTION
         if raw.startswith("/"):
             return None
-        return self._pick(raw, self._current_choices()) or raw
+        return pick_choice(raw, self._current_choices()) or raw
 
     def send(self, text: str) -> Reply:
         """送出一句玩家輸入，拿回覆。可能會呼叫 LLM，所以會花幾秒。"""
@@ -182,7 +189,7 @@ class StoryCore:
     # ---------- 各階段 ----------
 
     def _on_ask_continue(self, raw: str) -> Reply:
-        answer = self._pick(raw, ["繼續", "開新遊戲"])
+        answer = pick_choice(raw, ["繼續", "開新遊戲"])
         if answer == "繼續" or raw == "/continue":
             return self._resume()
         if answer == "開新遊戲" or raw in ("/new", "/restart"):
@@ -260,7 +267,7 @@ class StoryCore:
         return self._turn_reply(before)
 
     def _on_confirm_restart(self, raw: str) -> Reply:
-        answer = self._pick(raw, ["確定", "取消"])
+        answer = pick_choice(raw, ["確定", "取消"])
         if answer == "確定":
             self.last_premise = self.state.premise
             return self._ask_premise()
@@ -287,7 +294,7 @@ class StoryCore:
         )
 
     def _on_ended(self, raw: str) -> Reply:
-        if self._pick(raw, ["再玩一次"]) or raw in ("/new", "/restart"):
+        if pick_choice(raw, ["再玩一次"]) or raw in ("/new", "/restart"):
             self.last_premise = self.state.premise
             return self._ask_premise()
         return self._reply(choices=["再玩一次"], notice="輸入 1 再玩一次。")
@@ -372,13 +379,6 @@ class StoryCore:
         if is_key_error(e):
             return retry_screen(error="api_key", notice="API key 無效或沒有權限。")
         return retry_screen(error="api", notice=f"{hint}出錯了：{str(e)[:300]}")
-
-    @staticmethod
-    def _pick(raw: str, options: list[str]) -> str | None:
-        """把「2」或選項本身的文字對應到選項。"""
-        if raw.isdigit() and 1 <= int(raw) <= len(options):
-            return options[int(raw) - 1]
-        return raw if raw in options else None
 
     def _characters(self) -> list[Status]:
         """回覆裡每位角色的狀態：單人模式只有主角一位、沒有名字，外殼跟多人模式用同一套顯示。"""

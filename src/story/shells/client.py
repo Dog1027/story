@@ -14,7 +14,7 @@
 import asyncio
 from dataclasses import dataclass, field
 
-from story.core import MIN_PLAYERS, ChangeGroups, Ending, PartyCore, Reply, Status, StoryCore
+from story.core import MIN_PLAYERS, ChangeGroups, Ending, PartyCore, Reply, Status, StoryCore, pick_choice
 from story.shells.apikey import KEY_PATH, forget_api_key, get_saved_api_key, save_api_key
 from story.shells.players import MAX_NAME_LEN, InvalidName, Player, check_name
 from story.shells.room import START, RoomConnection
@@ -285,8 +285,7 @@ class Client:
         if self.room:  # 線上多人沒有自己的核心：輪到自己時，照畫面上的選項對應
             if not self.actor or text.startswith("/"):
                 return ""
-            index = int(text) - 1 if text.isdigit() else -1
-            action = self.choices[index] if 0 <= index < len(self.choices) else text
+            action = pick_choice(text, self.choices) or text
         else:
             action = self.core.action_for(text) or ""
         return f"{self.actor}：{action}" if action and self.actor else action
