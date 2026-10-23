@@ -89,8 +89,9 @@ async def test_status_bar_waits_until_text_is_typed(monkeypatch):
         await pilot.press("1", "enter")
         await wait_until(pilot, lambda: app.typing)
         assert "回合 1" in status_text(app)  # 打字中還沒更新
-        await wait_until(pilot, lambda: not app.typing)
-        assert "回合 2" in status_text(app)
+        # 打字結束後，共用層才接著更新狀態列（晚一步），所以等狀態列變了再確認那時字已經打完
+        await wait_until(pilot, lambda: "回合 2" in status_text(app))
+        assert not app.typing
 
 
 async def test_enter_speeds_up_then_skips_typing(monkeypatch):
