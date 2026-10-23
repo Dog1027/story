@@ -117,7 +117,7 @@ uv run story
 - 終端機版的預設配色主題、打字速度：`src/story/shells/textual/style.py`。遊戲中按 F2 或輸入 `/theme` 可以換主題，傷勢與狀態的顏色會從主題的成功／警告／錯誤色算出來
 - 網頁版的配色、字型、打字速度：`src/story/shells/web/static/style.css` 開頭的顏色設定，與 `app.js` 開頭的常數
 
-每個檔案的詳細說明見 [docs/files.md](docs/files.md)。
+每個檔案的詳細說明見 [docs/files.md](docs/files.md)，待辦與改進方向見 [docs/roadmap.md](docs/roadmap.md)。
 
 ## 測試
 
