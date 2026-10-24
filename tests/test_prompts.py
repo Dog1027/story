@@ -109,6 +109,10 @@ def test_every_language_has_the_same_files_and_sections():
                 for key in ours:
                     variables = lambda text: set(re.findall(r"\{(\w+)[:}]", text))  # noqa: E731
                     assert variables(ours[key]) == variables(theirs[key]), (lang.name, f.name, key)
+    samples = root / "samples"  # 範例故事（just prompts、just eval）：每種語言一份，段落相同
+    base = prompts.sections("zh-TW", samples).keys()
+    for f in samples.glob("*.md"):
+        assert prompts.sections(f.stem, samples).keys() == base, f.name
 
 
 def test_text_length_counts_chinese_characters_and_english_words():

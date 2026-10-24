@@ -31,8 +31,8 @@ from pydantic import BaseModel, Field
 from story.core import prompts
 from story.core.engine import ACT_TURNS, MODEL, Engine, body_level, body_score, new_client
 from story.core.genres import Genre, load_genres
-from story.core.models import SCHEMA, Condition, GameState
-from story.preview import ARC, PREMISE, sample_state
+from story.core.models import SCHEMA, GameState
+from story.preview import ARC, PREMISE, SAMPLE, conditions, listed, sample_state
 from story.shells.apikey import get_saved_api_key
 
 EVAL = prompts.sections("eval")
@@ -43,7 +43,6 @@ WORKERS = 8  # 同時跑幾個情境
 RPM = 14  # 每分鐘最多呼叫幾次 AI：免費方案的 flash-lite 上限是 15。全部情境跑 3 次約 90 次呼叫，要六、七分鐘
 RATE_LIMIT_RETRIES = 3  # 還是超過上限（429）時，等 Gemini 說的秒數再送，最多幾次
 RESULTS_DIR = Path("eval_results")
-ARMED = "樓下的門被撞開，一個持刀的黑衣人衝上樓梯，堵住了唯一的出口。"
 
 
 def schema_range(text: str) -> tuple[int, int]:
@@ -186,9 +185,8 @@ def opening(t: Trial) -> GameState:
 
 
 def early(t: Trial) -> GameState:
-    state = sample_state(False, "", act=1, act_turns=3, turn=12,
-                         current_narration="日誌最後一頁寫著：「別再追查下去。」暴風雨停了，岸邊繫著一艘小船。")
-    action = "把日誌丟進海裡，搭上岸邊的小船離開這座島，從此不再回來"
+    state = sample_state(False, "", act=1, act_turns=3, turn=12, current_narration=SAMPLE["early_narration"])
+    action = SAMPLE["early_action"]
     t.engine.act(state, action)
     t.check("沒有試圖寫出結局", not t.tried_ending(), "AI 一開始寫了結局，被要求重寫")
     t.basics(state)
@@ -198,9 +196,8 @@ def early(t: Trial) -> GameState:
 
 
 def reveal(t: Trial) -> GameState:
-    state = sample_state(False, "", act=2, act_turns=ACT_TURNS, turn=18,
-                         current_narration="你撬開燈塔底層的地板，底下是通往密室的石階，深處透出微弱的燈光，還有人在咳嗽。")
-    t.engine.act(state, "走下石階，進入密室")
+    state = sample_state(False, "", act=2, act_turns=ACT_TURNS, turn=18, current_narration=SAMPLE["reveal_narration"])
+    t.engine.act(state, SAMPLE["reveal_action"])
     t.basics(state)
     t.judge("揭露了隱藏的真相", "reveal", twist=ARC.twist, clues="\n".join(f"- {c}" for c in ARC.clues),
             narration=state.current_narration)
@@ -209,7 +206,7 @@ def reveal(t: Trial) -> GameState:
 
 def agency(t: Trial) -> GameState:
     state = sample_state(False, "")
-    action = "照著日誌打出燈號回應"
+    action = SAMPLE["action"]
     t.engine.act(state, action)
     t.basics(state)
     t.judge("沒有替玩家做決定", "agency", action=action, narration=state.current_narration)
@@ -217,9 +214,9 @@ def agency(t: Trial) -> GameState:
 
 
 def reckless(t: Trial) -> GameState:
-    state = sample_state(False, "", current_narration=ARMED)
+    state = sample_state(False, "", current_narration=SAMPLE["armed"])
     before = body_score(state)
-    t.engine.act(state, "不管右臂的傷，赤手空拳撲向持刀的黑衣人")
+    t.engine.act(state, SAMPLE["reckless_action"])
     after = body_score(state)
     t.check("魯莽的行動受了傷（傷勢總分至少加 2）", after - before >= 2, f"傷勢總分 {before} → {after}")
     t.basics(state, may_end=True)
@@ -227,9 +224,8 @@ def reckless(t: Trial) -> GameState:
 
 
 def dying(t: Trial) -> GameState:
-    wounds = [Condition(name="右臂撕裂傷", kind="body", severity="severe"), Condition(name="失血", kind="body", severity="moderate")]
-    state = sample_state(False, "", conditions=wounds, current_narration=ARMED)
-    t.engine.act(state, "不管身上的傷，赤手空拳撲向持刀的黑衣人")
+    state = sample_state(False, "", conditions=conditions("dying_wounds"), current_narration=SAMPLE["armed"])
+    t.engine.act(state, SAMPLE["dying_action"])
     t.check("瀕死還冒險就喪命", body_level(state) == "dead", f"整體狀態：{body_level(state)}")
     return state
 
@@ -245,51 +241,22 @@ def tone(genre: Genre) -> Callable[[Trial], GameState]:
     return run
 
 
-# 給評審的範例：故意寫壞的（評審要判不通過）與沒問題的（要判通過）。評審若把壞的都放過，其他情境的「通過」就不可信
-AGENCY_ACTION = "照著日誌打出燈號回應"
-AGENCY_BAD = (
-    "你舉起油燈，照著日誌打出三長一短的燈號。你心想，這下終於有人會來救你了，心中湧起一陣安心。"
-    "你決定下樓到碼頭等他們，順手把日誌塞進懷裡，對著空蕩的燈室說：「我一定會回來的。」"
-)
-AGENCY_GOOD = (
-    "你舉起油燈，照著日誌打出三長一短的燈號。海上的那盞燈熄了片刻，接著回了兩短一長，像是在確認什麼。"
-    "樓下傳來門閂被拉開的聲音，有人踩著濕透的靴子，一步一步往樓上走來。"
-)
-EARLY_ACTION = "把日誌丟進海裡，搭上岸邊的小船離開這座島，從此不再回來"
-EARLY_BAD = (
-    "你把日誌拋進翻湧的浪裡，划著小船離開了小島。燈塔的光在身後越來越小，終於消失在海平線上。"
-    "多年以後，你在遙遠的港口安頓下來，再也沒有想起那一夜。你的故事，就這樣畫下了句點。"
-)
-EARLY_GOOD = (
-    "你把日誌拋進浪裡，解開纜繩跳上小船。才划出不到百尺，船底就傳來木頭碎裂的聲音，海水從裂縫湧進來。"
-    "回頭望去，燈室的窗邊站著一個人影，正舉著燈，朝你打出三長一短的燈號。"
-)
-OPENING_BAD = (
-    "暴風雨拍打著燈塔，你在底層醒來，手裡握著一把生鏽的鑰匙。地板下傳來咳嗽聲。"
-    "你很快就會發現，鎮上傳說失蹤的守夜人其實根本沒有失蹤，他一直躲在燈塔底下的密室裡，守著一個不能讓任何人知道的秘密。"
-)
-REVEAL_BAD = (
-    "你走下石階，密室裡空無一人，只有一盞還溫熱的油燈和一張翻倒的椅子。牆上刻滿了三長一短的記號。"
-    "咳嗽聲不知何時停了，你覺得自己離真相只差一步，卻怎麼也想不透這一切代表什麼。"
-)
-TONE_BAD = (
-    "你掏出手機看了一眼導航，距離悅來客棧還有三公里。「OK，先去吃個飯再說。」你對師兄比了個讚。"
-    "客棧門口停著一排共享單車，店小二正低頭滑著平板點餐。"
-)
+# 給評審的範例（story/samples/語言.md）：故意寫壞的（評審要判不通過）與沒問題的（要判通過）。評審若把壞的都放過，其他情境的「通過」就不可信
 
 
 def calibration(genres: dict[str, Genre]) -> Callable[[Trial], None]:
     def run(t: Trial) -> None:
         clues = "\n".join(f"- {c}" for c in ARC.clues)
-        t.judge("識破替玩家做決定", "agency", expect=False, action=AGENCY_ACTION, narration=AGENCY_BAD)
-        t.judge("沒問題的劇情判通過（不替玩家做決定）", "agency", action=AGENCY_ACTION, narration=AGENCY_GOOD)
-        t.judge("識破寫成結局", "no_ending", expect=False, action=EARLY_ACTION, narration=EARLY_BAD, choices="")
-        t.judge("沒問題的劇情判通過（故事繼續）", "no_ending", action=EARLY_ACTION, narration=EARLY_GOOD,
-                choices="游回岸邊\n抓住漂來的木板")
-        t.judge("識破開場說破真相", "twist_hidden", expect=False, twist=ARC.twist, narration=OPENING_BAD)
-        t.judge("識破只是暗示、沒有揭露", "reveal", expect=False, twist=ARC.twist, clues=clues, narration=REVEAL_BAD)
-        if wuxia := genres.get("武俠"):
-            t.judge("識破文風不符題材", "tone", expect=False, genre=wuxia.name, guide=wuxia.guide, narration=TONE_BAD)
+        agency, early = SAMPLE["action"], SAMPLE["early_action"]
+        t.judge("識破替玩家做決定", "agency", expect=False, action=agency, narration=SAMPLE["agency_bad"])
+        t.judge("沒問題的劇情判通過（不替玩家做決定）", "agency", action=agency, narration=SAMPLE["agency_good"])
+        t.judge("識破寫成結局", "no_ending", expect=False, action=early, narration=SAMPLE["early_bad"], choices="")
+        t.judge("沒問題的劇情判通過（故事繼續）", "no_ending", action=early, narration=SAMPLE["early_good"],
+                choices="\n".join(listed("early_good_choices")))
+        t.judge("識破開場說破真相", "twist_hidden", expect=False, twist=ARC.twist, narration=SAMPLE["opening_bad"])
+        t.judge("識破只是暗示、沒有揭露", "reveal", expect=False, twist=ARC.twist, clues=clues, narration=SAMPLE["reveal_bad"])
+        if wuxia := next((g for g in genres.values() if g.path and g.path.name == "wuxia"), None):
+            t.judge("識破文風不符題材", "tone", expect=False, genre=wuxia.name, guide=wuxia.guide, narration=SAMPLE["tone_bad"])
 
     return run
 

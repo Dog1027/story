@@ -34,6 +34,7 @@ src/story/
 ├── genres/              題材包，每種語言一個資料夾（zh-TW/、en/），每個題材一個資料夾，見 docs/genres.md
 ├── prompts/             給 AI 的提示詞，每種語言一個資料夾（zh-TW/、en/）；怎麼改見 prompts/README.md
 ├── ui/                  給玩家看的介面文字，每種語言一個資料夾（zh-TW/、en/）
+├── samples/             範例故事（just prompts、just eval 用的燈塔故事），每種語言一份
 ├── preview.py           預覽送給 AI 的完整提示詞（just prompts），不會呼叫 AI
 ├── evals.py             評估 AI 寫得好不好（just eval），會呼叫真的 AI
 ├── core/                核心：完全不知道有任何介面，也不 import shells/
@@ -290,7 +291,7 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 
 格式：開頭與每段上面的 `<!-- -->` 註解是給寫提示詞的人看的說明，不會送給 AI。`{名稱}` 是程式填入的變數，每段可用的變數寫在註解裡。
 
-每一種 AI 呼叫的提示詞都由 `Engine` 的一個方法組出來，不會呼叫 AI：`turn_prompt()`（一般回合與開場：故事內容 `_context()` 加上這回合的指示）、`death_prompt()`、`epilogue_prompt()`、`genre_prompt()`、`arc_prompt()`、`premise_prompt()`、`compaction_prompt()`，多人另外有 `deaths_prompt()`。`story/preview.py`（`just prompts`）用範例情境呼叫這些方法，把完整的提示詞印出來。
+每一種 AI 呼叫的提示詞都由 `Engine` 的一個方法組出來，不會呼叫 AI：`turn_prompt()`（一般回合與開場：故事內容 `_context()` 加上這回合的指示）、`death_prompt()`、`epilogue_prompt()`、`genre_prompt()`、`arc_prompt()`、`premise_prompt()`、`compaction_prompt()`，多人另外有 `deaths_prompt()`。`story/preview.py`（`just prompts`）用範例情境呼叫這些方法，把完整的提示詞印出來。範例故事（燈塔、主角的傷勢、行動、評估用的劇情）在 `story/samples/語言.md`，每種語言一份、段落相同，所以預覽與評估都能用英文跑。
 
 `story/evals.py`（`just eval`）用同一組範例情境讓 AI 真的寫一回合，再由程式（字數、選項個數、有沒有結束、傷勢總分）與評審（另一次 AI 呼叫，標準在 `eval.md`）檢查：開場不說破真相、第二幕不會太早寫出結局、第三幕揭露真相、不替玩家做決定、魯莽的行動要付出代價、瀕死還冒險會死、各題材包的文風。`judge` 情境只檢查評審本身：給它故意寫壞的劇情（替玩家說話、寫成結局、說破真相、只暗示不揭露、武俠出現手機），它要判不通過，沒問題的要判通過，其他情境的「通過」才可信。每個情境跑幾次（預設 3 次）統計通過的比例，每次的劇情與評審理由存到 `eval_results/`。免費方案每分鐘只能呼叫 15 次，所以呼叫會排隊，全部跑完約六、七分鐘；付費方案可以用 `--rpm` 調快。
 
