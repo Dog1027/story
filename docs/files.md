@@ -32,8 +32,8 @@ src/story/
 ├── __init__.py          main()：依參數選外殼
 ├── __main__.py          python -m story
 ├── genres/              題材包（每個題材一個資料夾，見 docs/genres.md）
-├── prompts/             給 AI 的提示詞，每種語言一個資料夾（zh-TW/）；怎麼改見 prompts/README.md
-├── ui/                  給玩家看的介面文字，每種語言一個資料夾（zh-TW/）
+├── prompts/             給 AI 的提示詞，每種語言一個資料夾（zh-TW/、en/）；怎麼改見 prompts/README.md
+├── ui/                  給玩家看的介面文字，每種語言一個資料夾（zh-TW/、en/）
 ├── preview.py           預覽送給 AI 的完整提示詞（just prompts），不會呼叫 AI
 ├── evals.py             評估 AI 寫得好不好（just eval），會呼叫真的 AI
 ├── core/                核心：完全不知道有任何介面，也不 import shells/
@@ -264,7 +264,7 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 
 ### `core/prompts.py`：提示詞與介面文字
 
-給 AI 的所有文字都放在 `src/story/prompts/語言/` 的 markdown 檔（目前只有 `zh-TW/`），程式只負責把它們跟遊戲資料組合起來。想調整 AI 的寫法時改這些檔案就好，不用動程式；改了提示詞的地方也能單獨從 git 紀錄看出來。**給改提示詞的人看的說明在 `src/story/prompts/README.md`**：一次呼叫由哪些部分組成、「想改什麼 → 改哪裡」的對照、改完之後要做什麼。
+給 AI 的所有文字都放在 `src/story/prompts/語言/` 的 markdown 檔（繁體中文 `zh-TW/`、英文 `en/`），程式只負責把它們跟遊戲資料組合起來。想調整 AI 的寫法時改這些檔案就好，不用動程式；改了提示詞的地方也能單獨從 git 紀錄看出來。**給改提示詞的人看的說明在 `src/story/prompts/README.md`**：一次呼叫由哪些部分組成、「想改什麼 → 改哪裡」的對照、改完之後要做什麼。
 
 | 檔案 | 內容 |
 |---|---|

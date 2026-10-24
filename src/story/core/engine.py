@@ -502,7 +502,7 @@ class Engine:
         return "\n\n".join(self._context(state, None) + [epilogue])
 
     def genre_prompt(self, state: GameState) -> str:
-        catalog = "\n".join(f"- {g.name}：{g.description}" for g in self.genres.values())
+        catalog = "\n".join(PLAN["catalog_entry"].format(name=g.name, description=g.description) for g in self.genres.values())
         return PLAN["pick_genre"].format(premise=state.premise, catalog=catalog)
 
     def arc_prompt(self, state: GameState) -> str:
@@ -612,7 +612,7 @@ class Engine:
         for i, act in enumerate(arc.acts):
             mark = PROGRESS["act_current"] if i == state.act else (PROGRESS["act_done"] if i < state.act else "")
             lines.append(PROGRESS["act"].format(number=i + 1, name=act.name, milestone=act.milestone, mark=mark))
-        lines.append(PROGRESS["endings"].format(endings="；".join(arc.endings)))
+        lines.append(PROGRESS["endings"].format(endings=PROGRESS["endings_sep"].join(arc.endings)))
         if arc.twist:
             lines += self._twist_lines(arc, state.act)
 

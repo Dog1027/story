@@ -3,13 +3,17 @@
 -->
 
 ## pick_genre
-<!-- 題材選「自動」時，請 AI 依故事前提挑一個。變數：{premise}、{catalog}（每個題材一行：名稱與描述） -->
+<!-- 題材選「自動」時，請 AI 依故事前提挑一個。變數：{premise}、{catalog}（每個題材一行，見 catalog_entry） -->
 為這個互動文字冒險故事挑一個題材。
 # 故事前提
 {premise}
 
 # 題材目錄
 {catalog}
+
+## catalog_entry
+<!-- 題材目錄裡的一個題材。變數：{name}、{description} -->
+- {name}：{description}
 
 ## arc
 <!-- 規劃大綱。變數：{target_turns}、{premise}、{cast}（多人模式的主角名單，單人是空的）、{situation}（下面的 arc_new 或 arc_resume） -->

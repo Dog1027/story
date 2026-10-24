@@ -22,8 +22,12 @@
 ✓ 已完成
 
 ## endings
-<!-- 變數：{endings}（用「；」隔開） -->
+<!-- 變數：{endings}（用 endings_sep 隔開） -->
 可能的結局：{endings}
+
+## endings_sep
+<!-- 幾種可能的結局之間的分隔 -->
+；
 
 ## act_just_started
 <!-- 這一幕還沒演滿最少回合數。變數：{left} 是還要鋪陳幾回合 -->

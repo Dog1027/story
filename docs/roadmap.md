@@ -6,7 +6,7 @@
 
 ### 1. 多語言
 
-目前只有繁體中文。已經準備好的：提示詞在 `src/story/prompts/zh-TW/`（遊戲詞彙在其中的 `vocab.md`），介面文字在 `src/story/ui/zh-TW/`，新增語言就是各加一個資料夾、用 `STORY_LANG` 選擇；打字效果的停頓也認得英文標點。還要做的：
+提示詞（`src/story/prompts/語言/`，遊戲詞彙在其中的 `vocab.md`）與介面文字（`src/story/ui/語言/`）已經有繁體中文與英文，用 `STORY_LANG` 選擇。英文版還要做的：
 
 - **題材包**：每個題材包各語言一份（例如 `genres/en/` 或 `GENRE.en.md`）。
 - **長度的限制**：狀態名稱最多 12 個字（`MAX_CONDITION_LEN`）、題材包描述 200 字、指引 2,000 字，英文要改成用詞數算或放寬。

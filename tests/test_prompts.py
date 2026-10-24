@@ -92,3 +92,20 @@ def test_web_page_is_filled_with_the_language_texts():
     from story.shells.web import PAGE
 
     assert "{{" not in PAGE and 'lang="zh-Hant"' in PAGE and "const T = {" in PAGE
+
+
+def test_every_language_has_the_same_files_and_sections():
+    """每種語言（story/prompts/語言/、story/ui/語言/）都要有一整套同名的檔案與段落，變數也要一樣。"""
+    from pathlib import Path
+
+    root = Path(prompts.__file__).resolve().parent.parent
+    for kind in ("prompts", "ui"):
+        base = root / kind / "zh-TW"
+        for lang in (p for p in (root / kind).iterdir() if p.is_dir() and p != base):
+            assert sorted(f.name for f in lang.glob("*.md")) == sorted(f.name for f in base.glob("*.md")), lang
+            for f in base.glob("*.md"):
+                ours, theirs = prompts.sections(f.stem, base), prompts.sections(f.stem, lang)
+                assert ours.keys() == theirs.keys(), (lang.name, f.name, ours.keys() ^ theirs.keys())
+                for key in ours:
+                    variables = lambda text: set(re.findall(r"\{(\w+)[:}]", text))  # noqa: E731
+                    assert variables(ours[key]) == variables(theirs[key]), (lang.name, f.name, key)

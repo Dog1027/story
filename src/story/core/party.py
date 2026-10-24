@@ -62,7 +62,7 @@ class PartyEngine(Engine):
     # ---------- 提示詞的掛勾 ----------
 
     def _cast_section(self, state: GameState) -> str:
-        return PARTY_TURN["cast"].format(names="、".join(c.name for c in state.party)) + "\n"
+        return PARTY_TURN["cast"].format(names=PARTY_TURN["names_sep"].join(c.name for c in state.party)) + "\n"
 
     def _action_text(self, action: dict[str, str]) -> str:
         return format_actions(action)
@@ -127,7 +127,7 @@ class PartyEngine(Engine):
 
     def deaths_prompt(self, state: GameState, names: list[str]) -> str:
         """程式判定有角色傷重死亡：請 AI 接著寫一小段倒下的場景。"""
-        who = "、".join(names)
+        who = PARTY_TURN["names_sep"].join(names)
         return "\n\n".join(self._context(state, None) + [PARTY_TURN["death"].format(narration=state.current_narration, who=who)])
 
     def _write_deaths(self, state: GameState, names: list[str]) -> None:
@@ -158,7 +158,7 @@ class PartyEngine(Engine):
 
 
 def format_actions(actions: dict[str, str]) -> str:
-    return "\n".join(f"{name}：{action}" for name, action in actions.items())
+    return "\n".join(PARTY_TURN["action_entry"].format(name=name, action=action) for name, action in actions.items())
 
 
 def prompt_status(c: Character) -> dict:
