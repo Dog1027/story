@@ -16,7 +16,7 @@ from textual.containers import VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Input, OptionList, Static
 
-from story.core import ChangeGroups, Reply
+from story.core import ChangeGroups, Reply, ui_text
 from story.shells.client import CharacterLine, Client, StatusLine, View
 from story.shells.textual.commands import COMMANDS, help_text
 from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, PremiseDialog
@@ -25,6 +25,7 @@ from story.shells.prefs import get_saved_theme, save_theme
 from story.shells.textual.style import CHAR_DELAY, FAST_FACTOR, PAUSE_AFTER, SPINNER, THEME, palette
 
 
+UI, DIALOGS = ui_text("terminal"), ui_text("dialogs")  # story/ui/語言/
 NARROW_WIDTH = 60  # 比這個窄（手機直式）就用窄畫面的樣式
 
 
@@ -142,11 +143,11 @@ class StoryApp(App, View):
         yield Static("", id="status")
         yield VerticalScroll(id="log")
         choices = OptionList(id="choices", classes="-empty")
-        choices.border_title = "接下來"
+        choices.border_title = UI["choices_title"]
         yield Static("", id="timer")
         yield choices
-        cmd = Input(placeholder="↑↓ 選擇，或寫下你的行動", id="cmd")
-        cmd.border_subtitle = "/ 指令 · F1 說明"
+        cmd = Input(id="cmd")  # 提示由共用層 set_hint() 設定
+        cmd.border_subtitle = UI["input_hint"]
         yield cmd
 
     def on_unmount(self) -> None:
@@ -178,7 +179,7 @@ class StoryApp(App, View):
 
     # ---------- 對話框（View） ----------
 
-    async def ask_confirm(self, question: str, yes: str = "確定", no: str = "取消") -> bool:
+    async def ask_confirm(self, question: str, yes: str, no: str) -> bool:
         return await self.push_screen_wait(ConfirmDialog(question, yes=yes, no=no))
 
     async def ask_premise(self, reply: Reply, ask) -> tuple[str, bool, str] | None:
@@ -198,7 +199,7 @@ class StoryApp(App, View):
         if error and not kwargs:
             kwargs = {"severity": "error", "timeout": 30 if lasting else 8}
             if not lasting:
-                kwargs["title"] = "出錯了"
+                kwargs["title"] = DIALOGS["error_title"]
         super().notify(message, **kwargs)
 
     # ---------- 狀態列 ----------
@@ -214,7 +215,7 @@ class StoryApp(App, View):
     def turn_line(self, status: StatusLine) -> Text:
         """「回合 7  限時模式」：模式跟回合放在同一排，狀態列其他地方都留給狀態。"""
         mode = (status.mode, self.colors["bad"] if status.timed else "dim")
-        return Text.assemble(("回合 ", "dim"), (str(status.turn), "bold"), ("  ", ""), mode)
+        return Text.assemble((UI["turn"] + " ", "dim"), (str(status.turn), "bold"), ("  ", ""), mode)
 
     def set_status(self, status: StatusLine | None) -> None:
         self.status_shown = status
@@ -225,11 +226,11 @@ class StoryApp(App, View):
             bar.update(Text("Story", style="dim"))
             return
         parts = self.condition_parts(status.characters[0])
-        head = Text.assemble(self.turn_line(status), ("     狀態 ", "dim"))
+        head = Text.assemble(self.turn_line(status), (f"     {UI['status']} ", "dim"))
         line = pack(parts, width - cell_len(head.plain), sep)
         if "\n" in line.plain:  # 同一排放不下（手機）：狀態整個移到第二排
-            head = Text.assemble(self.turn_line(status), ("\n狀態 ", "dim"))
-            line = pack(parts, width - 5, sep)
+            head = Text.assemble(self.turn_line(status), (f"\n{UI['status']} ", "dim"))
+            line = pack(parts, width - cell_len(UI["status"]) - 1, sep)
         bar.update(head + line)
 
     # ---------- 故事區 ----------
@@ -241,7 +242,7 @@ class StoryApp(App, View):
         self.busy_line = None  # 已經跟著被移除了，之後要重新顯示
         self.follow = True
         if premise:
-            log.mount(Prose(f"故事前提：{premise}", classes="premise"))
+            log.mount(Prose(UI["premise"].format(premise=premise), classes="premise"))
         self.set_choices([])
         self.set_status(None)
 
@@ -419,8 +420,8 @@ class StoryApp(App, View):
         color = self.colors["severe"] if self.time_left <= 5 else self.colors["light"]
         self.query_one("#timer", Static).update(
             Text.assemble(
-                ("限時 ", "dim"), ("━" * filled, color), ("─" * (width - filled), "dim"),
-                (f" {self.time_left:2.0f} 秒", f"bold {color}"),
+                (UI["timer"] + " ", "dim"), ("━" * filled, color), ("─" * (width - filled), "dim"),
+                (" " + UI["seconds"].format(seconds=f"{self.time_left:2.0f}"), f"bold {color}"),
             )
         )
 
@@ -503,7 +504,7 @@ class StoryApp(App, View):
             self.run_worker(self.client.command("/state"))
 
     def action_help(self) -> None:
-        self.push_screen(InfoDialog("指令", help_text()))
+        self.push_screen(InfoDialog(UI["commands_title"], help_text()))
 
     def action_restart(self) -> None:
         if self.client.ready and not self.typing:

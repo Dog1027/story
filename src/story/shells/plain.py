@@ -2,12 +2,13 @@
 
 from getpass import getpass
 
-from story.core import StoryCore
+from story.core import StoryCore, ui_text
 from story.shells.apikey import get_saved_api_key
 
 
 def main() -> None:
-    key = get_saved_api_key() or getpass("Gemini API key（輸入時不會顯示）：").strip()
+    UI = ui_text("shells")
+    key = get_saved_api_key() or getpass(UI["plain_ask_key"]).strip()
     if not key:
         return
     core = StoryCore(api_key=key)
@@ -21,4 +22,4 @@ def main() -> None:
         if text.strip() == "/quit":
             break
         reply = core.send(text)
-    print("\n已存檔，下次見。")
+    print("\n" + UI["plain_bye"])

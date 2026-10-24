@@ -187,7 +187,7 @@ class WebView(View):
     def show_info(self, title: str, body: str) -> None:
         self.post("info", title=title, body=body)
 
-    async def ask_confirm(self, question: str, yes: str = "確定", no: str = "取消") -> bool:
+    async def ask_confirm(self, question: str, yes: str, no: str) -> bool:
         return bool(await self.ask("confirm", question=question, yes=yes, no=no))
 
     async def ask_premise(self, reply: Reply, ask) -> tuple[str, bool, str] | None:

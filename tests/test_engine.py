@@ -428,8 +428,8 @@ def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):
     engine.start(state)
     engine.act(state, "a")  # AI 太早寫出結局：請它重寫一次
     opening, turn = [json.loads(line) for line in engine.log_path.read_text(encoding="utf-8").splitlines()]
-    assert [c["kind"] for c in opening["calls"]] == ["大綱", "劇情"]
-    assert [c["kind"] for c in turn["calls"]] == ["劇情", "重寫"]
+    assert [c["kind"] for c in opening["calls"]] == ["arc", "turn"]
+    assert [c["kind"] for c in turn["calls"]] == ["turn", "rewrite"]
     call = turn["calls"][0]
     assert call["seconds"] >= 0
     assert (call["prompt"], call["cached"], call["output"], call["thinking"]) == (1200, 800, 300, 50)
@@ -512,7 +512,7 @@ def test_timeout_after_retries_becomes_a_normal_error():
     gemini.models.generate_content = timeout
     with pytest.raises(RuntimeError, match="太久沒有回應"):
         engine.act(GameState(premise="x", arc=ARC), "a")
-    assert engine.calls[0]["kind"] == "劇情" and "timed out" in engine.calls[0]["error"]
+    assert engine.calls[0]["kind"] == "turn" and "timed out" in engine.calls[0]["error"]
 
 
 def test_is_key_error():

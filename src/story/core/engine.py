@@ -59,6 +59,7 @@ MEMORY = prompts.sections("memory")
 STATUS_KEYS = prompts.table(CONTEXT["status_keys"])  # 遊戲狀態 JSON 的欄位名稱：{代號: 給 AI 看的名稱}
 STATUS_EMPTY = prompts.table(CONTEXT["status_empty"])  # 遊戲狀態裡沒有東西時顯示的字
 TIMEOUT_ACTION = TURN["timeout_action"]  # 限時模式時間到時，代替玩家的行動寫進劇情紀錄
+UI = prompts.ui("core")  # 給玩家看的錯誤訊息與進度（story/ui/語言/core.md）
 
 
 class EndingTooEarly(Exception):
@@ -68,7 +69,7 @@ class EndingTooEarly(Exception):
 def raise_friendly(e: Exception) -> None:
     """重送幾次都逾時或連不上：轉成核心會處理的錯誤；其他錯誤照原樣丟出。"""
     if isinstance(e, (httpx.TimeoutException, httpx.ConnectError)):
-        raise RuntimeError("Gemini 太久沒有回應或連不上，請稍後再試。") from e
+        raise RuntimeError(UI["timeout"]) from e
     raise e
 
 
@@ -356,11 +357,11 @@ class Engine:
         要呼叫好幾次 AI，比一般回合久，所以用 stage 告訴外殼進度。"""
         try:
             if state.genre_pending and self.genres:
-                self.stage = "挑選題材"
+                self.stage = UI["stage_genre"]
                 self.pick_genre(state)
-            self.stage = "規劃故事大綱"
+            self.stage = UI["stage_arc"]
             self.plan_arc(state)
-            self.stage = "寫開場"
+            self.stage = UI["stage_opening"]
             self._advance(state, action=None)
         finally:
             self.stage, self.draft = "", ""
@@ -370,7 +371,7 @@ class Engine:
         picked = ""
         if self.genres:
             response = self._generate(
-                "題材",
+                "genre",
                 model=MODEL,
                 contents=self.genre_prompt(state),
                 config=types.GenerateContentConfig(
@@ -388,7 +389,7 @@ class Engine:
         if state.genre_pending:
             self.pick_genre(state)
         response = self._generate(
-            "大綱",
+            "arc",
             model=MODEL,
             contents=self.arc_prompt(state),
             config=types.GenerateContentConfig(
@@ -418,20 +419,20 @@ class Engine:
         """請 AI 想一個新的故事開頭。題材由程式隨機挑選（玩家指定了題材就用那個），AI 負責發揮。
         挑到題材包時，附上它的描述與幾則開頭靈感（premises.md）。"""
         response = self._generate(
-            "幫我想",
+            "suggest",
             model=MODEL,
             contents=self.premise_prompt(avoid, genre),
             config=types.GenerateContentConfig(thinking_config=types.ThinkingConfig(thinking_level="low")),
         )
         text = (response.text or "").strip().strip("「」\"")
         if not text:
-            raise RuntimeError("AI 沒有想出開頭，請再試一次。")
+            raise RuntimeError(UI["no_suggestion"])
         return text
 
     def write_epilogue(self, state: GameState) -> None:
         """故事結束後，請 AI 回顧整段旅程寫出尾聲與結局名稱。"""
         response = self._generate(
-            "尾聲",
+            "epilogue",
             model=MODEL,
             contents=self.epilogue_prompt(state),
             config=types.GenerateContentConfig(
@@ -441,7 +442,7 @@ class Engine:
             ),
         )
         if not isinstance(response.parsed, Epilogue):
-            raise RuntimeError("尾聲生成失敗。")
+            raise RuntimeError(UI["no_epilogue"])
         state.ending_title, state.epilogue = response.parsed.title.strip(), response.parsed.text.strip()
         self._write_log({"turn": state.turn, "epilogue": state.ending_title})
 
@@ -455,7 +456,7 @@ class Engine:
             return self._call(prompt, stop_on_ending=not ending_allowed(state, state.turn + 1))
         except EndingTooEarly:
             self.draft = ""
-            return self._call(prompt + "\n\n" + TURN["early_ending_retry"], kind="重寫")
+            return self._call(prompt + "\n\n" + TURN["early_ending_retry"], kind="rewrite")
 
     def _advance(self, state: GameState, action: str | None) -> None:
         beat = self._next_beat(state, action)
@@ -480,7 +481,7 @@ class Engine:
 
     def _write_death(self, state: GameState) -> None:
         """程式判定傷重死亡，但 LLM 寫的劇情裡主角還活著：請 LLM 接著寫死亡結局。"""
-        ending = self._call(self.death_prompt(state), kind="倒下", prefix=state.current_narration + "\n\n")  # 串流時接在剛才的劇情後面
+        ending = self._call(self.death_prompt(state), kind="death", prefix=state.current_narration + "\n\n")  # 串流時接在剛才的劇情後面
         state.current_narration += "\n\n" + ending.narration
         state.current_choices = []
         state.current_time_limit = 0
@@ -668,7 +669,7 @@ class Engine:
                     text += piece
                     on_text(text)
         except EndingTooEarly:
-            extra["stopped"] = "太早寫出結局"
+            extra["stopped"] = "early_ending"
             raise
         except Exception as e:
             extra["error"] = str(e)[:200]
@@ -701,7 +702,7 @@ class Engine:
         except OSError:
             pass  # 紀錄寫不進去不影響遊戲
 
-    def _call(self, prompt: str, kind: str = "劇情", stop_on_ending: bool = False, prefix: str = ""):
+    def _call(self, prompt: str, kind: str = "turn", stop_on_ending: bool = False, prefix: str = ""):
         """串流呼叫 Gemini，取得結構化的回傳（單人是 StoryBeat，多人是 PartyBeat）。
         收到劇情的同時更新 draft（前面接上 prefix），外殼可以先顯示。stop_on_ending 時，AI 一宣告結局就中斷（EndingTooEarly）。"""
 
@@ -725,8 +726,8 @@ class Engine:
         try:
             return self.beat_schema.model_validate_json(text)
         except ValueError:
-            reason = last.candidates[0].finish_reason if last is not None and last.candidates else "沒有內容"
-            raise RuntimeError(f"模型輸出無法解析（{reason}），請換個行動試試。")
+            reason = last.candidates[0].finish_reason if last is not None and last.candidates else UI["no_content"]
+            raise RuntimeError(UI["unparsable"].format(reason=reason))
 
     # ---------- 驗證並套用 ----------
 
@@ -759,7 +760,7 @@ class Engine:
             return
         turns, old_events, old_flags = to_compact(state)
         response = self._generate(
-            "壓縮",
+            "compaction",
             model=MODEL,
             contents=self.compaction_prompt(state),
             config=types.GenerateContentConfig(

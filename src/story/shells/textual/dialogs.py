@@ -12,8 +12,10 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Select, Static, TextArea
 
-from story.core import GENRE_AUTO, GENRE_NONE, Reply
+from story.core import GENRE_AUTO, GENRE_NONE, Reply, ui_text
 from story.shells.client import KEY_PATH
+
+UI, TERMINAL = ui_text("dialogs"), ui_text("terminal")  # story/ui/語言/
 
 
 class Dialog(ModalScreen):
@@ -46,7 +48,7 @@ class Dialog(ModalScreen):
     }
     """
     BINDINGS = [
-        Binding("escape", "cancel", "取消"),
+        Binding("escape", "cancel", UI["cancel"]),
         # 在輸入框裡時，輸入框會先處理 ← →，照常移動游標
         Binding("left", "move_in_row(-1)", show=False),
         Binding("right", "move_in_row(1)", show=False),
@@ -94,12 +96,12 @@ class ApiKeyDialog(Dialog):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static(self.reason, classes="title")
-            yield Static("可以到 https://aistudio.google.com/apikey 免費申請。", classes="hint")
-            yield Input(placeholder="貼上 API key", password=True, id="key")
-            yield Checkbox(f"儲存到 {KEY_PATH}，下次自動使用", value=True, id="save")
+            yield Static(UI["key_where"].format(link="https://aistudio.google.com/apikey"), classes="hint")
+            yield Input(placeholder=UI["key_placeholder"], password=True, id="key")
+            yield Checkbox(UI["key_save"].format(path=KEY_PATH), value=True, id="save")
             with Horizontal():
-                yield Button("離開", id="cancel", compact=True)
-                yield Button("確定", variant="primary", id="ok", compact=True)
+                yield Button(UI["leave"], id="cancel", compact=True)
+                yield Button(UI["ok"], variant="primary", id="ok", compact=True)
 
     @on(Input.Submitted)
     @on(Button.Pressed, "#ok")
@@ -141,7 +143,7 @@ class GenreSelect(Select, inherit_bindings=False):
     這裡改成：上下鍵照常在各列之間移動，Enter 或空白鍵打開選單，左右鍵直接切換題材。"""
 
     BINDINGS = [
-        Binding("enter,space", "show_overlay", "選擇題材", show=False),
+        Binding("enter,space", "show_overlay", TERMINAL["choose_genre"], show=False),
         Binding("up", "screen.move_between_rows(-1)", show=False),
         Binding("down", "screen.move_between_rows(1)", show=False),
         Binding("left", "cycle(-1)", show=False),
@@ -182,20 +184,20 @@ class PremiseDialog(Dialog):
 
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Static("新的故事", classes="title")
+            yield Static(UI["premise_title"], classes="title")
             if self.genres:
-                options = [("題材：自動（依故事前提挑選）", GENRE_AUTO), ("題材：不套用", GENRE_NONE)]
-                options += [(f"題材：{name}", name) for name in self.genres]
+                options = [(UI["genre_auto_option"], GENRE_AUTO), (UI["genre_none_option"], GENRE_NONE)]
+                options += [(UI["genre_option"].format(name=name), name) for name in self.genres]
                 value = self.genre if self.genre in (GENRE_AUTO, GENRE_NONE, *self.genres) else GENRE_AUTO
                 yield GenreSelect(options, value=value, allow_blank=False, compact=True, id="genre")
                 yield Static(self.genre_hint(value), id="genre-hint", classes="hint")
-            yield Static("故事前提：可以直接修改，或按「換一個」「幫我想」", classes="hint")
-            yield PremiseArea(self.default, placeholder="例如：你是一名在末日城市送信的郵差……", id="premise", highlight_cursor_line=False)
-            yield Checkbox("限時模式：情勢緊迫時，要在時間內做出決定", value=self.timed, id="timed")
+            yield Static(UI["premise_hint"], classes="hint")
+            yield PremiseArea(self.default, placeholder=UI["premise_placeholder"], id="premise", highlight_cursor_line=False)
+            yield Checkbox(UI["timed_option"], value=self.timed, id="timed")
             with Horizontal():
-                yield Button("換一個", id="reroll", compact=True)
-                yield Button("幫我想", id="suggest", compact=True)
-                yield Button("開始", variant="primary", id="ok", compact=True)
+                yield Button(UI["reroll"], id="reroll", compact=True)
+                yield Button(UI["suggest"], id="suggest", compact=True)
+                yield Button(UI["start"], variant="primary", id="ok", compact=True)
 
     async def request(self, *commands: str, latest_only: bool = True) -> Reply | None:
         """排隊把指令送給核心。latest_only 時，如果等待期間又有新的操作（例如快速切換題材），回傳 None。"""
@@ -222,7 +224,7 @@ class PremiseDialog(Dialog):
     @work
     async def ask_ai(self) -> None:
         button, field = self.query_one("#suggest", Button), self.query_one("#premise", PremiseArea)
-        button.disabled, button.label = True, "構思中…"
+        button.disabled, button.label = True, UI["thinking"]
         try:
             reply = await self.request(f"/genre {self.chosen_genre()}", "/suggest", latest_only=False)
             if reply.error:
@@ -230,9 +232,9 @@ class PremiseDialog(Dialog):
             self.set_default(reply.suggestion, replace=True)
             field.focus()
         except Exception as e:  # 網路、key、額度等錯誤都只提示，不中斷開新局
-            self.notify(str(e)[:200], title="AI 沒有想出開頭", severity="error")
+            self.notify(str(e)[:200], title=UI["suggest_failed"], severity="error")
         finally:
-            button.disabled, button.label = False, "幫我想"
+            button.disabled, button.label = False, UI["suggest"]
 
     @on(Button.Pressed, "#reroll")
     @work
@@ -251,9 +253,9 @@ class PremiseDialog(Dialog):
 
     def genre_hint(self, choice: str) -> str:
         if choice == GENRE_AUTO:
-            return "依故事前提自動挑一個題材包，都不適合就不套用。"
+            return UI["genre_auto_hint"]
         if choice == GENRE_NONE:
-            return "不套用題材，照一般的方式寫。"
+            return UI["genre_none_hint"]
         return self.genres.get(choice, "")
 
     def chosen_genre(self) -> str:
@@ -270,7 +272,7 @@ class PremiseDialog(Dialog):
 
 
 class ConfirmDialog(Dialog):
-    def __init__(self, question: str, yes: str = "確定", no: str = "取消", detail: str = ""):
+    def __init__(self, question: str, yes: str = UI["ok"], no: str = UI["cancel"], detail: str = ""):
         super().__init__()
         self.question, self.yes, self.no, self.detail = question, yes, no, detail
 
@@ -298,11 +300,11 @@ class EndingDialog(ConfirmDialog):
     """故事結束：顯示結局名稱與這趟旅程的紀錄，問要不要再玩。"""
 
     def __init__(self, title: str, record: str):
-        super().__init__(f"結局：{title}" if title else "故事結束", yes="再玩一次", no="離開", detail=record)
+        super().__init__(UI["ending_title"].format(title=title) if title else UI["story_over"], yes=UI["play_again"], no=UI["leave"], detail=record)
 
 
 class InfoDialog(Dialog):
-    BINDINGS = [Binding("q", "cancel", "關閉")]
+    BINDINGS = [Binding("q", "cancel", UI["close"])]
 
     def __init__(self, title: str, body: str):
         super().__init__()
@@ -314,7 +316,7 @@ class InfoDialog(Dialog):
             with VerticalScroll():
                 yield Static(self.body, markup=False)
             with Horizontal():
-                yield Button("關閉", variant="primary", id="close", compact=True)
+                yield Button(UI["close"], variant="primary", id="close", compact=True)
 
     def on_mount(self) -> None:
         self.query_one("#close", Button).focus()

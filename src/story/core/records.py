@@ -6,8 +6,12 @@ from collections import Counter
 from pathlib import Path
 from typing import Literal
 
+from story.core import prompts
 from story.core.engine import DAY, PREMISE, SEVERITY_ORDER, body_level
 from story.core.models import GameState, word
+
+UI = prompts.ui("core")  # 給玩家看的文字（story/ui/語言/core.md）
+join = UI["list_sep"].join
 
 SAVE_PATH = Path("save.json")
 DEFAULT_PREMISE = PREMISE["default"]  # 沒有題材包可以抽、玩家也沒輸入時用的前提
@@ -33,36 +37,37 @@ def load(path: Path = SAVE_PATH) -> GameState | None:
 
 
 def memory_text(state: GameState) -> str:
-    events = "\n".join(f"  - {e}" for e in state.key_events) or "  （無）"
+    events = "\n".join(UI["memory_event"].format(event=e) for e in state.key_events) or UI["memory_no_events"]
     if state.party:
-        bags = "\n".join(f"  {c.name}：{'、'.join(c.inventory) or '空'}" for c in state.party)
+        bags = "\n".join(UI["memory_party_bag"].format(name=c.name, items=join(c.inventory) or UI["memory_empty_bag"]) for c in state.party)
     else:
-        bags = f"  {'、'.join(state.inventory) or '空'}"
-    return (
-        f"[背包]\n{bags}\n\n"
-        f"[已確立的事實]\n  {'、'.join(state.flags) or '無'}\n\n"
-        f"[重大事件]\n{events}\n\n"
-        f"[長期摘要]\n  {state.summary or '（尚無）'}\n\n"
-        f"[劇情紀錄] {len(state.unsummarized) + len(state.recent)} 回合原文"
+        bags = UI["memory_bag"].format(items=join(state.inventory) or UI["memory_empty_bag"])
+    return UI["memory"].format(
+        bags=bags,
+        flags=join(state.flags) or UI["memory_no_flags"],
+        events=events,
+        summary=state.summary or UI["memory_no_summary"],
+        turns=len(state.unsummarized) + len(state.recent),
     )
 
 
 def ending_record(state: GameState) -> str:
     """結局的旅程紀錄。遊戲內時間只在這裡揭曉。"""
     days = (state.minutes or 0) // DAY + 1
-    record = f"共 {state.turn} 回合，歷時 {days} 天。\n"
+    record = UI["record"].format(turns=state.turn, days=days) + "\n"
     if state.party:
         fallen = [c.name for c in state.party if not c.alive]
         if len(fallen) == len(state.party):
-            record += "隊伍全員都在這趟旅程中倒下了。"
+            record += UI["record_party_all_fallen"]
         elif fallen:
-            record += f"{'、'.join(fallen)} 在這趟旅程中倒下了，其他人走到了故事的盡頭。"
+            record += UI["record_party_some_fallen"].format(names=join(fallen))
         else:
-            record += "所有人一起走到了故事的盡頭。"
+            record += UI["record_party_alive"]
     else:
-        record += "你在這趟旅程中倒下了。" if body_level(state) == "dead" else "你走到了故事的盡頭。"
+        record += UI["record_dead"] if body_level(state) == "dead" else UI["record_alive"]
     if state.key_events:
-        record += "\n\n這趟旅程中：\n" + "\n".join(f"・{e}" for e in state.key_events[-5:])
+        events = "\n".join(UI["record_event"].format(event=e) for e in state.key_events[-5:])
+        record += "\n\n" + UI["record_events"].format(events=events)
     return record
 
 
@@ -85,14 +90,16 @@ def change_groups(before: Snapshot, state: GameState) -> ChangeGroups:
     old_conds, old_items = before
     new_conds, new_items = snapshot(state)
     rank, w = SEVERITY_ORDER.index, lambda v: word("severity", v)
+    added = lambda n, v: UI["condition"].format(name=n, severity=w(v))  # noqa: E731
+    moved = lambda n, v: UI["condition_change"].format(name=n, old=w(old_conds[n]), new=w(v))  # noqa: E731
     groups: ChangeGroups = [
-        ("新增", [(f"{n}（{w(v)}）", v) for n, v in new_conds.items() if n not in old_conds]),
-        ("惡化", [(f"{n}（{w(old_conds[n])}→{w(v)}）", "bad") for n, v in new_conds.items()
-                if n in old_conds and rank(v) > rank(old_conds[n])]),
-        ("好轉", [(f"{n}（{w(old_conds[n])}→{w(v)}）", "good") for n, v in new_conds.items()
-                if n in old_conds and rank(v) < rank(old_conds[n])]),
-        ("痊癒", [(n, "good") for n in old_conds if n not in new_conds]),
-        ("獲得", [(n, "plain") for n in (new_items - old_items).elements()]),
-        ("失去", [(n, "muted") for n in (old_items - new_items).elements()]),
+        (UI["change_new"], [(added(n, v), v) for n, v in new_conds.items() if n not in old_conds]),
+        (UI["change_worse"], [(moved(n, v), "bad") for n, v in new_conds.items()
+                              if n in old_conds and rank(v) > rank(old_conds[n])]),
+        (UI["change_better"], [(moved(n, v), "good") for n, v in new_conds.items()
+                               if n in old_conds and rank(v) < rank(old_conds[n])]),
+        (UI["change_healed"], [(n, "good") for n in old_conds if n not in new_conds]),
+        (UI["change_gained"], [(n, "plain") for n in (new_items - old_items).elements()]),
+        (UI["change_lost"], [(n, "muted") for n in (old_items - new_items).elements()]),
     ]
     return [(label, items) for label, items in groups if items]

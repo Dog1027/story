@@ -32,10 +32,11 @@ import json
 from collections.abc import Callable
 from dataclasses import replace
 
-from story.core import MAX_PLAYERS, MIN_PLAYERS, PartyCore, Reply
+from story.core import MAX_PLAYERS, MIN_PLAYERS, PartyCore, Reply, ui_text
 from story.shells.players import SAVES_DIR, InvalidName, check_name
 
-START = "開始遊戲"
+UI = ui_text("shells")  # story/ui/語言/shells.md
+START = UI["start_game"]  # 房主在大廳裡的選項
 READY_WAIT = 90  # 等大家看完劇情最多幾秒，超過就直接開始倒數
 TIMEOUT_GRACE = 1  # 倒數結束後多等一下，抵銷網路延遲
 PROGRESS_POLL = 0.1  # 呼叫 AI 時每隔幾秒看一次進度與 AI 寫到哪裡
@@ -59,7 +60,7 @@ class Connection:
 
     async def send(self, message: dict) -> None:
         if self.closed or self.peer.closed:
-            raise ConnectionError("連線已經關閉")
+            raise ConnectionError("connection closed")
         # 轉成 JSON 再轉回來：兩端不會共用同一個物件，收到的只有 JSON 的型別（tuple 變成 list），訊息格式才是唯一的約定
         self.outbox.put_nowait(json.loads(json.dumps(message, ensure_ascii=False)))
 
@@ -150,12 +151,12 @@ class Room:
             return str(e)
         member = self.members.get(name)
         if member and member.online:
-            return "這個名字已經在房間裡了，請換一個名字。"
+            return UI["room_name_taken"]
         if self.core is not None:
             if name not in self.core.players:
-                return f"遊戲進行中，只有隊伍裡的玩家（{'、'.join(self.core.players)}）能重新加入。"
+                return UI["room_members_only"].format(players=UI["list_sep"].join(self.core.players))
         elif len(self._online()) >= MAX_PLAYERS:
-            return f"房間已滿（最多 {MAX_PLAYERS} 人）。"
+            return UI["room_full"].format(max=MAX_PLAYERS)
         return ""
 
     async def _join(self, name: str, conn: Connection) -> None:
@@ -166,7 +167,7 @@ class Room:
         if self.core is None:
             await self._broadcast_lobby()
             return
-        await self._broadcast_notice(f"{name} 回來了。", skip=name)
+        await self._broadcast_notice(UI["room_back"].format(name=name), skip=name)
         if self.core.phase == "playing":
             await self._send_reply(name, self.core.view(name))
             await self._broadcast_waiting()
@@ -177,7 +178,7 @@ class Room:
         elif name == self.host and self.host_reply:
             await self._send_reply(name, self.host_reply)
         else:
-            await self._send_notice(name, "房主正在設定故事，請稍候。")
+            await self._send_notice(name, UI["host_setting_up"])
 
     async def _leave(self, name: str) -> None:
         if self.core is None:
@@ -193,7 +194,7 @@ class Room:
             return
         if not online:
             return
-        await self._broadcast_notice(f"{name} 離線了。")
+        await self._broadcast_notice(UI["room_left"].format(name=name))
         if self.core.phase == "playing":
             await self._fill_offline()
             await self._maybe_start_countdown()
@@ -216,7 +217,7 @@ class Room:
         elif self.core.phase == "playing":
             await self._on_playing(name, text)
         elif name != self.host:
-            await self._send_notice(name, f"等房主 {self.host} 設定好故事。")
+            await self._send_notice(name, UI["wait_host_story"].format(host=self.host))
         elif text.startswith(("/suggest", "/random", "/timed", "/genre")):  # 前提對話框裡的操作，不用推給其他人
             reply = await self._call(lambda: self.core.send(text))
             if answer:
@@ -229,11 +230,11 @@ class Room:
 
     async def _on_lobby(self, name: str, text: str) -> None:
         if name != self.host:
-            await self._send_notice(name, f"等房主 {self.host} 開始遊戲。")
+            await self._send_notice(name, UI["wait_host_start"].format(host=self.host))
             return
         players = self._online()
         if text not in ("1", START) or len(players) < MIN_PLAYERS:
-            await self._send_notice(name, f"至少要 {MIN_PLAYERS} 位玩家才能開始。")
+            await self._send_notice(name, UI["need_players"].format(min=MIN_PLAYERS))
             return
         self.core = self.make_core(players)
         await self._route(self.core.start())
@@ -242,7 +243,7 @@ class Room:
         if text == "/timeout":
             return  # 倒數由房間負責，玩家不能替大家按下時間到
         if text == "/restart" and name != self.host:
-            await self._send_notice(name, "只有房主能重新開始。")
+            await self._send_notice(name, UI["host_only_restart"])
             return
         if text.startswith("/"):  # /state、/restart，或沒有這個指令：只回給本人
             reply = await self._call(lambda: self.core.send_as(name, text))
@@ -285,7 +286,7 @@ class Room:
             if busy:
                 await self._broadcast({"type": "busy", "on": False})
         if reply.error == "api_key":  # 玩家沒辦法換伺服器的 key
-            reply = replace(reply, error="api", notice="伺服器的 Gemini API key 無效或沒有權限，請通知架站的人。")
+            reply = replace(reply, error="api", notice=UI["server_key_invalid"])
         return reply
 
     # ---------- 回覆 ----------
@@ -298,7 +299,7 @@ class Room:
             self._stop_countdown()
             await self._send_reply(self.host, reply)
             if phase != "confirm_restart":
-                await self._broadcast_notice("房主正在設定故事，請稍候。", skip=self.host)
+                await self._broadcast_notice(UI["host_setting_up"], skip=self.host)
             return
         self.host_reply = None
         if phase == "playing" and reply.error:  # 這回合沒推進成功：核心撤回了所有人的行動，大家重新選擇

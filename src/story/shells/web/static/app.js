@@ -11,6 +11,8 @@ const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const TOUCH = matchMedia("(pointer: coarse)").matches || matchMedia("(hover: none)").matches;
 
 const $ = (id) => document.getElementById(id);
+// 介面文字：T 是伺服器放進頁面的字串表（story/ui/語言/dialogs.md、web.md），{名稱} 換成 vars 裡的值
+const t = (key, vars = {}) => T[key].replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? "");
 const log = $("log"), input = $("input"), choicesList = $("choices");
 
 const state = {
@@ -39,8 +41,8 @@ function connect() {
   ws.onclose = () => {
     if (!state.exited) {
       setBusy(true);
-      input.placeholder = "連線中斷了，請重新整理頁面。";
-      toast("和伺服器的連線中斷了，請重新整理頁面。", { error: true, lasting: true });
+      input.placeholder = t("disconnected");
+      toast(t("server_lost"), { error: true, lasting: true });
     }
   };
 }
@@ -60,7 +62,7 @@ const handlers = {
     state.follow = true;
     if (premise) {
       const el = add("div", "premise");
-      el.append(tag("b", "", "故事前提"), premise);
+      el.append(tag("b", "", t("premise")), premise);
     }
     renderChoices([]);
     renderStatus(null);
@@ -133,7 +135,7 @@ const handlers = {
   lobby({ members }) {
     const box = $("status");
     box.replaceChildren();
-    const line = tag("div", "lobby", "大廳　");
+    const line = tag("div", "lobby", t("lobby") + "　");
     members.forEach((m, i) => { if (i) line.append(" · "); line.append(tag("strong", "", m)); });
     box.append(line);
     $("turn").textContent = "";
@@ -162,8 +164,8 @@ const handlers = {
   },
   ending({ id, title, record }) {
     openSheet((sheet, close) => {
-      sheet.append(tag("h2", "", title ? `結局：${title}` : "故事結束"), tag("p", "record", record));
-      sheet.append(buttons([["離開", () => close(false)], ["再玩一次", () => close(true), true]]));
+      sheet.append(tag("h2", "", title ? t("ending_title", { title }) : t("story_over")), tag("p", "record", record));
+      sheet.append(buttons([[t("leave"), () => close(false)], [t("play_again"), () => close(true), true]]));
     }, (value) => answer(id, value), false);
   },
   name(message) { nameSheet(message); },
@@ -175,9 +177,9 @@ const handlers = {
     sheetQueue.length = 0;
     closeSheet();
     setBusy(true);
-    log.replaceChildren(tag("div", "exit-screen", "已經離開了。重新整理頁面就能再進來。"));
+    log.replaceChildren(tag("div", "exit-screen", t("exited")));
     renderChoices([]);
-    input.placeholder = "已離開";
+    input.placeholder = t("exited_hint");
     if (state.ws) state.ws.close();
   },
 };
@@ -270,14 +272,14 @@ function renderStatus(status) {
     $("mode").hidden = true;
     return;
   }
-  $("turn").textContent = `第 ${status.turn} 回`; // 章回小說的「回」
+  $("turn").textContent = t("turn", { turn: status.turn });
   $("mode").hidden = !status.timed;
   $("mode").textContent = status.mode;
   for (const c of status.characters) {
     const row = tag("div", "status-row" + (c.alive ? "" : " fallen"));
     if (status.party) row.append(tag("span", "status-name", c.name));
     const chips = tag("div", "chips");
-    if (!c.alive) chips.append(tag("span", "t-muted", "已倒下"));
+    if (!c.alive) chips.append(tag("span", "t-muted", t("fallen")));
     else {
       if (c.warning) chips.append(tag("span", "chip warning", `⚠ ${c.warning_text}`));
       for (const [text, tone] of c.items) chips.append(tag("span", `chip t-${tone}`, text));
@@ -381,7 +383,7 @@ function stopTimer() {
 function renderTimer() {
   const { total, left } = state.timer;
   $("timer-fill").style.width = `${(100 * left) / total}%`;
-  $("timer-text").textContent = `${Math.ceil(left)} 秒`;
+  $("timer-text").textContent = t("seconds", { seconds: Math.ceil(left) });
   $("timer").classList.toggle("urgent", left <= 5);
 }
 
@@ -463,56 +465,44 @@ function field(type, id, placeholder) {
 
 function infoSheet(title, body) {
   openSheet((sheet, close) => {
-    sheet.append(tag("h2", "", title), tag("div", "body", body), buttons([["關閉", () => close(), true]]));
+    sheet.append(tag("h2", "", title), tag("div", "body", body), buttons([[t("close"), () => close(), true]]));
   });
 }
 
 function helpSheet() {
-  infoSheet("說明", [
-    "選項：點一下，或在輸入框用 ↑↓ 選擇後按 Enter，也可以輸入數字。",
-    "自由行動：直接在輸入框寫下你想做的事。",
-    "文字顯示中：點故事區或按 Enter 加速，再按一次全部顯示。",
-    "文字顯示中也可以往上捲回去看，捲回最底就繼續跟著新文字。",
-    "",
-    "右上角的 ⋯ 選單：",
-    "程式記住的東西：背包、已確立的事實、重大事件、劇情摘要",
-    "重新開始：放棄目前進度，開一個新故事",
-    "外觀：跟隨系統、淺色或深色",
-    "",
-    "限時模式（開新故事時選擇）：情勢緊迫時會出現倒數，時間到就當作你遲疑了。單人時開著對話框倒數會暫停。",
-  ].join("\n"));
+  infoSheet(t("menu_help"), t("help"));
 }
 
 // 名字能不能用由伺服器判斷，不能用時會帶著原因（error）再問一次
 function nameSheet({ id, hint, error, max_len }) {
   openSheet((sheet, close) => {
-    const name = field("text", "name-input", "例如：阿明");
+    const name = field("text", "name-input", t("name_placeholder"));
     name.maxLength = max_len;
     const errorLine = tag("p", "error", error || "");
     const submit = () => close(name.value);
     name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
-    sheet.append(tag("h2", "", "你的名字"), tag("p", "hint", hint || "每個名字有自己的存檔，下次用同一個名字進來就能接著玩。"), name, errorLine);
-    sheet.append(buttons([["離開", () => close(null)], ["進入", submit, true]]));
+    sheet.append(tag("h2", "", t("name_title")), tag("p", "hint", hint || t("name_hint")), name, errorLine);
+    sheet.append(buttons([[t("leave"), () => close(null)], [t("enter"), submit, true]]));
   }, (value) => answer(id, value), false, true);
 }
 
 function apiKeySheet({ id, reason }) {
   openSheet((sheet, close) => {
-    const key = field("password", "key-input", "貼上 API key");
+    const key = field("password", "key-input", t("key_placeholder"));
     const submit = () => { if (key.value.trim()) close(key.value.trim()); };
     key.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
     const link = tag("p", "hint");
-    link.append("可以到 ");
-    const a = tag("a", "", "Google AI Studio");
+    const a = tag("a", "", t("key_link_text"));
     a.href = "https://aistudio.google.com/apikey";
     a.target = "_blank";
     a.rel = "noopener";
-    link.append(a, " 免費申請。key 只用於這次連線，不會存到伺服器上；下次進來要重新輸入。");
-    sheet.append(tag("h2", "", reason), link, key, buttons([["離開", () => close(null)], ["確定", submit, true]]));
+    const [before, after] = T.key_where.split("{link}");
+    link.append(before, a, after, t("key_not_stored"));
+    sheet.append(tag("h2", "", reason), link, key, buttons([[t("leave"), () => close(null)], [t("ok"), submit, true]]));
   }, (value) => answer(id, value), false, true);
 }
 
-const GENRE_AUTO = "自動", GENRE_NONE = "不套用";
+const GENRE_AUTO = "auto", GENRE_NONE = "none"; // 題材的兩個特別選項（核心的代號）
 
 function premiseSheet({ id, default: initial, timed, genre, genres }) {
   openSheet((sheet, close) => {
@@ -522,7 +512,7 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
 
     const area = tag("textarea");
     area.id = "premise-input";
-    area.placeholder = "例如：你是一名在末日城市送信的郵差……";
+    area.placeholder = t("premise_placeholder");
     area.value = initial;
     // 換了預設的開頭：玩家還沒改過文字框（或 replace）就換上新的，改過的就保留玩家寫的
     const setDefault = (text, replace = false) => {
@@ -536,17 +526,17 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
     timedBox.id = "timed-input";
     timedBox.checked = timed;
     const timedLabel = tag("label", "check");
-    timedLabel.append(timedBox, "限時模式：情勢緊迫時，要在時間內做出決定");
+    timedLabel.append(timedBox, t("timed_option"));
 
     const select = tag("select");
     select.id = "genre-input";
     const genreHint = tag("p", "hint");
     const describe = (value) => {
-      genreHint.textContent = value === GENRE_AUTO ? "依故事前提自動挑一個題材包，都不適合就不套用。"
-        : value === GENRE_NONE ? "不套用題材，照一般的方式寫。" : descriptions[value] || "";
+      genreHint.textContent = value === GENRE_AUTO ? t("genre_auto_hint")
+        : value === GENRE_NONE ? t("genre_none_hint") : descriptions[value] || "";
     };
     if (genres.length) {
-      for (const [label, value] of [["題材：自動（依故事前提挑選）", GENRE_AUTO], ["題材：不套用", GENRE_NONE], ...genres.map(([n]) => [`題材：${n}`, n])]) {
+      for (const [label, value] of [[t("genre_auto_option"), GENRE_AUTO], [t("genre_none_option"), GENRE_NONE], ...genres.map(([n]) => [t("genre_option", { name: n }), n])]) {
         const option = tag("option", "", label);
         option.value = value;
         select.append(option);
@@ -572,24 +562,24 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
       if (reply && !reply.error) setDefault(reply.default);
     });
 
-    const reroll = tag("button", "btn", "換一個");
+    const reroll = tag("button", "btn", t("reroll"));
     reroll.type = "button";
     reroll.onclick = async () => {
       const reply = await request([`/genre ${chosenGenre()}`, "/random"]);
       if (reply && !reply.error) setDefault(reply.default, true); // 按了「換一個」：文字框一定換掉
     };
-    const suggest = tag("button", "btn", "幫我想");
+    const suggest = tag("button", "btn", t("suggest"));
     suggest.type = "button";
     suggest.onclick = async () => {
       suggest.disabled = true;
-      suggest.textContent = "構思中…";
+      suggest.textContent = t("thinking");
       const reply = await request([`/genre ${chosenGenre()}`, "/suggest"], false);
       suggest.disabled = false;
-      suggest.textContent = "幫我想";
-      if (reply.error) toast(reply.error, { error: true, title: "AI 沒有想出開頭" });
+      suggest.textContent = t("suggest");
+      if (reply.error) toast(reply.error, { error: true, title: t("suggest_failed") });
       else { setDefault(reply.suggestion, true); if (!TOUCH) area.focus(); }
     };
-    const startButton = tag("button", "btn primary", "開始");
+    const startButton = tag("button", "btn primary", t("start"));
     startButton.type = "button";
     const start = () => close([area.value.trim() || current, timedBox.checked, chosenGenre()]);
     startButton.onclick = start;
@@ -597,9 +587,9 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
     const row = tag("div", "buttons");
     reroll.classList.add("spacer");
     row.append(reroll, suggest, startButton);
-    sheet.append(tag("h2", "", "新的故事"));
+    sheet.append(tag("h2", "", t("premise_title")));
     if (genres.length) sheet.append(select, genreHint);
-    sheet.append(tag("p", "hint", "故事前提：可以直接修改，或按「換一個」「幫我想」"), area, timedLabel, row);
+    sheet.append(tag("p", "hint", t("premise_hint")), area, timedLabel, row);
   }, (value) => {
     state.premise = null;
     answer(id, value);
@@ -610,7 +600,7 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
 
 function toast(text, { error = false, lasting = false, title = "" } = {}) {
   const el = tag("div", "toast" + (error ? " error" : ""));
-  if (error) el.append(tag("b", "", title || "出錯了"));
+  if (error) el.append(tag("b", "", title || t("error_title")));
   el.append(text);
   $("toasts").append(el);
   setTimeout(() => el.remove(), lasting ? 30000 : error ? 8000 : 3500);

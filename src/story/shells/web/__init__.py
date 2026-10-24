@@ -10,20 +10,35 @@
 
 import argparse
 import asyncio
+import html
 import json
+import re
 import sys
 from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
+from story.core import ui_text
 from story.shells.apikey import get_saved_api_key
 from story.shells.client import Client
 from story.shells.room import Room
 from story.shells.web.view import WebView
 
 DEFAULT_HOST, DEFAULT_PORT = "127.0.0.1", 8080  # 預設只接受本機連線
+UI = ui_text("shells")  # story/ui/語言/shells.md
 MAX_SESSIONS = 10  # 同時在線的人數上限，避免太多人同時連線把主機資源用光
 STATIC = Path(__file__).parent / "static"
+
+
+def render_page() -> str:
+    """index.html 換上這個語言的文字：{{名稱}} 換成 web.md、dialogs.md 的文字，{{texts}} 換成整份字串表（給 app.js）。"""
+    texts = ui_text("dialogs") | ui_text("web")
+    page = (STATIC / "index.html").read_text(encoding="utf-8")
+    page = page.replace("{{texts}}", json.dumps(texts, ensure_ascii=False).replace("</", "<\\/"))
+    return re.sub(r"\{\{([a-z_]+)\}\}", lambda m: html.escape(texts[m.group(1)]), page)
+
+
+PAGE = render_page()
 
 
 def make_app(room: Room | None = None) -> web.Application:
@@ -31,8 +46,8 @@ def make_app(room: Room | None = None) -> web.Application:
     app = web.Application()
     sessions = 0  # 目前在線的分頁數
 
-    async def index(request: web.Request) -> web.FileResponse:
-        return web.FileResponse(STATIC / "index.html")
+    async def index(request: web.Request) -> web.Response:
+        return web.Response(text=PAGE, content_type="text/html")
 
     async def no_stale_files(request: web.Request, response: web.StreamResponse) -> None:
         # 頁面與 JS、CSS 每次都先問伺服器有沒有更新（沒變就不用重新下載）。
@@ -45,7 +60,7 @@ def make_app(room: Room | None = None) -> web.Application:
         await ws.prepare(request)
         nonlocal sessions
         if sessions >= MAX_SESSIONS:
-            await ws.send_json({"t": "fatal", "text": f"目前在線人數已滿（{MAX_SESSIONS} 人），請稍後再試。"})
+            await ws.send_json({"t": "fatal", "text": UI["server_full"].format(max=MAX_SESSIONS)})
             await ws.close()
             return ws
         sessions += 1
@@ -82,21 +97,21 @@ def make_app(room: Room | None = None) -> web.Application:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="在瀏覽器裡玩 Story")
-    parser.add_argument("--host", default=DEFAULT_HOST, help="監聽位址；0.0.0.0 代表開放其他電腦連線（預設只有本機）")
+    parser = argparse.ArgumentParser(description=UI["server_description"])
+    parser.add_argument("--host", default=DEFAULT_HOST, help=UI["server_host_help"])
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--party", action="store_true", help="線上多人：所有連進來的人一起玩同一局，使用伺服器的 API key")
+    parser.add_argument("--party", action="store_true", help=UI["server_party_help"])
     args = parser.parse_args()
 
     room = None
     if args.party:
         key = get_saved_api_key()
         if not key:
-            sys.exit("線上多人使用伺服器的 API key：請先設定環境變數 GEMINI_API_KEY，或執行一次 uv run story 儲存 key。")
+            sys.exit(UI["server_no_key"])
         room = Room.for_server(key)
 
     if args.host != "127.0.0.1":
-        print("⚠ 已開放其他電腦連線。目前沒有 HTTPS，玩家輸入的 API key 會以明文傳送，只建議在信任的網路使用。", flush=True)
-    mode = "線上多人（大家一起玩同一局）" if args.party else "單人（每個人各自玩）"
-    print(f"伺服器已啟動：http://{args.host}:{args.port}　模式：{mode}　按 Ctrl+C 結束。", flush=True)
+        print(UI["server_open_warning"], flush=True)
+    mode = UI["server_mode_party" if args.party else "server_mode_solo"]
+    print(UI["server_started"].format(host=args.host, port=args.port, mode=mode), flush=True)
     web.run_app(make_app(room), host=args.host, port=args.port, print=None)

@@ -142,6 +142,6 @@ src/story/
 | 網頁版各自玩 | `saves/名字.log.jsonl` |
 | 網頁版線上多人 | `saves/party.log.jsonl` |
 
-每一行的 `calls` 列出這段期間的每次 AI 呼叫：種類（題材、大綱、劇情、重寫、倒下、尾聲、幫我想、壓縮）、花了幾秒（`seconds`），以及 Gemini 回報的 token 用量：送出（`prompt`）、其中命中快取（`cached`）、輸出（`output`）、思考（`thinking`）。覺得等很久時，可以從這裡看時間花在哪裡。
+每一行的 `calls` 列出這段期間的每次 AI 呼叫：種類（`kind`：`genre` 挑題材、`arc` 規劃大綱、`turn` 劇情、`rewrite` 太早寫出結局時重寫、`death` 傷重倒下、`epilogue` 尾聲、`suggest` 幫我想、`compaction` 記憶壓縮）、花了幾秒（`seconds`），以及 Gemini 回報的 token 用量：送出（`prompt`）、其中命中快取（`cached`）、輸出（`output`）、思考（`thinking`）。覺得等很久時，可以從這裡看時間花在哪裡。
 
 紀錄只會一直往後加，一局 30 回合約 50 KB。要清掉時執行 `just clean-logs`，只會刪除紀錄，不會動到存檔。

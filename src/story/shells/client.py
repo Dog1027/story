@@ -14,7 +14,7 @@
 import asyncio
 from dataclasses import dataclass, field
 
-from story.core import MIN_PLAYERS, ChangeGroups, Ending, Reply, Status, StoryCore, pick_choice, word
+from story.core import MIN_PLAYERS, ChangeGroups, Ending, Reply, Status, StoryCore, pick_choice, ui_text, word
 from story.shells.apikey import KEY_PATH, forget_api_key, get_saved_api_key, save_api_key
 from story.shells.players import MAX_NAME_LEN, InvalidName, Player, check_name
 from story.shells.room import START, Connection, Room
@@ -22,6 +22,7 @@ from story.shells.room import START, Connection, Room
 # 介面的對話框也會用到的規則（名字怎樣才能用、key 存在哪裡），一律從這裡取用
 __all__ = ["KEY_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "StatusLine", "View", "status_line"]
 
+UI = ui_text("shells")  # 外殼共用的文字（story/ui/語言/shells.md）
 BUSY_DELAY = 0.15  # 核心超過這麼久還沒回覆才顯示「故事生成中」，很快的回覆就不閃一下
 DRAFT_POLL = 0.1  # 等核心時每隔幾秒看一次 AI 寫到哪裡（串流），有新的字就先顯示
 
@@ -60,7 +61,7 @@ def status_line(turn: int, characters: list[Status], timed: bool) -> StatusLine 
     """單人模式只有主角一位、沒有名字；多人模式每位角色一列。"""
     if not characters:
         return None
-    mode = "限時模式" if timed else "一般模式"
+    mode = UI["mode_timed" if timed else "mode_normal"]
     return StatusLine(turn, mode, timed, [character_line(s) for s in characters], party=bool(characters[0].name))
 
 
@@ -153,7 +154,7 @@ class View:
     def show_info(self, title: str, body: str) -> None:
         raise NotImplementedError
 
-    async def ask_confirm(self, question: str, yes: str = "確定", no: str = "取消") -> bool:
+    async def ask_confirm(self, question: str, yes: str, no: str) -> bool:
         raise NotImplementedError
 
     async def ask_premise(self, reply: Reply, ask) -> tuple[str, bool, str] | None:
@@ -226,9 +227,9 @@ class Client:
             if name is None:
                 self.view.exit()
                 return
-            key = await self.ask_api_key(f"{name}，請輸入你的 Gemini API key")
+            key = await self.ask_api_key(UI["ask_web_key"].format(name=name))
         else:
-            key = get_saved_api_key() or await self.ask_api_key("找不到 Gemini API key。")
+            key = get_saved_api_key() or await self.ask_api_key(UI["ask_missing_key"])
         if key is None:
             self.view.exit()
             return
@@ -256,7 +257,7 @@ class Client:
     async def claim_name(self, name: str) -> str:
         player = Player(name)
         if not player.acquire():
-            return "這個名字正在遊戲中，請換一個名字，或等對方離開。"
+            return UI["name_in_use"]
         self.player = player
         return ""
 
@@ -328,7 +329,7 @@ class Client:
                 if not self.web:  # 網頁版本來就沒有存 key
                     forget_api_key()
                 self.set_busy(False)
-                key = await self.ask_api_key("API key 無效或沒有權限，請重新輸入。")
+                key = await self.ask_api_key(UI["ask_new_key"])
                 if key is None:
                     return reply
                 self.core.set_api_key(key)
@@ -367,7 +368,7 @@ class Client:
     def busy_text(self) -> str:
         """等待提示的文字，例如「故事生成中：規劃故事大綱…」。"""
         progress = self.progress if self.room else (self.core.progress if self.core else "")
-        return f"故事生成中{'：' + progress if progress else ''}…"
+        return UI["busy"].format(progress=UI["busy_progress"].format(progress=progress) if progress else "")
 
     async def handle(self, reply: Reply) -> None:
         """依照回覆的階段決定接下來的流程。"""
@@ -387,12 +388,13 @@ class Client:
             self.view.notify(reply.notice)
 
         if reply.phase == "ask_continue":
-            keep = await self.view.ask_confirm(f"{reply.notice}\n\n要繼續嗎？", yes="繼續", no="開新遊戲")
+            yes, no = reply.choices  # 核心給的「繼續」「開新遊戲」
+            keep = await self.view.ask_confirm(UI["ask_continue"].format(notice=reply.notice), yes=yes, no=no)
             await self.send("1" if keep else "2")
         elif reply.phase == "ask_premise":
             await self.ask_premise(reply)
         elif reply.phase == "confirm_restart":
-            sure = await self.view.ask_confirm(reply.notice)
+            sure = await self.view.ask_confirm(reply.notice, *reply.choices)  # 核心給的「確定」「取消」
             await self.send("1" if sure else "2")
         elif reply.phase in ("playing", "ending"):
             await self.show_turn(reply)
@@ -454,12 +456,12 @@ class Client:
     async def show_ending(self, ending: Ending) -> None:
         """一段一段來：先讀完最後的劇情，按 Enter 才出現尾聲，再按一次才看總結。"""
         if ending.epilogue:
-            await self.view.wait_enter("按 Enter 看尾聲")
+            await self.view.wait_enter(UI["wait_epilogue"])
             self.view.show_ending_title(ending.title)
             await self.narrate(ending.epilogue)
         else:
-            self.view.show_ending_title("故事結束")
-        await self.view.wait_enter("按 Enter 查看結局")
+            self.view.show_ending_title(UI["story_over"])
+        await self.view.wait_enter(UI["wait_ending"])
         if not await self.view.ask_ending(ending.title, ending.record):
             self.view.exit()
         elif not self.room:  # 線上多人：房間會自動回到大廳
@@ -483,15 +485,15 @@ class Client:
     def refresh_hint(self) -> None:
         """輸入框的提示：線上多人自己行動完之後，改成提示還在等誰。"""
         if self.room and not self.actor and self.waiting:
-            self.view.set_hint(f"等待 {'、'.join(self.waiting)} 行動…")
+            self.view.set_hint(UI["hint_waiting"].format(names=UI["list_sep"].join(self.waiting)))
         else:
-            self.view.set_hint("↑↓ 選擇，或寫下你的行動")
+            self.view.set_hint(UI["hint_input"])
 
     # ---------- 線上多人：和房間對話 ----------
 
     async def join_room(self) -> None:
         self.room = self.shared_room.connect()
-        name = await self.ask_name(self.claim_seat, hint="大家在同一局裡，每個名字就是一位角色。中途斷線可以用同一個名字回來。")
+        name = await self.ask_name(self.claim_seat, hint=UI["room_name_hint"])
         if name is None:
             self.view.exit()
             return
@@ -506,7 +508,7 @@ class Client:
         await self.room.send({"type": "join", "name": name})
         answer = await self.room.receive()
         if answer is None:
-            return "和遊戲房間的連線中斷了。"
+            return UI["room_lost"]
         return answer.get("reason", "") if answer["type"] == "rejected" else ""
 
     async def listen(self) -> None:
@@ -533,14 +535,14 @@ class Client:
             else:
                 self.inbox.put_nowait(message)
         self.set_busy(False)
-        self.view.notify("和遊戲房間的連線中斷了，請重新整理頁面。", error=True, lasting=True)
+        self.view.notify(UI["room_disconnected"], error=True, lasting=True)
 
     def update_waiting(self, names: list[str]) -> None:
         """這回合還沒行動的人變了：有人行動時跳出通知，並更新提示（不重建選項，畫面才不會閃）。"""
         if set(names) < set(self.waiting):  # 名單變短：有人剛行動（新回合時名單會變回全部的人）
             acted = [n for n in self.waiting if n not in names and n != self.my_name]
             if acted:
-                self.view.notify(f"{'、'.join(acted)} 已行動")
+                self.view.notify(UI["acted"].format(names=UI["list_sep"].join(acted)))
         self.waiting = names
         self.refresh_hint()
 
@@ -564,13 +566,13 @@ class Client:
             self.premise_answer = None
 
     def show_lobby(self, members: list[str], host: str) -> None:
-        self.view.show_lobby([f"{n}（房主）" if n == host else n for n in members])
+        self.view.show_lobby([UI["host_mark"].format(name=n) if n == host else n for n in members])
         self.actor, self.waiting = "", []
         if self.my_name == host:
             ready = len(members) >= MIN_PLAYERS
             self.set_choices([START] if ready else [])
-            placeholder = "選「開始遊戲」，大家就會一起進入故事" if ready else f"等其他玩家加入（至少 {MIN_PLAYERS} 人）…"
+            placeholder = UI["lobby_start"] if ready else UI["lobby_waiting_players"].format(min=MIN_PLAYERS)
         else:
             self.set_choices([])
-            placeholder = f"等房主 {host} 開始遊戲…"
+            placeholder = UI["lobby_waiting_host"].format(host=host)
         self.view.set_hint(placeholder)

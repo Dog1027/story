@@ -1,13 +1,13 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="{{html_lang}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-  <title>Story</title>
+  <title>{{title}}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=11">
+  <link rel="stylesheet" href="/static/style.css?v=12">
   <script>
     // 外觀：跟隨系統，或玩家在選單裡選的淺色／深色（只存在這個瀏覽器）
     try {
@@ -23,7 +23,7 @@
         <span class="mark">Story</span>
         <span id="turn" class="turn"></span>
         <span id="mode" class="mode" hidden></span>
-        <button id="menu-button" class="icon-button" type="button" aria-label="選單" aria-haspopup="true">⋯</button>
+        <button id="menu-button" class="icon-button" type="button" aria-label="{{menu}}" aria-haspopup="true">⋯</button>
       </div>
       <div id="status" class="status"></div>
     </header>
@@ -34,21 +34,21 @@
       <div id="timer" class="timer" hidden><div class="timer-track"><div id="timer-fill" class="timer-fill"></div></div><span id="timer-text" class="timer-text"></span></div>
       <ol id="choices" class="choices"></ol>
       <form id="input-form" class="input-row" autocomplete="off">
-        <input id="input" type="text" enterkeyhint="send" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="連線中…" disabled>
-        <button id="send" type="submit" class="send">送出</button>
+        <input id="input" type="text" enterkeyhint="send" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="{{connecting}}" disabled>
+        <button id="send" type="submit" class="send">{{send}}</button>
       </form>
     </footer>
   </div>
 
   <div id="menu" class="menu" hidden role="menu">
-    <button type="button" data-command="/state" role="menuitem">程式記住的東西</button>
-    <button type="button" data-command="/restart" role="menuitem">重新開始</button>
-    <button type="button" data-local="help" role="menuitem">說明</button>
-    <div class="menu-theme" role="group" aria-label="外觀">
-      <span>外觀</span>
-      <button type="button" data-theme-choice="system">系統</button>
-      <button type="button" data-theme-choice="light">淺色</button>
-      <button type="button" data-theme-choice="dark">深色</button>
+    <button type="button" data-command="/state" role="menuitem">{{menu_state}}</button>
+    <button type="button" data-command="/restart" role="menuitem">{{menu_restart}}</button>
+    <button type="button" data-local="help" role="menuitem">{{menu_help}}</button>
+    <div class="menu-theme" role="group" aria-label="{{menu_theme}}">
+      <span>{{menu_theme}}</span>
+      <button type="button" data-theme-choice="system">{{theme_system}}</button>
+      <button type="button" data-theme-choice="light">{{theme_light}}</button>
+      <button type="button" data-theme-choice="dark">{{theme_dark}}</button>
     </div>
   </div>
 
@@ -58,7 +58,9 @@
 
   <div id="toasts" class="toasts" aria-live="assertive"></div>
 
+  <!-- 介面文字（story/ui/語言/dialogs.md、web.md）：雙大括號包起來的名稱由伺服器換成這個語言的文字，T 是整份字串表 -->
+  <script>const T = {{texts}};</script>
   <!-- ?v= 是版本號：改了 app.js 或 style.css 就加一，瀏覽器才會丟掉快取的舊檔 -->
-  <script src="/static/app.js?v=11"></script>
+  <script src="/static/app.js?v=12"></script>
 </body>
 </html>

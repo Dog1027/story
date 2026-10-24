@@ -22,6 +22,9 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from story.core import prompts
+
+UI = prompts.ui("core")  # 題材包格式問題的說明（story/ui/語言/core.md）
 BUILTIN_DIR = Path(__file__).resolve().parent.parent / "genres"
 PERSONAL_DIR = Path.home() / ".config" / "story" / "genres"
 MAX_DESCRIPTION = 200  # 描述的字數上限：目錄每次規劃大綱都會整份送出
@@ -51,10 +54,10 @@ def parse_genre(folder: Path) -> Genre:
     try:
         text = (folder / "GENRE.md").read_text(encoding="utf-8").replace("\r\n", "\n")
     except OSError:
-        raise InvalidGenre("找不到 GENRE.md")
+        raise InvalidGenre(UI["genre_no_file"])
     match = FRONTMATTER.match(text)
     if not match:
-        raise InvalidGenre("GENRE.md 開頭要有 --- 包起來的設定欄位")
+        raise InvalidGenre(UI["genre_no_header"])
     fields = {}
     for line in match.group(1).splitlines():
         key, sep, value = line.partition(":")
@@ -64,13 +67,13 @@ def parse_genre(folder: Path) -> Genre:
     description = fields.get("description", "")
     guide = match.group(2).strip()
     if not description:
-        raise InvalidGenre("缺少 description（AI 靠它判斷故事適不適合這個題材）")
+        raise InvalidGenre(UI["genre_no_description"])
     if len(description) > MAX_DESCRIPTION:
-        raise InvalidGenre(f"description 超過 {MAX_DESCRIPTION} 字")
+        raise InvalidGenre(UI["genre_long_description"].format(max=MAX_DESCRIPTION))
     if not guide:
-        raise InvalidGenre("GENRE.md 沒有寫作指引")
+        raise InvalidGenre(UI["genre_no_guide"])
     if len(guide) > MAX_GUIDE:
-        raise InvalidGenre(f"寫作指引超過 {MAX_GUIDE} 字（目前 {len(guide)} 字）")
+        raise InvalidGenre(UI["genre_long_guide"].format(max=MAX_GUIDE, length=len(guide)))
     return Genre(
         name=name,
         description=description,
@@ -92,7 +95,7 @@ def _extra(path: Path) -> str:
         return ""
     text = path.read_text(encoding="utf-8").strip()
     if len(text) > MAX_EXTRA:
-        raise InvalidGenre(f"{path.name} 超過 {MAX_EXTRA} 字")
+        raise InvalidGenre(UI["genre_long_extra"].format(file=path.name, max=MAX_EXTRA))
     return text
 
 

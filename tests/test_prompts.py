@@ -71,3 +71,24 @@ def test_preview_shows_every_scenario_without_calling_the_ai(capsys):
         main(args)
         out = capsys.readouterr().out
         assert out.count("═" * 60) == 30 and not PLACEHOLDER.search(out), args
+
+
+def test_every_ui_text_used_in_the_code_exists():
+    """程式用到的介面文字都在 story/ui/語言/ 裡：寫錯名稱或翻譯時漏了一段，測試會指出是哪一個。"""
+    from pathlib import Path
+
+    src = Path(prompts.__file__).resolve().parent.parent
+    texts = {key for name in ("core", "shells", "dialogs", "terminal", "web") for key in prompts.ui(name)}
+    used = set()
+    for path in [*src.rglob("*.py"), src / "shells/web/static/app.js", src / "shells/web/static/index.html"]:
+        code = path.read_text(encoding="utf-8")
+        used |= set(re.findall(r"\b(?:UI|DIALOGS|TERMINAL)\[[\"'](\w+)[\"']\]", code))
+        used |= set(re.findall(r"\bt\(\"(\w+)\"", code)) | set(re.findall(r"\bT\.(\w+)", code))
+        used |= set(re.findall(r"\{\{([a-z_]+)\}\}", code)) - {"texts"}
+    assert used and not used - texts, sorted(used - texts)
+
+
+def test_web_page_is_filled_with_the_language_texts():
+    from story.shells.web import PAGE
+
+    assert "{{" not in PAGE and 'lang="zh-Hant"' in PAGE and "const T = {" in PAGE

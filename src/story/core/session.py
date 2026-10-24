@@ -17,6 +17,7 @@ from google.genai import errors
 
 from story.core.records import DEFAULT_PREMISE, SAVE_PATH, ChangeGroups, change_groups, ending_record, load, memory_text, save, snapshot
 from story.core.engine import LOG_PATH, TIMEOUT_ACTION, Engine, condition_list, is_key_error, warning_level
+from story.core import prompts
 from story.core.models import GameState, word
 
 Phase = Literal[
@@ -28,24 +29,20 @@ Phase = Literal[
     "ended",  # 尾聲寫完，可以再玩一次
 ]
 
-HELP_TEXT = """\
-遊戲中：輸入數字選擇選項，或直接寫下你的行動。
-
-/state      看程式記住了什麼
-/restart    重新開始
-/help       顯示這份說明
-
-開新故事時：
-直接送出空白        使用預設的故事前提
-/suggest           讓 AI 幫你想一個開頭
-/random            從題材包的開頭靈感裡換一個（不用等 AI）
-/timed on|off      開啟或關閉限時模式（情勢緊迫時要在時間內做出決定）
-/genre 名稱         選擇題材（題材包），或 /genre 自動、/genre 不套用
-
-限時模式的倒數由外殼負責，時間到時送出 /timeout。"""
+UI = prompts.ui("core")  # 給玩家看的文字（story/ui/語言/core.md）
+GENRE_AUTO, GENRE_NONE = "auto", "none"  # 題材的兩個特別選項：依前提由 AI 挑、不套用題材（顯示的字是 genre_label()）
+CONTINUE_CHOICES = [UI["choice_continue"], UI["choice_new_game"]]
+CONFIRM_CHOICES = [UI["choice_confirm"], UI["choice_cancel"]]
+PLAY_AGAIN_CHOICES = [UI["choice_play_again"]]
 
 
-GENRE_AUTO, GENRE_NONE = "自動", "不套用"  # 題材的兩個特別選項：依前提由 AI 挑、不套用題材
+def genre_label(choice: str) -> str:
+    """題材選擇顯示的字：特別選項換成這個語言的詞，題材包就是它的名稱。"""
+    return {GENRE_AUTO: UI["genre_auto"], GENRE_NONE: UI["genre_none"]}.get(choice, choice)
+
+
+def join(items) -> str:
+    return UI["list_sep"].join(items)
 
 
 @dataclass
@@ -148,10 +145,7 @@ class StoryCore:
         state = load(self.save_path)
         if state and self._resumable(state):
             self.state, self.timed, self._phase = state, state.timed_mode, "ask_continue"
-            return self._reply(
-                choices=["繼續", "開新遊戲"],
-                notice=f"找到存檔（第 {state.turn} 回合）：{state.premise}",
-            )
+            return self._reply(choices=CONTINUE_CHOICES, notice=UI["found_save"].format(turn=state.turn, premise=state.premise))
         return self._ask_premise()
 
     def action_for(self, text: str) -> str | None:
@@ -170,11 +164,11 @@ class StoryCore:
         """送出一句玩家輸入，拿回覆。可能會呼叫 LLM，所以會花幾秒。"""
         raw = text.strip()
         if raw == "/help":
-            return self._reply(info=("說明", HELP_TEXT), **self._screen())
+            return self._reply(info=(UI["help_title"], UI["help"]), **self._screen())
         if raw == "/state":
             if self.state is None:
-                return self._reply(notice="還沒有開始故事。", **self._screen())
-            return self._reply(info=("程式記住的東西", memory_text(self.state)), **self._screen())
+                return self._reply(notice=UI["no_story_yet"], **self._screen())
+            return self._reply(info=(UI["memory_title"], memory_text(self.state)), **self._screen())
 
         handler = {
             "ask_continue": self._on_ask_continue,
@@ -189,13 +183,13 @@ class StoryCore:
     # ---------- 各階段 ----------
 
     def _on_ask_continue(self, raw: str) -> Reply:
-        answer = pick_choice(raw, ["繼續", "開新遊戲"])
-        if answer == "繼續" or raw == "/continue":
+        answer = pick_choice(raw, CONTINUE_CHOICES)
+        if answer == CONTINUE_CHOICES[0] or raw == "/continue":
             return self._resume()
-        if answer == "開新遊戲" or raw in ("/new", "/restart"):
+        if answer == CONTINUE_CHOICES[1] or raw in ("/new", "/restart"):
             self.last_premise = self.state.premise if self.state else ""
             return self._ask_premise()
-        return self._reply(choices=["繼續", "開新遊戲"], notice="請輸入 1（繼續）或 2（開新遊戲）。")
+        return self._reply(choices=CONTINUE_CHOICES, notice=UI["answer_continue"])
 
     def _on_ask_premise(self, raw: str) -> Reply:
         if raw == "/suggest":
@@ -208,22 +202,23 @@ class StoryCore:
             return self._ask_premise(suggestion=suggestion)
         if raw == "/random":
             self.suggested, self.drawn = "", self._draw_premise(avoid=self._default_premise())
-            return self._ask_premise(notice="換了一個開頭。")
+            return self._ask_premise(notice=UI["rerolled"])
         if raw.startswith("/timed"):
             arg = raw.removeprefix("/timed").strip()
             self.timed = {"on": True, "off": False}.get(arg, not self.timed)
-            return self._ask_premise(notice=f"已切換為{'限時' if self.timed else '一般'}模式。")
+            return self._ask_premise(notice=UI["mode_switched_timed" if self.timed else "mode_switched_normal"])
         if raw.startswith("/genre"):
-            choice = raw.removeprefix("/genre").strip()
+            typed = raw.removeprefix("/genre").strip()
+            choice = {UI["genre_auto"]: GENRE_AUTO, UI["genre_none"]: GENRE_NONE}.get(typed, typed)  # 打字的也可以用顯示的詞
             if choice not in (GENRE_AUTO, GENRE_NONE, *self.engine.genres):
-                options = "、".join([GENRE_AUTO, GENRE_NONE, *self.engine.genres])
-                return self._ask_premise(notice=f"沒有「{choice}」這個題材，可以選：{options}")
+                options = join(genre_label(g) for g in (GENRE_AUTO, GENRE_NONE, *self.engine.genres))
+                return self._ask_premise(notice=UI["genre_unknown"].format(choice=typed, options=options))
             self.genre = choice
             if self.drawn and not self.suggested and self.drawn not in self._premise_pool():
                 self.drawn = self._draw_premise()  # 抽到的開頭跟著換成新題材的
-            return self._ask_premise(notice=f"題材：{choice}")
+            return self._ask_premise(notice=UI["genre_chosen"].format(choice=genre_label(choice)))
         if raw.startswith("/"):
-            return self._ask_premise(notice=f"沒有 {raw} 這個指令，輸入 /help 查看說明。")
+            return self._ask_premise(notice=UI["unknown_command"].format(command=raw))
 
         premise = " ".join(raw.split()) or self._default_premise()
         state = self._new_state(premise)
@@ -238,10 +233,10 @@ class StoryCore:
     def _on_playing(self, raw: str) -> Reply:
         if raw == "/restart":
             self._phase = "confirm_restart"
-            return self._reply(choices=["確定", "取消"], notice="確定要放棄目前進度、重新開始嗎？")
+            return self._reply(choices=CONFIRM_CHOICES, notice=UI["confirm_restart"])
         action = self.action_for(raw)
         if action is None:
-            notice = f"沒有 {raw} 這個指令，輸入 /help 查看說明。" if raw else "請輸入行動，或輸入數字選擇選項。"
+            notice = UI["unknown_command"].format(command=raw) if raw else UI["enter_action"]
             return self._reply(notice=notice, **self._screen())
         return self._take_action(action, timeout=raw == "/timeout")
 
@@ -258,7 +253,7 @@ class StoryCore:
         except (errors.APIError, RuntimeError) as e:
             self.state = load(self.save_path) or self.state  # act() 可能已經改了一半的狀態，從存檔還原
             self._turn_failed()
-            return self._failed(e, lambda **kw: self._reply(**self._screen(), **kw), hint="這回合沒有推進，請重新選擇行動。")
+            return self._failed(e, lambda **kw: self._reply(**self._screen(), **kw), hint=UI["failed_turn"])
         save(self.state, self.save_path)
         if self.state.game_over:
             self._phase = "ending"
@@ -267,14 +262,14 @@ class StoryCore:
         return self._turn_reply(before)
 
     def _on_confirm_restart(self, raw: str) -> Reply:
-        answer = pick_choice(raw, ["確定", "取消"])
-        if answer == "確定":
+        answer = pick_choice(raw, CONFIRM_CHOICES)
+        if answer == CONFIRM_CHOICES[0]:
             self.last_premise = self.state.premise
             return self._ask_premise()
-        if answer == "取消":
+        if answer == CONFIRM_CHOICES[1]:
             self._phase = "playing"
             return self._reply(**self._screen())
-        return self._reply(choices=["確定", "取消"], notice="請輸入 1（確定）或 2（取消）。")
+        return self._reply(choices=CONFIRM_CHOICES, notice=UI["answer_confirm"])
 
     def _on_ending(self, raw: str) -> Reply:
         """故事結束後的下一次輸入：寫尾聲。尾聲寫失敗也照樣進到結束階段，可以再玩一次。"""
@@ -285,19 +280,19 @@ class StoryCore:
                 self.engine.write_epilogue(s)
                 save(s, self.save_path)
             except (errors.APIError, RuntimeError) as e:
-                notice = f"尾聲生成失敗：{str(e)[:200]}"
+                notice = UI["epilogue_failed"].format(error=str(e)[:200])
         self._phase = "ended"
         return self._reply(
-            choices=["再玩一次"],
+            choices=PLAY_AGAIN_CHOICES,
             notice=notice,
             ending=Ending(title=s.ending_title, epilogue=s.epilogue, record=ending_record(s)),
         )
 
     def _on_ended(self, raw: str) -> Reply:
-        if pick_choice(raw, ["再玩一次"]) or raw in ("/new", "/restart"):
+        if pick_choice(raw, PLAY_AGAIN_CHOICES) or raw in ("/new", "/restart"):
             self.last_premise = self.state.premise
             return self._ask_premise()
-        return self._reply(choices=["再玩一次"], notice="輸入 1 再玩一次。")
+        return self._reply(choices=PLAY_AGAIN_CHOICES, notice=UI["answer_play_again"])
 
     # ---------- 共用 ----------
 
@@ -358,7 +353,7 @@ class StoryCore:
     def _resume(self) -> Reply:
         self._phase = "playing"
         s = self.state
-        return self._reply(narration=s.current_narration, notice=f"讀取存檔：{s.premise}", resumed=True, **self._screen())
+        return self._reply(narration=s.current_narration, notice=UI["resumed"].format(premise=s.premise), resumed=True, **self._screen())
 
     def _turn_reply(self, before) -> Reply:
         s = self.state
@@ -377,8 +372,8 @@ class StoryCore:
     def _failed(self, e: Exception, retry_screen, hint: str = "") -> Reply:
         """LLM 呼叫失敗：留在原本的階段，讓外殼決定要不要換 key 後重送。"""
         if is_key_error(e):
-            return retry_screen(error="api_key", notice="API key 無效或沒有權限。")
-        return retry_screen(error="api", notice=f"{hint}出錯了：{str(e)[:300]}")
+            return retry_screen(error="api_key", notice=UI["key_invalid"])
+        return retry_screen(error="api", notice=UI["failed"].format(hint=hint, error=str(e)[:300]))
 
     def _characters(self) -> list[Status]:
         """回覆裡每位角色的狀態：單人模式只有主角一位、沒有名字，外殼跟多人模式用同一套顯示。"""
@@ -426,60 +421,59 @@ class StoryCore:
 
 def conditions_text(status: Status) -> str:
     """狀態直接列出，不分身體與精神；危險時先警告。背包的變化會寫在每回合的變化裡，完整內容用 /state 看。"""
-    items = "、".join(f"{n}（{word('severity', v)}）" for n, v in status.conditions) or word("level", "healthy")
-    return f"⚠ {word('level', status.warning)}　{items}" if status.warning else items
+    items = join(UI["condition"].format(name=n, severity=word("severity", v)) for n, v in status.conditions) or word("level", "healthy")
+    return UI["text_warning"].format(level=word("level", status.warning), conditions=items) if status.warning else items
 
 
 def status_line(turn: int, status: Status, timed: bool) -> str:
-    return f"回合 {turn}{'（限時模式）' if timed else ''}｜狀態 {conditions_text(status)}"
+    return UI["text_status"].format(turn=turn, timed=UI["text_status_timed"] if timed else "", conditions=conditions_text(status))
 
 
 def party_line(status: Status) -> str:
-    return f"{status.name}｜{conditions_text(status) if status.alive else '已倒下'}"
+    return UI["text_party_line"].format(name=status.name, conditions=conditions_text(status) if status.alive else UI["text_fallen"])
 
 
 def changes_line(groups: ChangeGroups) -> str:
-    return "　".join(f"{label} " + "、".join(text for text, _ in items) for label, items in groups)
+    return UI["text_changes_sep"].join(UI["text_changes"].format(label=label, items=join(text for text, _ in items)) for label, items in groups)
 
 
 def render_text(reply: Reply) -> str:
     """把回覆組成一段完整的純文字。"""
     parts: list[str] = []
     if reply.notice:
-        parts.append(f"（{reply.notice}）")
+        parts.append(UI["text_notice"].format(notice=reply.notice))
     if reply.info:
         title, body = reply.info
-        parts.append(f"【{title}】\n{body}")
+        parts.append(UI["text_info"].format(title=title, body=body))
     if reply.phase == "ask_premise":
         if reply.suggestion:
-            parts.append("想到一個開頭了，直接送出空白就用它開始，也可以自己修改後送出。")
-        parts.append(
-            f"新的故事（{'限時' if reply.timed else '一般'}模式，題材：{reply.genre}）。輸入故事前提，或直接送出空白使用：\n{reply.premise_default}\n"
-            "（/random 換一個，/suggest 讓 AI 幫你想，/timed 切換限時模式，/genre 選擇題材）"
-        )
+            parts.append(UI["text_suggested"])
+        mode = UI["text_mode_timed" if reply.timed else "text_mode_normal"]
+        parts.append(UI["text_new_story"].format(mode=mode, genre=genre_label(reply.genre), premise=reply.premise_default))
         if reply.genres:
-            parts.append("可選的題材：" + "、".join([GENRE_AUTO, GENRE_NONE, *(name for name, _ in reply.genres)]))
+            choices = [GENRE_AUTO, GENRE_NONE, *(name for name, _ in reply.genres)]
+            parts.append(UI["text_genres"].format(genres=join(genre_label(g) for g in choices)))
     if reply.narration:
         parts.append(reply.narration)
     for name, groups in reply.changes:
-        parts.append(f"{name}　{changes_line(groups)}" if name else changes_line(groups))
+        parts.append(UI["text_named_changes"].format(name=name, changes=changes_line(groups)) if name else changes_line(groups))
     if reply.ending:
         e = reply.ending
-        parts.append(f"─── {e.title or '故事結束'} ───")
+        parts.append(UI["text_ending_title"].format(title=e.title or UI["text_story_over"]))
         if e.epilogue:
             parts.append(e.epilogue)
         parts.append(e.record)
     if reply.characters and reply.phase in ("playing", "ending") and reply.narration:
         if reply.characters[0].name:  # 多人：每位角色一行
-            parts.append("\n".join(party_line(st) for st in reply.characters) + ("\n限時模式" if reply.timed else ""))
+            parts.append("\n".join(party_line(st) for st in reply.characters) + ("\n" + UI["text_mode_timed"] if reply.timed else ""))
         else:
             parts.append(status_line(reply.turn, reply.characters[0], reply.timed))
     if reply.phase == "ending":
-        parts.append("（故事結束了。送出任何文字查看尾聲。）")
+        parts.append(UI["text_send_for_epilogue"])
     if reply.actor:
-        parts.append(f"輪到 {reply.actor} 行動：")
+        parts.append(UI["text_actor"].format(name=reply.actor))
     if reply.choices:
         parts.append("\n".join(f"{i}. {c}" for i, c in enumerate(reply.choices, 1)))
     if reply.time_limit:
-        parts.append(f"（限時 {reply.time_limit} 秒）")
+        parts.append(UI["text_time_limit"].format(seconds=reply.time_limit))
     return "\n\n".join(parts)

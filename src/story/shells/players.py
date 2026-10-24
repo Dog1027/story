@@ -3,6 +3,10 @@
 import re
 from pathlib import Path
 
+from story.core import ui_text
+
+UI = ui_text("shells")  # story/ui/語言/shells.md
+
 SAVES_DIR = Path("saves")
 MAX_NAME_LEN = 20
 # 名字會變成檔名，只允許文字、數字、底線與連字號（含中文），擋掉 ../ 這類路徑字元
@@ -16,11 +20,11 @@ class InvalidName(ValueError):
 def check_name(raw: str) -> str:
     name = raw.strip()
     if not name:
-        raise InvalidName("請輸入名字。")
+        raise InvalidName(UI["name_empty"])
     if len(name) > MAX_NAME_LEN:
-        raise InvalidName(f"名字最多 {MAX_NAME_LEN} 個字。")
+        raise InvalidName(UI["name_too_long"].format(max=MAX_NAME_LEN))
     if not NAME_PATTERN.match(name):
-        raise InvalidName("名字只能包含文字、數字、底線和連字號。")
+        raise InvalidName(UI["name_bad_chars"])
     return name
 
 

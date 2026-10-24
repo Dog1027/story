@@ -42,7 +42,7 @@ from story.core.engine import (
 from story.core.models import Character, GameState, PartyBeat
 from story.core.records import change_groups, snapshot
 from story.core import prompts
-from story.core.session import Reply, Status, StoryCore, render_text
+from story.core.session import UI, Reply, Status, StoryCore, render_text
 
 PARTY_SYSTEM_PROMPT = prompts.load("party_system")
 PARTY_TURN = prompts.sections("party_turn")
@@ -137,7 +137,7 @@ class PartyEngine(Engine):
             self.draft = prefix + text.lstrip()
 
         text, _ = self._stream(
-            "倒下",
+            "death",
             on_text,
             model=MODEL,
             contents=self.deaths_prompt(state, names),
@@ -181,7 +181,7 @@ class PartyCore(StoryCore):
     ):
         names = [n.strip() for n in players if n.strip()]
         if not MIN_PLAYERS <= len(names) <= MAX_PLAYERS or len(set(names)) != len(names):
-            raise ValueError(f"多人模式需要 {MIN_PLAYERS} 到 {MAX_PLAYERS} 位不重複的玩家。")
+            raise ValueError(UI["party_size"].format(min=MIN_PLAYERS, max=MAX_PLAYERS))
         super().__init__(api_key, save_path=save_path, log_path=log_path, engine=engine or PartyEngine(api_key=api_key, log_path=log_path))
         self._players = names
         self.pending: dict[str, str] = {}  # 這一回合已經輸入的行動
@@ -214,7 +214,7 @@ class PartyCore(StoryCore):
             actor = self._actor()
             self.pending[actor.name] = action
             if self._waiting():
-                return self._reply(notice=f"已記下 {actor.name} 的行動。", **self._screen())
+                return self._reply(notice=UI["action_recorded"].format(name=actor.name), **self._screen())
 
         return self._play_turn({c.name: self.pending[c.name] for c in self.state.party if c.name in self.pending})
 
@@ -263,9 +263,9 @@ class PartyCore(StoryCore):
         if self._phase == "playing" and (not text.strip().startswith("/") or text.strip() == "/away"):  # 行動才要檢查
             character = next((c for c in self.state.party if c.name == name), None)
             if character is None or not character.alive:
-                return self._reply(notice="你的角色已經倒下了。", **self._screen())
+                return self._reply(notice=UI["character_fallen"], **self._screen())
             if name in self.pending:
-                return self._reply(notice="你這回合已經行動了，等其他人行動。", **self._screen())
+                return self._reply(notice=UI["already_acted"], **self._screen())
         self._as = name
         try:
             return self.send(text)
