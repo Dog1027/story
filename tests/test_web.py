@@ -68,7 +68,7 @@ async def test_single_player_plays_a_turn(isolated):
         assert (await browser.expect("action"))["text"] == "往上爬"
         await browser.expect("changes", lambda m: m["name"] == "" and m["groups"][0][0] == "新增")
         status = (await browser.expect("status", lambda m: m["status"] and m["status"]["turn"] == 2))["status"]
-        assert status["characters"][0]["items"] == [["小腿挫傷", "中"]] and not status["party"]
+        assert status["characters"][0]["items"] == [["小腿挫傷", "moderate"]] and not status["party"]
         assert (Path("saves") / "阿明.json").exists()  # 依名字分開存檔
 
 

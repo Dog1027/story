@@ -68,11 +68,11 @@ button { cursor: pointer; }
 .lobby { color: var(--muted); }
 .lobby strong { color: var(--ink); }
 
-/* 程度與語氣（核心給的 tone） */
-.t-輕 { color: var(--sev-1); }
-.t-中 { color: var(--sev-2); }
-.t-重, .t-bad, .t-重傷, .t-瀕死, .t-死亡 { color: var(--sev-3); }
-.t-good, .t-良好 { color: var(--good); }
+/* 程度與語氣（核心給的代號） */
+.t-light { color: var(--sev-1); }
+.t-moderate { color: var(--sev-2); }
+.t-severe, .t-bad { color: var(--sev-3); }
+.t-good, .t-healthy { color: var(--good); }
 .t-muted { color: var(--muted); }
 
 /* ---------- 故事區 ---------- */

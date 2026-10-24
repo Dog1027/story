@@ -54,7 +54,7 @@ def sample_state(party: bool, genre: str, **fields) -> GameState:
         flags=["燈塔的門被人從外面鎖上"],
         current_narration="日誌最後一頁寫著：「燈號三長一短，代表他們來了。」窗外，海上亮起了一盞燈。",
     )
-    wounds = [Condition(name="右臂撕裂傷", kind="身體", severity="中"), Condition(name="恐懼", kind="精神", severity="輕")]
+    wounds = [Condition(name="右臂撕裂傷", kind="body", severity="moderate"), Condition(name="恐懼", kind="mind", severity="light")]
     if party:
         state.party = [Character(name="阿明", conditions=wounds, inventory=["油燈"]), Character(name="小華", inventory=["鑰匙"])]
     else:

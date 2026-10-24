@@ -149,7 +149,7 @@ async def test_a_turn_reveals_choices_and_status_only_after_the_narration(engine
     assert ("prepare_choices", ["點亮油燈", "躲起來"], True) in view.calls  # 限時：介面可以先空出倒數條
     status = [c[1] for c in view.calls if c[0] == "set_status"][-1]
     assert status.turn == 2 and status.mode == "限時模式"
-    assert status.characters[0].items == [("小腿挫傷", "中")]
+    assert status.characters[0].items == [("小腿挫傷", "moderate")]
 
 
 async def test_ending_appears_one_part_at_a_time(engine):
@@ -178,13 +178,13 @@ async def test_invalid_key_asks_for_a_new_one_and_retries(engine):
 
 
 def test_status_line_lists_conditions_and_the_core_warning():
-    fine = status_line(3, [Status(conditions=[("疲勞", "中"), ("恐懼", "輕")])], timed=False)
+    fine = status_line(3, [Status(conditions=[("疲勞", "moderate"), ("恐懼", "light")])], timed=False)
     assert fine.mode == "一般模式" and not fine.party
-    assert fine.characters[0].warning == "" and fine.characters[0].items == [("疲勞", "中"), ("恐懼", "輕")]
-    danger = status_line(3, [Status(conditions=[("失血", "重")], warning="瀕死")], timed=True)
-    assert danger.characters[0].warning == "瀕死" and danger.mode == "限時模式"
+    assert fine.characters[0].warning == "" and fine.characters[0].items == [("疲勞", "moderate"), ("恐懼", "light")]
+    danger = status_line(3, [Status(conditions=[("失血", "severe")], warning="dying")], timed=True)
+    assert danger.characters[0].warning == "dying" and danger.characters[0].warning_text == "瀕死" and danger.mode == "限時模式"
     empty = status_line(1, [Status(conditions=[])], timed=False)
-    assert empty.characters[0].items == [("良好", "良好")]
+    assert empty.characters[0].items == [("良好", "healthy")]
     party = status_line(2, [Status(conditions=[], name="阿明", alive=False)], timed=False)
     assert party.party and party.characters[0].name == "阿明" and not party.characters[0].alive
 

@@ -37,8 +37,8 @@ def test_each_character_gets_own_conditions_items_and_choices():
     state = party_state()
     engine.start(state)
     a, b = by_name(state)["阿明"], by_name(state)["小華"]
-    assert [(c.name, c.severity) for c in a.conditions] == [("擦傷", "輕")] and a.inventory == ["油燈"]
-    assert [(c.name, c.kind) for c in b.conditions] == [("恐懼", "精神")] and b.inventory == []
+    assert [(c.name, c.severity) for c in a.conditions] == [("擦傷", "light")] and a.inventory == ["油燈"]
+    assert [(c.name, c.kind) for c in b.conditions] == [("恐懼", "mind")] and b.inventory == []
     assert a.choices == ["往上爬", "點燈"] and b.choices == ["躲起來"]
 
 
@@ -50,7 +50,7 @@ def test_shared_rules_apply_per_character():
     state = party_state()
     engine.start(state)
     engine.act(state, {"阿明": "包紮", "小華": "丟掉繩子"})
-    assert [(c.name, c.severity) for c in by_name(state)["阿明"].conditions] == [("刀傷", "中")]  # 好轉最多一級
+    assert [(c.name, c.severity) for c in by_name(state)["阿明"].conditions] == [("刀傷", "moderate")]  # 好轉最多一級
     assert by_name(state)["小華"].inventory == []  # 不能失去沒有的東西
 
 

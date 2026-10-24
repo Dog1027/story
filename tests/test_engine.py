@@ -41,18 +41,18 @@ def conditions(state):
 
 def test_new_conditions_are_added_with_kind():
     state, *_ = play(beat(conditions_changed=[cond("擦傷", "輕"), cond("恐懼", "中", "精神")]))
-    assert conditions(state) == {"擦傷": "輕", "恐懼": "中"}
-    assert {c.name: c.kind for c in state.conditions} == {"擦傷": "身體", "恐懼": "精神"}
+    assert conditions(state) == {"擦傷": "light", "恐懼": "moderate"}
+    assert {c.name: c.kind for c in state.conditions} == {"擦傷": "body", "恐懼": "mind"}
 
 
 def test_worsening_is_unlimited():
     state, *_ = play(beat(conditions_changed=[cond("刀傷", "輕")]), beat(conditions_changed=[cond("刀傷", "重")]))
-    assert conditions(state) == {"刀傷": "重"}
+    assert conditions(state) == {"刀傷": "severe"}
 
 
 def test_improving_is_limited_to_one_level_per_turn():
     state, *_ = play(beat(conditions_changed=[cond("刀傷", "重")]), beat(conditions_changed=[cond("刀傷", "輕")]))
-    assert conditions(state) == {"刀傷": "中"}
+    assert conditions(state) == {"刀傷": "moderate"}
 
 
 def test_removing_serious_body_condition_only_downgrades():
@@ -72,7 +72,7 @@ def test_mind_conditions_can_be_removed_directly():
 
 def test_removing_unknown_condition_is_ignored():
     state, *_ = play(beat(conditions_changed=[cond("擦傷", "輕")]), beat(conditions_removed=["不存在"]))
-    assert conditions(state) == {"擦傷": "輕"}
+    assert conditions(state) == {"擦傷": "light"}
 
 
 def test_long_condition_names_are_trimmed():
@@ -83,9 +83,9 @@ def test_long_condition_names_are_trimmed():
 def test_ai_can_correct_kind_of_old_condition():
     engine, _ = make_engine(beat(conditions_changed=[cond("驚魂未定", "中", "精神")]))
     state = GameState(premise="舊存檔", turn=5, minutes=0, conditions=[Condition(name="驚魂未定", severity="中")])
-    assert state.conditions[0].kind == "身體"  # 舊存檔一律先當成身體
+    assert state.conditions[0].kind == "body"  # 舊存檔一律先當成身體
     engine.act(state, "a")
-    assert state.conditions[0].kind == "精神"
+    assert state.conditions[0].kind == "mind"
 
 
 # ---------- 整體狀態與死亡 ----------
@@ -94,13 +94,13 @@ def test_ai_can_correct_kind_of_old_condition():
 @pytest.mark.parametrize(
     "conds, level",
     [
-        ([], "良好"),
-        ([("疲憊", "輕")], "輕傷"),
-        ([("扭傷", "中"), ("疲憊", "輕")], "受傷"),
-        ([("扭傷", "中"), ("割傷", "中")], "重傷"),
-        ([("骨折", "重")], "重傷"),
-        ([("骨折", "重"), ("扭傷", "中")], "瀕死"),
-        ([("骨折", "重"), ("失血", "重")], "死亡"),
+        ([], "healthy"),
+        ([("疲憊", "輕")], "minor"),
+        ([("扭傷", "中"), ("疲憊", "輕")], "injured"),
+        ([("扭傷", "中"), ("割傷", "中")], "serious"),
+        ([("骨折", "重")], "serious"),
+        ([("骨折", "重"), ("扭傷", "中")], "dying"),
+        ([("骨折", "重"), ("失血", "重")], "dead"),
     ],
 )
 def test_body_level(conds, level):
@@ -114,7 +114,7 @@ def test_mind_conditions_do_not_count_toward_death():
         Condition(name="絕望", kind="精神", severity="重"),
     ])
     assert body_score(state) == 0
-    assert body_level(state) == "良好"
+    assert body_level(state) == "healthy"
 
 
 def test_lethal_injury_ends_game_and_asks_ai_for_death_scene():
@@ -169,12 +169,12 @@ def test_medium_injury_can_fully_heal_over_days():
 
 def test_serious_body_injury_does_not_heal_by_time():
     state, *_ = play(beat(conditions_changed=[cond("骨折", "重")]), beat(time_passed="數天"), beat(time_passed="數天"))
-    assert conditions(state) == {"骨折": "重"}
+    assert conditions(state) == {"骨折": "severe"}
 
 
 def test_serious_mind_condition_fades_over_days():
     state, *_ = play(beat(conditions_changed=[cond("恐懼", "重", "精神")]), beat(time_passed="一夜"))
-    assert conditions(state) == {"恐懼": "重"}  # 重度要 2 天才降一級
+    assert conditions(state) == {"恐懼": "severe"}  # 重度要 2 天才降一級
     state2, *_ = play(beat(conditions_changed=[cond("恐懼", "重", "精神")]), beat(time_passed="數天"))
     assert conditions(state2) == {}  # 72 小時：重 → 中（48h）→ 輕（12h）→ 消失（2h）
 
@@ -404,7 +404,7 @@ def test_turn_log_is_written(isolated):
     engine.start(state)
     engine.act(state, "a")
     lines = engine.log_path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 2 and "擦傷(輕)" in lines[-1]
+    assert len(lines) == 2 and "擦傷(light)" in lines[-1]
 
 
 def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):

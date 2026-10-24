@@ -15,6 +15,7 @@ prompts/
     ├── plan.md          開新故事：挑題材、規劃大綱
     ├── premise.md       預設的開頭、「幫我想」
     ├── memory.md        記憶壓縮
+    ├── vocab.md         遊戲詞彙：輕／中／重、片刻／一夜……
     └── eval.md          評估（just eval）的評審標準，不會出現在遊戲裡
 ```
 
@@ -60,6 +61,7 @@ just prompts --genre 克蘇魯 arc   # 套用題材包，看規劃大綱
 | 預設的故事開頭 | `premise.md` | `default` |
 | 記憶壓縮要保留什麼 | `memory.md` | `system` |
 | 遊戲狀態裡的欄位名稱、時間的寫法 | `context.md` | `status_keys`、`status_empty`、`clock` |
+| 程度、時段這類遊戲詞彙用哪個字（AI 回傳與玩家看到的都是這些字） | `vocab.md` | `severity`、`kind`、`time_span`、`time_of_day`、`level`（只改冒號後面，改了 `schema.md`、`system.md` 裡提到的字也要一起改） |
 
 單人和多人的規則是分開的兩份，改了一份通常另一份也要跟著改。
 

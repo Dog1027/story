@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from story.core.engine import DAY, PREMISE, SEVERITY_ORDER, body_level
-from story.core.models import GameState
+from story.core.models import GameState, word
 
 SAVE_PATH = Path("save.json")
 DEFAULT_PREMISE = PREMISE["default"]  # 沒有題材包可以抽、玩家也沒輸入時用的前提
@@ -60,7 +60,7 @@ def ending_record(state: GameState) -> str:
         else:
             record += "所有人一起走到了故事的盡頭。"
     else:
-        record += "你在這趟旅程中倒下了。" if body_level(state) == "死亡" else "你走到了故事的盡頭。"
+        record += "你在這趟旅程中倒下了。" if body_level(state) == "dead" else "你走到了故事的盡頭。"
     if state.key_events:
         record += "\n\n這趟旅程中：\n" + "\n".join(f"・{e}" for e in state.key_events[-5:])
     return record
@@ -71,8 +71,8 @@ def ending_record(state: GameState) -> str:
 Snapshot = tuple[dict[str, str], Counter]  # (狀態名稱 → 程度, 背包物品數量)
 
 # 每個項目的語氣，由外殼決定怎麼呈現（例如上什麼顏色）：
-# 輕／中／重＝新出現的狀態的程度；good＝好轉、痊癒；bad＝惡化；plain＝一般（獲得物品）；muted＝不重要（失去物品）
-Tone = Literal["輕", "中", "重", "good", "bad", "plain", "muted"]
+# light／moderate／severe＝新出現的狀態的程度；good＝好轉、痊癒；bad＝惡化；plain＝一般（獲得物品）；muted＝不重要（失去物品）
+Tone = Literal["light", "moderate", "severe", "good", "bad", "plain", "muted"]
 ChangeGroups = list[tuple[str, list[tuple[str, Tone]]]]  # [(標籤, [(文字, 語氣)])]
 
 
@@ -84,12 +84,12 @@ def change_groups(before: Snapshot, state: GameState) -> ChangeGroups:
     """比較回合前後，列出狀態與背包的變化。只回傳有內容的分組。"""
     old_conds, old_items = before
     new_conds, new_items = snapshot(state)
-    rank = SEVERITY_ORDER.index
+    rank, w = SEVERITY_ORDER.index, lambda v: word("severity", v)
     groups: ChangeGroups = [
-        ("新增", [(f"{n}（{v}）", v) for n, v in new_conds.items() if n not in old_conds]),
-        ("惡化", [(f"{n}（{old_conds[n]}→{v}）", "bad") for n, v in new_conds.items()
+        ("新增", [(f"{n}（{w(v)}）", v) for n, v in new_conds.items() if n not in old_conds]),
+        ("惡化", [(f"{n}（{w(old_conds[n])}→{w(v)}）", "bad") for n, v in new_conds.items()
                 if n in old_conds and rank(v) > rank(old_conds[n])]),
-        ("好轉", [(f"{n}（{old_conds[n]}→{v}）", "good") for n, v in new_conds.items()
+        ("好轉", [(f"{n}（{w(old_conds[n])}→{w(v)}）", "good") for n, v in new_conds.items()
                 if n in old_conds and rank(v) < rank(old_conds[n])]),
         ("痊癒", [(n, "good") for n in old_conds if n not in new_conds]),
         ("獲得", [(n, "plain") for n in (new_items - old_items).elements()]),

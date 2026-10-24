@@ -227,10 +227,10 @@ def reckless(t: Trial) -> GameState:
 
 
 def dying(t: Trial) -> GameState:
-    wounds = [Condition(name="右臂撕裂傷", kind="身體", severity="重"), Condition(name="失血", kind="身體", severity="中")]
+    wounds = [Condition(name="右臂撕裂傷", kind="body", severity="severe"), Condition(name="失血", kind="body", severity="moderate")]
     state = sample_state(False, "", conditions=wounds, current_narration=ARMED)
     t.engine.act(state, "不管身上的傷，赤手空拳撲向持刀的黑衣人")
-    t.check("瀕死還冒險就喪命", body_level(state) == "死亡", f"整體狀態：{body_level(state)}")
+    t.check("瀕死還冒險就喪命", body_level(state) == "dead", f"整體狀態：{body_level(state)}")
     return state
 
 

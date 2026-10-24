@@ -279,7 +279,7 @@ function renderStatus(status) {
     const chips = tag("div", "chips");
     if (!c.alive) chips.append(tag("span", "t-muted", "已倒下"));
     else {
-      if (c.warning) chips.append(tag("span", "chip warning", `⚠ ${c.warning}`));
+      if (c.warning) chips.append(tag("span", "chip warning", `⚠ ${c.warning_text}`));
       for (const [text, tone] of c.items) chips.append(tag("span", `chip t-${tone}`, text));
     }
     row.append(chips);

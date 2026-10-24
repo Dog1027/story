@@ -14,9 +14,21 @@ PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 def test_every_prompt_file_loads():
     for name in ("system", "party_system"):
         assert prompts.load(name).startswith("你是")
-    for name in ("context", "turn", "party_turn", "progress", "plan", "premise", "memory", "schema", "eval"):
+    for name in ("context", "turn", "party_turn", "progress", "plan", "premise", "memory", "schema", "eval", "vocab"):
         parts = prompts.sections(name)
         assert parts and all(body.strip() for body in parts.values()), name
+
+
+def test_vocabulary_has_a_word_for_every_code():
+    """vocab.md：每個代號都有這個語言的詞，同一類的詞不重複（AI 回傳詞，程式才換得回代號）。"""
+    from typing import get_args
+
+    from story.core.models import CODES, code, word
+
+    for category, codes in CODES.items():
+        found = [word(category, c) for c in get_args(codes)]
+        assert len(set(found)) == len(found), category
+        assert all(code(category, word(category, c)) == c for c in get_args(codes))
 
 
 def test_comments_are_not_sent_to_the_ai():

@@ -14,7 +14,7 @@
 import asyncio
 from dataclasses import dataclass, field
 
-from story.core import MIN_PLAYERS, ChangeGroups, Ending, Reply, Status, StoryCore, pick_choice
+from story.core import MIN_PLAYERS, ChangeGroups, Ending, Reply, Status, StoryCore, pick_choice, word
 from story.shells.apikey import KEY_PATH, forget_api_key, get_saved_api_key, save_api_key
 from story.shells.players import MAX_NAME_LEN, InvalidName, Player, check_name
 from story.shells.room import START, Connection, Room
@@ -35,8 +35,9 @@ class CharacterLine:
 
     name: str
     alive: bool
-    warning: str  # 「重傷」「瀕死」時要醒目地警告；平常是空字串
-    items: list[tuple[str, str]]  # (文字, 程度)：每個狀態，不分身體與精神；沒有狀態時是 [("良好", "良好")]
+    warning: str  # 整體狀態的代號（serious、dying）：要醒目地警告；平常是空字串
+    warning_text: str  # 警告顯示的詞，例如「重傷」
+    items: list[tuple[str, str]]  # (文字, 語氣)：每個狀態的名稱與程度的代號，不分身體與精神；沒有狀態時是 [("良好", "healthy")]
 
 
 @dataclass
@@ -50,7 +51,9 @@ class StatusLine:
 
 def character_line(status: Status) -> CharacterLine:
     # 哪些程度要警告是遊戲規則，由核心判斷（status.warning）
-    return CharacterLine(status.name, status.alive, status.warning, list(status.conditions) or [("良好", "良好")])
+    warning_text = word("level", status.warning) if status.warning else ""
+    items = list(status.conditions) or [(word("level", "healthy"), "healthy")]
+    return CharacterLine(status.name, status.alive, status.warning, warning_text, items)
 
 
 def status_line(turn: int, characters: list[Status], timed: bool) -> StatusLine | None:

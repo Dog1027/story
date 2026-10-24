@@ -208,7 +208,7 @@ class StoryApp(App, View):
 
     def condition_parts(self, line: CharacterLine) -> list[Text]:
         """一位角色的狀態：危險時先警告，再依序列出每個狀態，依程度上色。"""
-        parts = [Text(f"⚠ {line.warning}", style=f"bold {self.colors[line.warning]}")] if line.warning else []
+        parts = [Text(f"⚠ {line.warning_text}", style=f"bold {self.colors[line.warning]}")] if line.warning else []
         return parts + [Text(text, style=self.colors[tone]) for text, tone in line.items]
 
     def turn_line(self, status: StatusLine) -> Text:
@@ -416,7 +416,7 @@ class StoryApp(App, View):
     def render_timer(self) -> None:
         width = 24
         filled = round(width * self.time_left / self.time_limit)
-        color = self.colors["重"] if self.time_left <= 5 else self.colors["輕"]
+        color = self.colors["severe"] if self.time_left <= 5 else self.colors["light"]
         self.query_one("#timer", Static).update(
             Text.assemble(
                 ("限時 ", "dim"), ("━" * filled, color), ("─" * (width - filled), "dim"),

@@ -311,10 +311,10 @@ async def test_status_lists_conditions_and_warns_only_when_in_danger():
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
         await pilot.pause()
-        app.set_status(status_line(3, [Status(conditions=[("疲勞", "中"), ("恐懼", "輕")])], timed=False))
+        app.set_status(status_line(3, [Status(conditions=[("疲勞", "moderate"), ("恐懼", "light")])], timed=False))
         line = status_text(app)
         assert "疲勞 · 恐懼" in line and "受傷" not in line and "⚠" not in line and "鑰匙" not in line
-        app.set_status(status_line(3, [Status(conditions=[("失血", "重")], warning="瀕死")], timed=False))
+        app.set_status(status_line(3, [Status(conditions=[("失血", "severe")], warning="dying")], timed=False))
         assert "⚠ 瀕死 · 失血" in status_text(app)
         app.set_status(status_line(3, [Status(conditions=[])], timed=False))
         assert "狀態 良好" in status_text(app)
@@ -334,7 +334,7 @@ async def test_theme_command_changes_colors_and_is_remembered(isolated):
         app.theme = "solarized-light"
         await pilot.pause()
         assert app.colors == palette(app.current_theme)
-        assert app.colors["良好"] != palette(app.get_theme("tokyo-night"))["良好"]
+        assert app.colors["healthy"] != palette(app.get_theme("tokyo-night"))["healthy"]
     assert (isolated / "theme").read_text() == "solarized-light"
 
     app = StoryApp()
@@ -359,7 +359,7 @@ async def test_status_chips_are_never_split_on_narrow_screens():
     """狀態很多、畫面很窄（手機）時：狀態移到第二排並換行，但「⚠ 重傷」這類小區塊不會被拆到兩行。"""
     from story.core.session import Status
 
-    me = [Status(conditions=[("右臂撕裂傷", "重"), ("小腿挫傷", "中"), ("恐懼", "中"), ("失眠", "輕")], warning="重傷")]
+    me = [Status(conditions=[("右臂撕裂傷", "severe"), ("小腿挫傷", "moderate"), ("恐懼", "moderate"), ("失眠", "light")], warning="serious")]
     for width in (100, 40):
         app = StoryApp()
         async with app.run_test(size=(width, 30)) as pilot:

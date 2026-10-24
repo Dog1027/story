@@ -13,7 +13,7 @@ from google.genai import types
 
 from story.core.genres import Genre, load_genres
 from story.core import prompts
-from story.core.models import Character, Condition, Epilogue, GameState, GenrePick, Severity, StoryArc, StoryBeat, Turn
+from story.core.models import Character, Condition, Epilogue, GameState, GenrePick, Severity, StoryArc, StoryBeat, Turn, VOCAB, code, word
 
 MODEL = "gemini-3.5-flash-lite"
 HISTORY_BUDGET = 20_000  # 劇情紀錄保留原文的字數上限；超過才把最舊的部分壓縮進摘要，一次壓到剩一半
@@ -29,7 +29,7 @@ MIN_TIME_LIMIT, MAX_TIME_LIMIT = 8, 60  # 限時模式的反應時間範圍（�
 MAX_CONDITION_LEN = 12  # 單一狀態最多幾個字，避免 LLM 寫成一整句
 
 # 身體狀況：LLM 只決定每個狀態的程度，總分與生死由程式計算
-SEVERITY_POINTS = {"輕": 1, "中": 2, "重": 4}
+SEVERITY_POINTS = {"light": 1, "moderate": 2, "severe": 4}
 DEATH_SCORE = 8  # 傷勢總分達到這個數字就死亡
 DYING_SCORE = 6  # 總分達到這個數字就是瀕死
 HEAVY_SCORE = 4  # 沒有重傷，但多處中傷累積到這個分數也算重傷
@@ -37,14 +37,14 @@ SEVERITY_ORDER = list(get_args(Severity))  # 由輕到重
 
 # 遊戲內時間：AI 只挑類別，換算成分鐘由程式負責
 HOUR, DAY = 60, 24 * 60
-TIME_SPANS = {"瞬間": 1, "片刻": 10, "一陣子": HOUR, "數小時": 4 * HOUR, "一夜": 8 * HOUR, "數天": 3 * DAY}
-TIME_OF_DAY_START = {"清晨": 6, "上午": 9, "中午": 12, "下午": 15, "傍晚": 18, "夜晚": 20, "深夜": 23}  # 開場時刻（點）
-TIME_OF_DAY_RANGES = [(5, "清晨"), (7, "上午"), (11, "中午"), (13, "下午"), (17, "傍晚"), (19, "夜晚"), (23, "深夜")]
+TIME_SPANS = {"instant": 1, "moment": 10, "while": HOUR, "hours": 4 * HOUR, "night": 8 * HOUR, "days": 3 * DAY}
+TIME_OF_DAY_START = {"dawn": 6, "morning": 9, "noon": 12, "afternoon": 15, "dusk": 18, "evening": 20, "late_night": 23}  # 開場時刻（點）
+TIME_OF_DAY_RANGES = [(5, "dawn"), (7, "morning"), (11, "noon"), (13, "afternoon"), (17, "dusk"), (19, "evening"), (23, "late_night")]
 
 # 自然恢復：在同一程度下經過多久會好轉一級。身體的重傷不會自己好，要靠劇情中的治療；精神狀態都會隨時間平復
 HEAL_TIME = {
-    "身體": {"輕": 6 * HOUR, "中": 2 * DAY},
-    "精神": {"輕": 2 * HOUR, "中": 12 * HOUR, "重": 2 * DAY},
+    "body": {"light": 6 * HOUR, "moderate": 2 * DAY},
+    "mind": {"light": 2 * HOUR, "moderate": 12 * HOUR, "severe": 2 * DAY},
 }
 LOG_PATH = Path("story_log.jsonl")  # 每回合的狀態變化紀錄
 
@@ -122,8 +122,8 @@ def is_key_error(e: Exception) -> bool:
 def clock_text(minutes: int) -> str:
     """例如「第 2 天 傍晚（18:30）」。只放進給 AI 的提示，不顯示給玩家。"""
     day, hour, minute = minutes // DAY + 1, minutes % DAY // HOUR, minutes % HOUR
-    period = next((name for start, name in reversed(TIME_OF_DAY_RANGES) if hour >= start), "深夜")
-    return CONTEXT["clock"].format(day=day, period=period, hour=hour, minute=minute)
+    period = next((name for start, name in reversed(TIME_OF_DAY_RANGES) if hour >= start), "late_night")
+    return CONTEXT["clock"].format(day=day, period=word("time_of_day", period), hour=hour, minute=minute)
 
 
 # 下面的規則函式都只用到 conditions／inventory：單人模式傳 GameState（主角），多人模式傳 Character
@@ -131,11 +131,11 @@ Holder = GameState | Character
 
 
 def body_conditions(who: Holder) -> list[Condition]:
-    return [c for c in who.conditions if c.kind == "身體"]
+    return [c for c in who.conditions if c.kind == "body"]
 
 
 def mind_conditions(who: Holder) -> list[Condition]:
-    return [c for c in who.conditions if c.kind == "精神"]
+    return [c for c in who.conditions if c.kind == "mind"]
 
 
 def body_score(who: Holder) -> int:
@@ -144,46 +144,45 @@ def body_score(who: Holder) -> int:
 
 
 def condition_list(who: Holder) -> list[tuple[str, str]]:
-    """給外殼顯示的狀態：(名稱, 程度)，身體在前、精神在後。"""
+    """給外殼顯示的狀態：(名稱, 程度的代號)，身體在前、精神在後。"""
     return [(c.name, c.severity) for c in body_conditions(who) + mind_conditions(who)]
 
 
-LEVEL_NAMES = ("良好", "輕傷", "受傷", "重傷", "瀕死", "死亡")  # body_level() 的整體狀態
-WARNING_LEVELS = ("重傷", "瀕死")  # 整體狀態到這個程度要警告玩家：再受傷就有生命危險
+WARNING_LEVELS = ("serious", "dying")  # 整體狀態到這個程度要警告玩家：再受傷就有生命危險
 
 
 def warning_level(who: Holder) -> str:
-    """要警告玩家的整體狀態（重傷、瀕死），不危險時是空字串。"""
+    """要警告玩家的整體狀態（serious、dying），不危險時是空字串。"""
     level = body_level(who)
     return level if level in WARNING_LEVELS else ""
 
 
 def body_level(who: Holder) -> str:
-    """整體狀態看最嚴重的那一項：有重傷才算重傷（或多處中傷累積），只有輕微狀態就是輕傷。"""
+    """整體狀態（models.Level 的代號）看最嚴重的那一項：有重傷才算重傷（或多處中傷累積），只有輕微狀態就是輕傷。"""
     score = body_score(who)
     worst = {c.severity for c in body_conditions(who)}
     if score >= DEATH_SCORE:
-        return "死亡"
+        return "dead"
     if score >= DYING_SCORE:
-        return "瀕死"
-    if "重" in worst or score >= HEAVY_SCORE:
-        return "重傷"
-    if "中" in worst:
-        return "受傷"
-    return "輕傷" if worst else "良好"
+        return "dying"
+    if "severe" in worst or score >= HEAVY_SCORE:
+        return "serious"
+    if "moderate" in worst:
+        return "injured"
+    return "minor" if worst else "healthy"
 
 
 # ---------- 套用 AI 提議的規則（單人、多人共用） ----------
 
 
 def advance_clock(state: GameState, time_passed: str, start_time_of_day: str) -> tuple[int, bool]:
-    """推進回合數與遊戲內時鐘。回傳 (經過的分鐘數, 是否為開場)。"""
+    """推進回合數與遊戲內時鐘（兩個參數是 AI 回傳的詞）。回傳 (經過的分鐘數, 是否為開場)。"""
     state.turn += 1
     is_opening_turn = state.turn == 1
     if state.minutes is None:  # 開場或舊存檔：時間由 AI 依劇情決定，這回合不計經過的時間
-        state.minutes, elapsed = TIME_OF_DAY_START[start_time_of_day] * HOUR, 0
+        state.minutes, elapsed = TIME_OF_DAY_START[code("time_of_day", start_time_of_day)] * HOUR, 0
     else:
-        elapsed = TIME_SPANS[time_passed]
+        elapsed = TIME_SPANS[code("time_span", time_passed)]
         state.minutes += elapsed
     return elapsed, is_opening_turn
 
@@ -197,7 +196,7 @@ def apply_condition_changes(who: Holder, changed: list, removed_names: list[str]
         while c.severity in heal and c.minutes >= heal[c.severity]:
             # 多出來的時間延續到下一級，例如「數天」可能讓中傷一路好到痊癒
             c.minutes -= heal[c.severity]
-            if c.severity == "輕":
+            if c.severity == "light":
                 break
             c.severity = SEVERITY_ORDER[SEVERITY_ORDER.index(c.severity) - 1]
         else:
@@ -208,29 +207,30 @@ def apply_condition_changes(who: Holder, changed: list, removed_names: list[str]
     removed = {name.strip() for name in removed_names}
     remaining = []
     for c in who.conditions:
-        if c.name in removed and c.kind == "身體" and c.severity != "輕":
+        if c.name in removed and c.kind == "body" and c.severity != "light":
             c.severity, c.minutes = SEVERITY_ORDER[SEVERITY_ORDER.index(c.severity) - 1], 0
         elif c.name in removed:
             continue
         remaining.append(c)
     who.conditions = remaining  # 不存在的名稱自然被忽略
 
-    for change in changed:
+    for change in changed:  # AI 回報的類別與程度是這個語言的詞，換成代號
         name = change.name.strip()[:MAX_CONDITION_LEN]
-        if not name or name in LEVEL_NAMES:  # 「良好」「重傷」這類是整體狀態的評語，不是一種傷勢
+        if not name or name in VOCAB["level"].values():  # 「良好」「重傷」這類是整體狀態的評語，不是一種傷勢
             continue
+        kind, severity = code("kind", change.kind), code("severity", change.severity)
         existing = next((c for c in who.conditions if c.name == name), None)
         if existing:
-            existing.kind = change.kind  # 舊存檔的狀態一律當成身體，AI 回報時順便更正
+            existing.kind = kind  # 舊存檔的狀態一律當成身體，AI 回報時順便更正
             old_level = SEVERITY_ORDER.index(existing.severity)
-            new_level = SEVERITY_ORDER.index(change.severity)
+            new_level = SEVERITY_ORDER.index(severity)
             if new_level == old_level:
                 continue
             # 惡化不設限；好轉一回合最多一級，避免 AI 一次把重傷變成痊癒
             existing.severity = SEVERITY_ORDER[max(new_level, old_level - 1)]
             existing.minutes = 0
         else:
-            who.conditions.append(Condition(name=name, kind=change.kind, severity=change.severity))
+            who.conditions.append(Condition(name=name, kind=kind, severity=severity))
 
 
 def apply_items(who: Holder, gained: list[str], lost: list[str]) -> None:
@@ -289,7 +289,7 @@ def history_entry(turn: Turn, label: str) -> str:
 
 def overall_text(who: Holder) -> str:
     """遊戲狀態裡的「整體」：讓 AI 知道離死亡還有多遠。"""
-    return CONTEXT["overall"].format(level=body_level(who), score=body_score(who), death=DEATH_SCORE)
+    return CONTEXT["overall"].format(level=word("level", body_level(who)), score=body_score(who), death=DEATH_SCORE)
 
 
 def time_text(state: GameState) -> str:
@@ -299,7 +299,7 @@ def time_text(state: GameState) -> str:
 def condition_fields(who: Holder) -> dict:
     """遊戲狀態裡主角（或一位角色）的身體、精神與整體狀況。"""
     def listed(conditions: list[Condition], empty: str) -> list[str]:
-        return [CONTEXT["condition"].format(name=c.name, severity=c.severity) for c in conditions] or [STATUS_EMPTY[empty]]
+        return [CONTEXT["condition"].format(name=c.name, severity=word("severity", c.severity)) for c in conditions] or [STATUS_EMPTY[empty]]
 
     return {
         STATUS_KEYS["body"]: listed(body_conditions(who), "body"),

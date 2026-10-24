@@ -14,7 +14,7 @@ SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 def palette(theme: Theme) -> dict[str, str]:
     """狀態、傷勢、倒數用的顏色，從主題的成功／警告／錯誤色算出來，換主題時跟著變。
-    鍵是程度（輕、中、重）、整體狀態（良好……死亡）、核心回報變化的語氣（good、bad……），值是 Rich 樣式字串。"""
+    鍵是程度（light、moderate、severe）、整體狀態（healthy……dead）、核心回報變化的語氣（good、bad……）的代號，值是 Rich 樣式字串。"""
     ok = Color.parse(theme.success or "#9ece6a")
     warn = Color.parse(theme.warning or "#e0af68")
     bad = Color.parse(theme.error or "#f7768e")
@@ -23,7 +23,7 @@ def palette(theme: Theme) -> dict[str, str]:
     # 轉成 Rich 認得的顏色名稱（ansi 主題的顏色是 ansi_red 這種名稱，Rich 不認得，要換成 color(1)）
     ok, warn, mid, bad, worst = (c.rich_color.name for c in (ok, warn, mid, bad, worst))
     return {
-        "輕": warn, "中": mid, "重": bad,
-        "良好": ok, "輕傷": warn, "受傷": mid, "重傷": bad, "瀕死": worst, "死亡": worst,
+        "light": warn, "moderate": mid, "severe": bad,
+        "healthy": ok, "minor": warn, "injured": mid, "serious": bad, "dying": worst, "dead": worst,
         "good": ok, "bad": bad, "plain": "", "muted": "dim",
     }

@@ -14,6 +14,13 @@ def test_load_missing_file_returns_none(isolated):
     assert load(isolated / "nope.json") is None
 
 
+def test_saves_from_before_vocabulary_codes_still_load():
+    """以前的存檔裡，狀態的類別與程度是中文的詞；讀取時換成代號，換了語言也讀得懂。"""
+    old = '{"premise": "x", "conditions": [{"name": "骨折", "kind": "身體", "severity": "重"}, {"name": "恐懼", "kind": "精神", "severity": "輕"}]}'
+    state = GameState.model_validate_json(old)
+    assert [(c.kind, c.severity) for c in state.conditions] == [("body", "severe"), ("mind", "light")]
+
+
 def test_old_save_formats_still_load():
     old = '{"premise": "舊存檔", "turn": 39, "hp": 40, "max_hp": 100, "conditions": ["驚魂未定"]}'
     state = GameState.model_validate_json(old)
@@ -32,7 +39,7 @@ def test_change_groups_use_tones_not_colors():
         Condition(name="右臂撕裂傷", severity="重"),
     ])
     assert change_groups(before, after) == [
-        ("新增", [("右臂撕裂傷（重）", "重")]),
+        ("新增", [("右臂撕裂傷（重）", "severe")]),
         ("惡化", [("右腿扭傷（中→重）", "bad")]),
         ("好轉", [("驚魂未定（中→輕）", "good")]),
         ("痊癒", [("左肘擦傷", "good")]),

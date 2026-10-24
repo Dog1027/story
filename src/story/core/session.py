@@ -17,7 +17,7 @@ from google.genai import errors
 
 from story.core.records import DEFAULT_PREMISE, SAVE_PATH, ChangeGroups, change_groups, ending_record, load, memory_text, save, snapshot
 from story.core.engine import LOG_PATH, TIMEOUT_ACTION, Engine, condition_list, is_key_error, warning_level
-from story.core.models import GameState
+from story.core.models import GameState, word
 
 Phase = Literal[
     "ask_continue",  # 找到存檔，問要不要繼續
@@ -52,8 +52,8 @@ GENRE_AUTO, GENRE_NONE = "自動", "不套用"  # 題材的兩個特別選項：
 class Status:
     """狀態列需要的資料：一位角色（單人模式是主角）。背包不在這裡，變化在 changes，完整內容用 /state 看。"""
 
-    conditions: list[tuple[str, str]]  # 目前的狀態：(名稱, 程度)，身體在前、精神在後
-    warning: str = ""  # 要警告玩家的整體狀態（重傷、瀕死：再受傷就有生命危險）；不危險時是空字串
+    conditions: list[tuple[str, str]]  # 目前的狀態：(名稱, 程度的代號)，身體在前、精神在後
+    warning: str = ""  # 要警告玩家的整體狀態代號（serious、dying：再受傷就有生命危險）；不危險時是空字串。顯示的詞用 word("level", …)
     name: str = ""  # 多人模式：角色名字
     alive: bool = True  # 多人模式：角色是否還活著
 
@@ -426,8 +426,8 @@ class StoryCore:
 
 def conditions_text(status: Status) -> str:
     """狀態直接列出，不分身體與精神；危險時先警告。背包的變化會寫在每回合的變化裡，完整內容用 /state 看。"""
-    items = "、".join(f"{n}（{v}）" for n, v in status.conditions) or "良好"
-    return f"⚠ {status.warning}　{items}" if status.warning else items
+    items = "、".join(f"{n}（{word('severity', v)}）" for n, v in status.conditions) or word("level", "healthy")
+    return f"⚠ {word('level', status.warning)}　{items}" if status.warning else items
 
 
 def status_line(turn: int, status: Status, timed: bool) -> str:

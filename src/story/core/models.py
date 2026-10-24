@@ -1,6 +1,6 @@
 """遊戲資料結構：程式掌控的狀態（GameState）與 LLM 回傳的格式（StoryBeat）。"""
 
-from typing import Literal
+from typing import Literal, get_args
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -8,27 +8,58 @@ from story.core import prompts
 
 SCHEMA = prompts.sections("schema")  # 欄位說明（story/prompts/語言/schema.md），跟著回傳格式送給 AI
 
-Severity = Literal["輕", "中", "重"]
-ConditionKind = Literal["身體", "精神"]
-TimeSpan = Literal["瞬間", "片刻", "一陣子", "數小時", "一夜", "數天"]
-TimeOfDay = Literal["清晨", "上午", "中午", "下午", "傍晚", "夜晚", "深夜"]
+# 遊戲詞彙：程式與存檔用代號；給 AI 看、AI 回傳、顯示給玩家時，換成 story/prompts/語言/vocab.md 裡這個語言的詞
+Severity = Literal["light", "moderate", "severe"]  # 由輕到重
+ConditionKind = Literal["body", "mind"]
+TimeSpan = Literal["instant", "moment", "while", "hours", "night", "days"]
+TimeOfDay = Literal["dawn", "morning", "noon", "afternoon", "dusk", "evening", "late_night"]
+Level = Literal["healthy", "minor", "injured", "serious", "dying", "dead"]  # 身體的整體狀態，由好到壞
+CODES = {"severity": Severity, "kind": ConditionKind, "time_span": TimeSpan, "time_of_day": TimeOfDay, "level": Level}
+VOCAB = {category: prompts.table(body) for category, body in prompts.sections("vocab").items()}  # {類別: {代號: 詞}}
+for _category, _codes in CODES.items():
+    if missing := set(get_args(_codes)) - set(VOCAB.get(_category, {})):
+        raise ValueError(f"vocab.md 的「{_category}」少了：{'、'.join(sorted(missing))}")
+
+
+def word(category: str, code: str) -> str:
+    """代號 → 這個語言的詞，例如 word("severity", "severe") 是「重」。"""
+    return VOCAB[category][code]
+
+
+def code(category: str, text: str) -> str:
+    """這個語言的詞 → 代號（AI 回傳的是詞）。"""
+    return next(c for c, w in VOCAB[category].items() if w == text)
+
+
+def words(category: str):
+    """AI 回傳格式用的選項：這個類別所有的詞，依代號的順序。"""
+    return Literal[tuple(word(category, c) for c in get_args(CODES[category]))]
+
+
+# 舊存檔裡的狀態是中文的詞，讀取時換成代號
+OLD_WORDS = {"輕": "light", "中": "moderate", "重": "severe", "身體": "body", "精神": "mind"}
 
 
 class ConditionChange(BaseModel):
     """LLM 回報的狀態：新出現的，或程度改變的。"""
 
     name: str = Field(description=SCHEMA["ConditionChange.name"])
-    kind: ConditionKind = Field(description=SCHEMA["ConditionChange.kind"])
-    severity: Severity = Field(description=SCHEMA["ConditionChange.severity"])
+    kind: words("kind") = Field(description=SCHEMA["ConditionChange.kind"])
+    severity: words("severity") = Field(description=SCHEMA["ConditionChange.severity"])
 
 
 class Condition(BaseModel):
     """玩家身上的一個狀態。程式另外記錄在目前程度下經過了多少遊戲內時間，用來計算痊癒。"""
 
     name: str
-    kind: ConditionKind = "身體"  # 舊存檔沒有這個欄位，先當成身體；AI 下次回報時會更正
+    kind: ConditionKind = "body"  # 舊存檔沒有這個欄位，先當成身體；AI 下次回報時會更正
     severity: Severity
     minutes: int = 0
+
+    @field_validator("kind", "severity", mode="before")
+    @classmethod
+    def _old_words(cls, value):
+        return OLD_WORDS.get(value, value)
 
 
 class StoryBeat(BaseModel):
@@ -40,8 +71,8 @@ class StoryBeat(BaseModel):
     choices: list[str] = Field(description=SCHEMA["StoryBeat.choices"])
     conditions_changed: list[ConditionChange] = Field(description=SCHEMA["StoryBeat.conditions_changed"])
     conditions_removed: list[str] = Field(description=SCHEMA["StoryBeat.conditions_removed"])
-    time_passed: TimeSpan = Field(description=SCHEMA["StoryBeat.time_passed"])
-    start_time_of_day: TimeOfDay = Field(description=SCHEMA["StoryBeat.start_time_of_day"])
+    time_passed: words("time_span") = Field(description=SCHEMA["StoryBeat.time_passed"])
+    start_time_of_day: words("time_of_day") = Field(description=SCHEMA["StoryBeat.start_time_of_day"])
     time_limit: int = Field(description=SCHEMA["StoryBeat.time_limit"])
     milestone_reached: bool = Field(description=SCHEMA["StoryBeat.milestone_reached"])
     items_gained: list[str] = Field(description=SCHEMA["StoryBeat.items_gained"])
@@ -67,8 +98,8 @@ class PartyBeat(BaseModel):
     game_over: bool = Field(description=SCHEMA["PartyBeat.game_over"])
     narration: str = Field(description=SCHEMA["PartyBeat.narration"])
     character_updates: list[CharacterUpdate] = Field(description=SCHEMA["PartyBeat.character_updates"])
-    time_passed: TimeSpan = Field(description=SCHEMA["PartyBeat.time_passed"])
-    start_time_of_day: TimeOfDay = Field(description=SCHEMA["PartyBeat.start_time_of_day"])
+    time_passed: words("time_span") = Field(description=SCHEMA["PartyBeat.time_passed"])
+    start_time_of_day: words("time_of_day") = Field(description=SCHEMA["PartyBeat.start_time_of_day"])
     time_limit: int = Field(description=SCHEMA["PartyBeat.time_limit"])
     milestone_reached: bool = Field(description=SCHEMA["PartyBeat.milestone_reached"])
     flags_set: list[str] = Field(description=SCHEMA["PartyBeat.flags_set"])
@@ -163,4 +194,4 @@ class GameState(BaseModel):
     @classmethod
     def _upgrade_old_conditions(cls, value):
         """相容舊存檔：以前的狀態只是字串，一律當成輕微。"""
-        return [{"name": c, "severity": "輕"} if isinstance(c, str) else c for c in value]
+        return [{"name": c, "severity": "light"} if isinstance(c, str) else c for c in value]
