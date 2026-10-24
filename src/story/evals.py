@@ -154,7 +154,7 @@ class Trial:
 
     def basics(self, state: GameState, may_end: bool = False) -> None:
         """每個情境都要符合的：字數、選項個數，以及故事還沒結束。"""
-        length = len(re.sub(r"\s", "", state.current_narration))
+        length = prompts.text_length(state.current_narration)
         low, high = NARRATION_LEN
         self.check(f"劇情 {low}-{high} 字", low <= length <= high, f"{length} 字")
         if not state.game_over:

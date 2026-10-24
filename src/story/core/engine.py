@@ -16,7 +16,7 @@ from story.core import prompts
 from story.core.models import Character, Condition, Epilogue, GameState, GenrePick, Severity, StoryArc, StoryBeat, Turn, VOCAB, code, word
 
 MODEL = "gemini-3.5-flash-lite"
-HISTORY_BUDGET = 20_000  # 劇情紀錄保留原文的字數上限；超過才把最舊的部分壓縮進摘要，一次壓到剩一半
+HISTORY_BUDGET = 20_000  # 劇情紀錄保留原文的字數上限（英文算詞）；超過才把最舊的部分壓縮進摘要，一次壓到剩一半
 KEEP_EVENTS, KEEP_FLAGS = 6, 12  # 重大事件、已確立的事實各保留最近幾條原文，較舊的在壓縮時併入摘要
 TARGET_TURNS = 30  # 故事預定長度（回合）；超過時只提醒 AI 收尾，不強制結束
 ACT_TURNS = TARGET_TURNS // 4  # 每一幕預計幾回合，待太久就提醒 AI 推進
@@ -26,7 +26,7 @@ REQUEST_ATTEMPTS = 3  # 逾時或伺服器忙（429、5xx）時最多送幾次�
 TWIST_IDEAS = 3  # 規劃大綱時從題材包的 twists.md 隨機抽幾則轉折靈感
 MIN_ENDING_TURN = 20  # 最早第幾回合才接受 AI 宣告的結局（還要進到最後一幕）；因傷死亡不受限制
 MIN_TIME_LIMIT, MAX_TIME_LIMIT = 8, 60  # 限時模式的反應時間範圍（秒）
-MAX_CONDITION_LEN = 12  # 單一狀態最多幾個字，避免 LLM 寫成一整句
+MAX_CONDITION_LEN = 12  # 單一狀態最多幾個字（英文算詞），避免 LLM 寫成一整句
 
 # 身體狀況：LLM 只決定每個狀態的程度，總分與生死由程式計算
 SEVERITY_POINTS = {"light": 1, "moderate": 2, "severe": 4}
@@ -216,7 +216,7 @@ def apply_condition_changes(who: Holder, changed: list, removed_names: list[str]
     who.conditions = remaining  # 不存在的名稱自然被忽略
 
     for change in changed:  # AI 回報的類別與程度是這個語言的詞，換成代號
-        name = change.name.strip()[:MAX_CONDITION_LEN]
+        name = prompts.clip(change.name.strip(), MAX_CONDITION_LEN)
         if not name or name in VOCAB["level"].values():  # 「良好」「重傷」這類是整體狀態的評語，不是一種傷勢
             continue
         kind, severity = code("kind", change.kind), code("severity", change.severity)
@@ -280,7 +280,7 @@ def history(state: GameState) -> list[Turn]:
 
 
 def history_size(turns: list[Turn]) -> int:
-    return sum(len(t.narration) + len(t.action) for t in turns)
+    return sum(prompts.text_length(t.narration) + prompts.text_length(t.action) for t in turns)
 
 
 def history_entry(turn: Turn, label: str) -> str:
@@ -320,7 +320,7 @@ def oldest_turns_to_compact(turns: list[Turn]) -> list[Turn]:
         return []
     size, cut = history_size(turns), 0
     while cut < len(turns) - 1 and size > HISTORY_BUDGET // 2:
-        size -= len(turns[cut].narration) + len(turns[cut].action)
+        size -= prompts.text_length(turns[cut].narration) + prompts.text_length(turns[cut].action)
         cut += 1
     return turns[:cut]
 

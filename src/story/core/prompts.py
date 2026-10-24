@@ -24,6 +24,22 @@ COMMENT = re.compile(r"<!--.*?-->", re.S)
 HEADING = re.compile(r"^## ([\w.]+)\s*$", re.M)
 
 
+# 文字的長度：中文（與日文）每個字算一個，其他語言每個詞（連續不含空白的一串）算一個。
+# 這樣字數限制在各語言用同一個數字就好：中文 300 字、英文 300 個詞，份量差不多
+_CJK = "\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+UNIT = re.compile(f"[{_CJK}]|[^\\s{_CJK}]+")
+
+
+def text_length(text: str) -> int:
+    return len(UNIT.findall(text))
+
+
+def clip(text: str, limit: int) -> str:
+    """只留前 limit 個字（或詞），見 text_length()。"""
+    units = list(UNIT.finditer(text))
+    return text if len(units) <= limit else text[: units[limit - 1].end()]
+
+
 def _read(name: str, folder: Path = PROMPTS_DIR) -> str:
     path = folder / f"{name}.md"
     if not path.exists():

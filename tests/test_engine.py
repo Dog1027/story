@@ -373,7 +373,7 @@ def test_history_over_budget_compacts_the_oldest_half(monkeypatch):
 
     monkeypatch.setattr(engine_module, "HISTORY_BUDGET", 100)
     engine, gemini = make_engine(summary="早期劇情的摘要")
-    turns = [Turn(narration=f"第{i}回合" + "。" * 16, action="a") for i in range(6)]  # 每回合 21 字，共 126 字
+    turns = [Turn(narration=f"第{i}回合" + "字" * 16, action="a") for i in range(6)]  # 每回合 21 字，共 126 字
     state = GameState(premise="x", recent=list(turns))
     assert engine.needs_compaction(state)
     engine.compact_memory(state)

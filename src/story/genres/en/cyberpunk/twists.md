@@ -1,0 +1,8 @@
+- The protagonist's memories were implanted: the past that set them on this path never happened.
+- The client is the very data they're stealing: an AI trying to escape a corporate server.
+- The corporate assassin hunting the protagonist is a cloned copy of them.
+- The protagonist thinks they're exposing a corporate conspiracy, but the whole operation is a trade war staged by a rival corporation.
+- The protagonist's implants have been reporting their location and everything they see; every companion's death traces back to them.
+- The "net ghost" of street legend is a long-dead relative of the protagonist whose mind was uploaded.
+- The person the protagonist is fighting to save sold their body to the corporation willingly and doesn't want to be saved.
+- The protagonist's friend, the back-alley doctor, is the one who harvested the implants from all the missing people.

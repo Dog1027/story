@@ -1,0 +1,8 @@
+- The true culprit behind the massacre of the clan was not the rival family but the master the protagonist always revered; the "enemy" was trying to protect the protagonist.
+- The peerless manual everyone is fighting over is a fake; the real art has long been hidden in a chant the protagonist memorized as a child.
+- The man in black hunting the protagonist is their long-lost sibling, raised by their enemy.
+- The "child" or "cargo" the protagonist is escorting is bait laid by the true mastermind behind this upheaval.
+- The leader of the "demonic cult" reviled by all is the only one who knows the righteous sects' leader is colluding with the court.
+- The vengeance the protagonist seeks is for a blood debt their own father incurred first.
+- The great martial assembly was never about choosing a leader; it's a trap to catch every sect's best fighters at once.
+- The poison in the protagonist's body wasn't planted by an enemy; someone gave it to hold down another, deadlier force inside them.

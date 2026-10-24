@@ -98,7 +98,7 @@ src/story/
 ├── core/       Core: game rules, calling the AI, saves
 ├── prompts/    What the AI is told (markdown), one folder per language; edit without touching code
 ├── ui/         What players see (markdown), one folder per language
-├── genres/     Genre packs
+├── genres/     Genre packs, one folder per language
 └── shells/     Shells
     ├── client.py   The flow shared by interfaces for human players
     ├── textual/    The terminal interface
@@ -124,11 +124,11 @@ Common settings are constants at the top of each file, or separate text files:
 - **Story length, the model, wound and healing rules**: `src/story/core/engine.py`
 - **How the AI writes** (writing rules, narration length, pacing reminders, the epilogue…): the markdown files in `src/story/prompts/en/`. Start with [src/story/prompts/README.md](src/story/prompts/README.md) (in Chinese), which maps "what you want to change → where"
 - **Interface text**: the markdown files in `src/story/ui/en/`
-- **Genre packs**: `src/story/genres/`; see [docs/genres.md](docs/genres.md) for how to write one
+- **Genre packs**: `src/story/genres/en/`; see [docs/genres.md](docs/genres.md) for how to write one
 - **Terminal color theme and typing speed**: `src/story/shells/textual/style.py`. Condition colors are derived from the theme's success, warning, and error colors
 - **Web colors, fonts, and typing speed**: the color settings at the top of `src/story/shells/web/static/style.css`, and the constants at the top of `app.js`
 
-**Adding a language**: add a folder under both `src/story/prompts/` and `src/story/ui/` with the full set of files (copy `en/` and translate), then select it with `STORY_LANG`. The tests check that every language has the same files, sections, and variables.
+**Adding a language**: add a folder under `src/story/prompts/` and `src/story/ui/` with the full set of files (copy `en/` and translate), plus genre packs under `src/story/genres/`, then select it with `STORY_LANG`. The tests check that every language has the same files, sections, and variables.
 
 ## Tests and evals
 

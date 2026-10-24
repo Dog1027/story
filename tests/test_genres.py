@@ -189,3 +189,10 @@ def test_ai_suggestion_wins_over_drawn_premise(isolated):
     core = StoryCore("test", engine=PackEngine(), save_path=isolated / "save.json")
     core.start()
     assert core.send("/suggest").premise_default == "你是月球礦坑的夜班工程師。"
+
+
+def test_every_language_has_valid_genre_packs():
+    """每種語言的內建題材包（story/genres/語言/）都通過檢查。英文用詞數算長度，同樣的上限也放得下。"""
+    for folder in BUILTIN_DIR.parent.iterdir():
+        genres, problems = load_genres([folder])
+        assert genres and not problems, (folder.name, problems)

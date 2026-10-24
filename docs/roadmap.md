@@ -6,10 +6,10 @@
 
 ### 1. 多語言
 
-提示詞（`src/story/prompts/語言/`，遊戲詞彙在其中的 `vocab.md`）與介面文字（`src/story/ui/語言/`）已經有繁體中文與英文，用 `STORY_LANG` 選擇。英文版還要做的：
+提示詞（`src/story/prompts/語言/`，遊戲詞彙在其中的 `vocab.md`）與介面文字（`src/story/ui/語言/`）已經有繁體中文與英文，題材包也是（`src/story/genres/語言/`），用 `STORY_LANG` 選擇。英文版還要做的：
 
-- **題材包**：每個題材包各語言一份（例如 `genres/en/` 或 `GENRE.en.md`）。
-- **長度的限制**：狀態名稱最多 12 個字（`MAX_CONDITION_LEN`）、題材包描述 200 字、指引 2,000 字，英文要改成用詞數算或放寬。
+- **範例故事**：`just prompts` 與 `just eval` 用的燈塔故事（`story/preview.py`、`story/evals.py`）還是中文，英文版要一份英文的，才能用 `just eval` 檢查 AI 寫英文寫得好不好。
+- **實際用英文玩一局**，看寫作規則、節奏、字數在英文是否合適。
 
 ## 其他待辦
 

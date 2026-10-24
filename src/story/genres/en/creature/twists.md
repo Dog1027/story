@@ -1,0 +1,8 @@
+- The companion the protagonist has been protecting was parasitized long ago; through them the monster knows where everyone is hiding.
+- The monster didn't escape by accident: the company released it on purpose, and the whole base was a field test from the start.
+- The first survivor brought back is the source of infection; the stretch of memory they "lost" is when they were used as an incubator.
+- The monster has been protecting its young, and humans struck first; return the young and it will leave.
+- The rescue team finally arrives, but their mission is to recover specimens and eliminate every witness.
+- The monster can mimic human voices: the companion calling for help over the radio died long ago.
+- The creature hunted as a monster is this world's original inhabitant; the humans are the alien invaders here.
+- The protagonist thinks they're fleeing the monster, but it has been herding them step by step toward its nest, as food for its young.

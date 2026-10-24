@@ -1,0 +1,6 @@
+- You smuggle data for hire, and the chip you're delivering this time holds your own deleted childhood memories.
+- You wake in a back-alley clinic with your left eye replaced by a corporate surveillance implant; the doctor says someone already paid for it.
+- You're a delivery rider, and tonight's last order goes to a building that doesn't exist in any official record.
+- You owe a street gang a fortune, and they offer one way out: steal an experimental report from a megacorporation.
+- You're corporate security, and the hacker you've been ordered to hunt just said your real name over the comms channel.
+- Before she vanished, your sister sent one last message: "Don't trust the health report the company gave you."

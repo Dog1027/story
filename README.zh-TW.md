@@ -97,7 +97,7 @@ just play
 src/story/
 ├── core/       核心：遊戲規則、呼叫 AI、存檔
 ├── prompts/    給 AI 的提示詞（markdown），改了不用動程式
-├── genres/     題材包
+├── genres/     題材包，每種語言一個資料夾
 └── shells/     外殼
     ├── client.py   給真人玩的介面共用的流程
     ├── textual/    終端機版的畫面
@@ -122,11 +122,11 @@ src/story/
 
 - **故事長度、使用的模型、傷勢與痊癒規則**：`src/story/core/engine.py`
 - **AI 的寫法**（寫作規則、劇情字數、節奏提醒、尾聲……）：`src/story/prompts/` 的 markdown 檔。先看 [src/story/prompts/README.md](src/story/prompts/README.md)，裡面有「想改什麼 → 改哪裡」的對照
-- **題材包**：`src/story/genres/`，寫法見 [docs/genres.md](docs/genres.md)
+- **題材包**：`src/story/genres/zh-TW/`，寫法見 [docs/genres.md](docs/genres.md)
 - **終端機版的配色主題、打字速度**：`src/story/shells/textual/style.py`。狀態的顏色會從主題的成功／警告／錯誤色算出來
 - **網頁版的配色、字型、打字速度**：`src/story/shells/web/static/style.css` 開頭的顏色設定，與 `app.js` 開頭的常數
 
-**新增語言**：在 `src/story/prompts/` 與 `src/story/ui/` 各加一個資料夾，放一整套同名的檔案（複製 `en/` 再翻譯），用 `STORY_LANG` 選擇。測試會檢查每種語言的檔案、段落與變數都一樣。
+**新增語言**：在 `src/story/prompts/` 與 `src/story/ui/` 各加一個資料夾，放一整套同名的檔案（複製 `en/` 再翻譯），題材包放在 `src/story/genres/語言/`，用 `STORY_LANG` 選擇。測試會檢查每種語言的檔案、段落與變數都一樣。
 
 ## 測試與評估
 

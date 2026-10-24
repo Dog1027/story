@@ -1,0 +1,7 @@
+- You rent a downtown studio for next to nothing, and the landlord gives you one instruction: if someone knocks at midnight, never open the door.
+- You go back to your hometown for your grandmother's funeral, and on the third night of the vigil you hear a soft tapping from inside the coffin.
+- You pick up a red envelope from the roadside; inside are a lock of hair and a slip of paper with someone's birth date and hour.
+- You're the night guard of an office building, and the cameras show someone pacing the twelfth-floor corridor, a floor sealed off twenty years ago.
+- During Ghost Month you and your friends dare each other into an abandoned hospital at midnight; back home, your group photo has one extra person in a patient's gown.
+- You're a new teacher at a rural school, and one student talks to an empty seat every day, a seat with no name on the class roll.
+- You buy an old mirror at a secondhand shop, and from that day on your reflection is always half a beat behind you.

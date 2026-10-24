@@ -1,0 +1,8 @@
+- The missing person the protagonist has been searching for isn't dead; they walked into the sea willingly, and left clues to lead the protagonist after them.
+- The handwriting in those "investigation notes" is the protagonist's own; they just no longer remember writing them.
+- The townsfolk aren't cultists; their ritual keeps something from waking, and the protagonist's meddling has broken the seal.
+- The protagonist's own bloodline is the answer: the thing has been calling no one else but them.
+- The protagonist thinks they escaped that place, but every "quiet day" since has still been inside the dream.
+- The scholar who has been helping the protagonist was replaced by something else long ago; only the face is the same.
+- The warning letters the protagonist receives don't come from the past but from a future self who has already gone mad.
+- The real danger isn't the thing in the deep but the small object the protagonist brought home, thinking it a mere souvenir.

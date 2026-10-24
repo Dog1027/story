@@ -1,0 +1,6 @@
+- You are an escort guard, and the chest you're protecting on this run turns out to hold an unconscious child.
+- At your master's funeral you discover the last letter he left you says only: "Don't trust your senior brother."
+- You wait tables at an inn, and the three guests staying tonight are all asking about the same man, long dead.
+- You wake with your martial arts crippled, left with nothing but a broken sword and a scrap of paper bearing your enemy's name.
+- You are a constable of the court, and the notorious bandit you're ordered to capture is your long-lost brother.
+- In a mountain cave you find a skeleton clutching a secret manual, its last three pages missing.

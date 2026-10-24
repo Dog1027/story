@@ -1,0 +1,7 @@
+- You're an engineer on a deep-sea oil platform; the drill brings up a still-pulsing egg from beneath the seabed, and the next day a coworker is missing.
+- You wake in an Antarctic research station where you're the only one left of twelve, and the bloody writing on the wall says: "Don't trust anything that looks like us."
+- You're a maintenance tech on a cargo spaceship; the escape pod you rescue is empty except for a hatch clawed open from the inside.
+- Your climbing team shelters from a blizzard in an abandoned mine, and something seals the entrance behind you.
+- You're a night-shift cleaner at a biotech company; tonight the lab alarm goes off and every door locks itself.
+- You return to your hometown; everyone is as friendly as ever, but every family's dog has disappeared.
+- You're with the coast guard, sent to investigate a drifting fishing boat whose hold is piled with fish sucked dry.

@@ -354,15 +354,15 @@ Missing description (the AI uses it to decide whether a story fits this genre)
 
 ## genre_long_description
 <!-- Variable: {max} -->
-The description is over {max} characters
+The description is over {max} words
 
 ## genre_no_guide
 GENRE.md has no writing guide
 
 ## genre_long_guide
 <!-- Variables: {max}, {length} -->
-The writing guide is over {max} characters (currently {length})
+The writing guide is over {max} words (currently {length})
 
 ## genre_long_extra
 <!-- Variables: {file}, {max} -->
-{file} is over {max} characters
+{file} is over {max} words

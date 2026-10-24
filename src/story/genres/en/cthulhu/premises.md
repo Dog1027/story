@@ -1,0 +1,6 @@
+- A parcel arrives from your late uncle, postmarked three months after his death.
+- You are the only doctor at the town clinic, and this week seven patients have told you they dreamed of the same city sunk beneath the sea.
+- At a secondhand bookstall you buy a notebook whose handwriting slowly fades from each page as you finish reading it.
+- You're sent to survey a newly found cave; on the third day of mapping, the cave is a hundred meters deeper than the day before.
+- Your roommate has vanished, and the walls of their room are scratched all over with symbols you can't read yet somehow recognize.
+- You crew a deep-sea trawler, and tonight the net hauls up a statue; the captain orders it locked in the hold.

@@ -1,0 +1,8 @@
+- The ghost haunting the protagonist doesn't mean harm; it's warning them that the real danger is someone living, close by.
+- The most helpful NPC, who has investigated alongside the protagonist all along, died long ago and doesn't know it.
+- The landlord, the neighbors, and the helpful priest all know the truth: the protagonist was brought here to be a substitute for the dead.
+- The ghost's grievance involves the protagonist's family: it was one of their elders who caused its death.
+- What the protagonist brought home isn't cursed; it's a betrothal gift for a ghost marriage, and the protagonist has already "accepted".
+- The exorcist the protagonist hired is the one who has been keeping the ghost.
+- The figure everyone took for a ghost is a living person, hidden away and undiscovered for years.
+- What knocks every night isn't a ghost but the protagonist themselves, from some point in the past.

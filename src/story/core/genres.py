@@ -3,7 +3,7 @@
 結構仿照 Agent Skills（Claude Code 的 skill）：每個題材一個資料夾，裡面一份 GENRE.md，
 開頭是設定欄位（name、description），後面是給 AI 的寫作指引；可以另外附 premises.md、names.md、twists.md。
 
-    genres/
+    genres/語言/
     └── wuxia/            資料夾用英文名稱；顯示的題材名稱是 GENRE.md 的 name（例如「武俠」）
         ├── GENRE.md      必要：設定欄位＋寫作指引
         ├── premises.md   選用：開頭靈感，一行一個（隨機開頭、「換一個」、「幫我想」）
@@ -15,7 +15,7 @@
 - 指引（GENRE.md 的內文）：選定後整局放在每回合的提示詞前段（固定不變，不影響快取）
 - 附屬檔案：只在特定的時候用到，premises.md 給隨機開頭、「換一個」與「幫我想」，names.md 給規劃大綱與開場，twists.md 給規劃大綱
 
-題材包放在兩個地方：內建的在 story/genres/（跟著專案），個人的在 ~/.config/story/genres/。name 相同時個人的優先。
+題材包放在兩個地方：內建的在 story/genres/語言/（跟著專案），個人的在 ~/.config/story/genres/語言/。name 相同時個人的優先。
 """
 
 import re
@@ -25,11 +25,13 @@ from pathlib import Path
 from story.core import prompts
 
 UI = prompts.ui("core")  # 題材包格式問題的說明（story/ui/語言/core.md）
-BUILTIN_DIR = Path(__file__).resolve().parent.parent / "genres"
-PERSONAL_DIR = Path.home() / ".config" / "story" / "genres"
-MAX_DESCRIPTION = 200  # 描述的字數上限：目錄每次規劃大綱都會整份送出
-MAX_GUIDE = 2000  # 寫作指引的字數上限：每回合都會送出，太長會拖慢、也會稀釋其他規則
-MAX_EXTRA = 2000  # premises.md、names.md、twists.md 的字數上限
+# 每種語言一整套題材包（跟 story/prompts/語言/ 一樣用 STORY_LANG 選擇）
+BUILTIN_DIR = Path(__file__).resolve().parent.parent / "genres" / prompts.LANGUAGE
+PERSONAL_DIR = Path.home() / ".config" / "story" / "genres" / prompts.LANGUAGE
+# 字數上限（中文算字、英文算詞，見 prompts.text_length）
+MAX_DESCRIPTION = 200  # 描述：目錄每次規劃大綱都會整份送出
+MAX_GUIDE = 2000  # 寫作指引：每回合都會送出，太長會拖慢、也會稀釋其他規則
+MAX_EXTRA = 2000  # premises.md、names.md、twists.md
 
 FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n?(.*)\Z", re.S)
 
@@ -68,12 +70,12 @@ def parse_genre(folder: Path) -> Genre:
     guide = match.group(2).strip()
     if not description:
         raise InvalidGenre(UI["genre_no_description"])
-    if len(description) > MAX_DESCRIPTION:
+    if prompts.text_length(description) > MAX_DESCRIPTION:
         raise InvalidGenre(UI["genre_long_description"].format(max=MAX_DESCRIPTION))
     if not guide:
         raise InvalidGenre(UI["genre_no_guide"])
-    if len(guide) > MAX_GUIDE:
-        raise InvalidGenre(UI["genre_long_guide"].format(max=MAX_GUIDE, length=len(guide)))
+    if (length := prompts.text_length(guide)) > MAX_GUIDE:
+        raise InvalidGenre(UI["genre_long_guide"].format(max=MAX_GUIDE, length=length))
     return Genre(
         name=name,
         description=description,
@@ -94,7 +96,7 @@ def _extra(path: Path) -> str:
     if not path.exists():
         return ""
     text = path.read_text(encoding="utf-8").strip()
-    if len(text) > MAX_EXTRA:
+    if prompts.text_length(text) > MAX_EXTRA:
         raise InvalidGenre(UI["genre_long_extra"].format(file=path.name, max=MAX_EXTRA))
     return text
 

@@ -31,7 +31,7 @@ API key、玩家名字、倒數計時、打字效果屬於外殼。核心只告�
 src/story/
 ├── __init__.py          main()：依參數選外殼
 ├── __main__.py          python -m story
-├── genres/              題材包（每個題材一個資料夾，見 docs/genres.md）
+├── genres/              題材包，每種語言一個資料夾（zh-TW/、en/），每個題材一個資料夾，見 docs/genres.md
 ├── prompts/             給 AI 的提示詞，每種語言一個資料夾（zh-TW/、en/）；怎麼改見 prompts/README.md
 ├── ui/                  給玩家看的介面文字，每種語言一個資料夾（zh-TW/、en/）
 ├── preview.py           預覽送給 AI 的完整提示詞（just prompts），不會呼叫 AI
@@ -284,6 +284,7 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 | `load(檔名)` | 整份檔案就是一段提示詞 |
 | `sections(檔名)` | 每段以 `## 名稱` 開頭的檔案，讀成 `{名稱: 內容}` |
 | `items(文字)`、`table(文字)` | 一段裡一行一項的清單；「代號: 文字」的對照表 |
+| `text_length(文字)`、`clip(文字, 上限)` | 文字的長度：中文每個字算一個、英文每個詞算一個，所以字數上限（狀態名稱、題材包、劇情紀錄的預算）在各語言用同一個數字；`clip()` 只留前面幾個 |
 | `ui(檔名)` | 介面文字（`src/story/ui/語言/`），格式同 `sections()`；外殼從 `story.core` 匯入的 `ui_text` 就是它 |
 | `LANGUAGE` | 語言資料夾，用環境變數 `STORY_LANG` 選擇，預設 `zh-TW` |
 
@@ -309,11 +310,11 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 
 ### `core/genres.py`：題材包
 
-讀取 `genres/` 底下的題材包。結構仿照 Agent Skills：每個題材一個資料夾，`GENRE.md` 開頭是設定欄位（`name`、`description`），後面是寫作指引；可以附 `premises.md`、`names.md`、`twists.md`。寫法見 [docs/genres.md](genres.md)。
+讀取 `genres/語言/` 底下的題材包。結構仿照 Agent Skills：每個題材一個資料夾，`GENRE.md` 開頭是設定欄位（`name`、`description`），後面是寫作指引；可以附 `premises.md`、`names.md`、`twists.md`。寫法見 [docs/genres.md](genres.md)。
 
 | 名稱 | 做什麼 |
 |---|---|
-| `load_genres()` | 讀取內建（`story/genres/`）與個人（`~/.config/story/genres/`）的題材包，`name` 相同時個人的優先。回傳題材與被略過的題材及原因 |
+| `load_genres()` | 讀取這個語言的內建（`story/genres/語言/`）與個人（`~/.config/story/genres/語言/`）的題材包，`name` 相同時個人的優先。回傳題材與被略過的題材及原因 |
 | `parse_genre()` | 讀一個題材資料夾並檢查格式與長度上限（描述 200 字、指引與附屬檔案各 2,000 字） |
 | `Genre` | 一個題材：名稱、描述、指引、開頭靈感、命名素材、轉折靈感 |
 
@@ -475,7 +476,7 @@ uv run pytest                  # 全部（約 30 秒）
 | `test_core.py` | 核心的文字協定：開新局、幫我想、限時切換、`action_for()`、各種指令、key 失效與重送、重新開始、結局、讀檔接續 |
 | `test_prompts.py` | 提示詞檔案：每個檔案都讀得到、說明註解不會送給 AI、各種情境組出來的提示詞沒有留下沒填的變數、尾聲不會帶到一般回合的指示、`just prompts` 的每個情境（單人、多人、套用題材包）都組得出來 |
 | `test_evals.py` | `just eval`：用假的 Gemini 跑情境，確認檢查、報告與結果檔正常、評審的校準範例要判不通過，不會寫到存檔或遊戲紀錄；超過呼叫上限時等一下再送 |
-| `test_genres.py` | 題材包：內建題材都通過檢查、資料夾解析、格式錯誤會略過並說明原因、個人覆蓋內建、指引在提示詞的位置、AI 先挑題材再規劃大綱、轉折靈感、「幫我想」、`/genre` 指令、隨機開頭與 `/random`、再玩一次延續前提 |
+| `test_genres.py` | 題材包：每種語言的內建題材都通過檢查、資料夾解析、格式錯誤會略過並說明原因、個人覆蓋內建、指引在提示詞的位置、AI 先挑題材再規劃大綱、轉折靈感、「幫我想」、`/genre` 指令、隨機開頭與 `/random`、再玩一次延續前提 |
 | `test_party.py` | 多人模式：每位角色各自的規則、未知角色與漏掉的角色、單人倒下與全員倒下、焦點輪替、依序收行動、時間到、失敗重試、讀檔；線上多人的 `send_as()`、`view()`、回覆轉 JSON；以及接上真的 engine 的整合測試 |
 | `test_room.py` | 線上多人的房間（用 `connect()` 連進去的好幾位玩家）：不照順序行動、名字檢查與人數上限、遊戲中只有隊員能回來、只有房主能回答與重來、斷線重連與替離線的人行動、換房主、大家看完才倒數、結局回到大廳、一個人也能開始、AI 寫劇情時大家都收到串流的劇情 |
 | `test_players.py` | 名字檢查、同名鎖定 |
