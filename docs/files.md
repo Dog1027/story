@@ -84,7 +84,7 @@ src/story/
 
 ### `settings.py`：玩家的設定檔
 
-`~/.config/story/config.toml`，可以直接編輯：`language`（`zh-TW`、`en`）、`api_key`、`theme`、`name`（終端機版的角色名字）。環境變數優先：`STORY_LANG` 蓋過 `language`，`GEMINI_API_KEY`（或 `GOOGLE_API_KEY`）蓋過 `api_key`。檔案權限 600（裡面有 API key）。程式改寫時手寫的註解會不見。以前存在 `~/.config/story/api_key`、`~/.config/story/theme` 的設定，讀取時自動搬進來。核心（語言、個人題材包的位置）與外殼都讀它。
+`~/.config/story/config.toml`，可以直接編輯：`language`（`zh-TW`、`en`）、`api_key`、`name`（終端機版的角色名字），以及只有終端機版用的 `[terminal]` 區塊：`theme`（配色主題）。程式裡用「區塊.名稱」指一項設定，例如 `get("terminal.theme")`。環境變數優先：`STORY_LANG` 蓋過 `language`，`GEMINI_API_KEY`（或 `GOOGLE_API_KEY`）蓋過 `api_key`。檔案權限 600（裡面有 API key）。程式改寫時手寫的註解會不見。以前存在 `~/.config/story/api_key`、`~/.config/story/theme` 的設定，以及改過名字的設定（`theme` → `[terminal]` 的 `theme`），讀取時自動換成現在的。核心（語言、個人題材包的位置）與外殼都讀它。
 
 | 名稱 | 做什麼 |
 |---|---|
@@ -397,7 +397,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 
 | 常數 | 意義 |
 |---|---|
-| `THEME` | 預設配色主題（`tokyo-night`）。遊戲中用 `/theme`（F2）打開 Textual 內建的主題選擇器；終端機版的選擇存在設定檔的 `theme`（`settings.py`），網頁版不存（設定檔在伺服器上，存了會影響所有玩家） |
+| `THEME` | 預設配色主題（`tokyo-night`）。遊戲中用 `/theme`（F2）打開 Textual 內建的主題選擇器；終端機版的選擇存在設定檔的 `terminal.theme`（`settings.py`），網頁版不存（設定檔在伺服器上，存了會影響所有玩家） |
 | `CHAR_DELAY`、`FAST_FACTOR`、`PAUSE_AFTER` | 打字效果的速度、按 Enter 後的加速倍率、標點停頓 |
 | `palette(主題)` | 狀態程度、整體狀態、變化語氣、倒數的顏色，從主題的成功／警告／錯誤色算出來，換主題時跟著變；並轉成 Rich 認得的寫法（ansi 主題的 `ansi_red` 要換成 `color(1)`） |
 
@@ -497,7 +497,7 @@ uv run pytest                  # 全部（約 30 秒）
 | `test_characters.py` | 好幾位角色：每位角色各自的規則、未知角色與漏掉的角色、只有一位角色時沒有焦點、AI 寫錯名字也算他的、一人倒下與全員倒下、焦點輪替、行動一定要用 send_as 說是誰的、時間到、失敗重試、讀檔；網頁版房間用的 `send_as()`、`view()`、回覆轉 JSON；以及接上真的 engine 的整合測試 |
 | `test_room.py` | 網頁版的大廳與房間（用 `connect()` 連進大廳的好幾位玩家）：兩個房間同時玩、離開房間回大廳與空房間關閉、房間數上限、名字整台伺服器不重複與每間人數上限、不照順序行動、遊戲中只有隊員能回來、只有房主能回答與重來、斷線後直接回到原本的房間、換房主、大家看完才倒數、結局回到等人的畫面、一個人也能開始、AI 寫劇情時大家都收到串流的劇情、AI 呼叫的次數限制 |
 | `test_players.py` | 名字檢查 |
-| `test_settings.py` | 設定檔：讀寫與權限、環境變數優先、舊的 api_key／theme 檔搬進來、第一次啟動只問還沒設定的、不在終端機裡時不問 |
+| `test_settings.py` | 設定檔：讀寫與權限、環境變數優先、舊的 api_key／theme 檔搬進來、舊的設定名稱換成新的、第一次啟動只問還沒設定的、不在終端機裡時不問 |
 | `test_prose.py` | 中文換行：英文名字不造成提早換行、英文單字不拆開、標點不在行首、引號不留在行尾 |
 | `test_client.py` | 外殼共用層：用只記錄呼叫的假介面確認流程，不需要 Textual。開新故事先顯示前提、劇情顯示完才出現選項與狀態再開始倒數、結局一段一段出現、key 無效時換 key 重送、狀態列的內容；串流：回覆到之前就開始顯示劇情、寫到一半失敗時收回 |
 | `test_textual.py` | Textual 外殼：模擬按鍵跑完整流程，包括打字與狀態列時機、倒數與暫停、對話框方向鍵、結局、讀檔、窄畫面樣式、狀態在窄畫面換行時不拆開 |

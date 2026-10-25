@@ -154,7 +154,7 @@ class StoryApp(App, View):
         self.client.close()
 
     def on_mount(self) -> None:
-        saved = settings.get("theme")
+        saved = settings.get("terminal.theme")
         self.theme = saved if saved in self.available_themes else THEME
         self.theme_ready = True  # 之後的主題變更才是玩家選的，要記住
         self.set_status(None)
@@ -172,7 +172,7 @@ class StoryApp(App, View):
         if not self.theme_ready:
             return
         self.set_status(self.status_shown)
-        settings.put("theme", theme)
+        settings.put("terminal.theme", theme)
 
     def action_theme(self) -> None:
         self.action_change_theme()  # Textual 內建的主題選擇器：上下移動就能預覽

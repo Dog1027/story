@@ -2,7 +2,12 @@
 
     language = "en"          # 語言：zh-TW（預設）或 en
     api_key = "…"            # Gemini API key
-    theme = "tokyo-night"    # 終端機版的配色主題
+    name = "阿明"            # 一個人玩時的角色名字（網頁版每個人進來時自己輸入）
+
+    [terminal]               # 只有終端機版用的設定
+    theme = "tokyo-night"    # 配色主題（網頁版的外觀由每個人在瀏覽器裡選）
+
+程式裡用「區塊.名稱」指一項設定，例如 get("terminal.theme")。
 
 環境變數優先於這個檔案：STORY_LANG 蓋過 language，GEMINI_API_KEY（或 GOOGLE_API_KEY）蓋過 api_key，
 所以臨時換語言或 key 時不用改檔案。遊戲裡選擇儲存 API key、換配色主題時，程式會改寫這個檔案（手寫的註解會不見）。
@@ -17,13 +22,14 @@ from pathlib import Path
 CONFIG_DIR = Path.home() / ".config" / "story"
 CONFIG_PATH = CONFIG_DIR / "config.toml"
 KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
-OLD_FILES = {"api_key": "api_key", "theme": "theme"}  # 以前每個設定各存一個檔案，讀取時搬進 config.toml
+OLD_FILES = {"api_key": "api_key", "terminal.theme": "theme"}  # 以前每個設定各存一個檔案，讀取時搬進 config.toml
+OLD_KEYS = {"theme": "terminal.theme"}  # 改過名字的設定，讀取時換成新的名字
 
 
 def load() -> dict:
-    """讀取設定檔；沒有就是空的。舊的 api_key、theme 檔案會先搬進來。"""
+    """讀取設定檔，攤平成 {"區塊.名稱": 值}；沒有就是空的。舊的 api_key、theme 檔案與舊的設定名稱會先換成現在的。"""
     try:
-        data = tomllib.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        data = _flatten(tomllib.loads(CONFIG_PATH.read_text(encoding="utf-8")))
     except FileNotFoundError:
         data = {}
     except tomllib.TOMLDecodeError as e:
@@ -70,13 +76,35 @@ def _migrate(data: dict) -> bool:
             data[key] = value
         old.unlink()
         changed = True
+    for old, new in OLD_KEYS.items():
+        if old in data:
+            value = data.pop(old)
+            data.setdefault(new, value)
+            changed = True
     return changed
+
+
+def _flatten(table: dict, prefix: str = "") -> dict:
+    flat = {}
+    for key, value in table.items():
+        if isinstance(value, dict):
+            flat.update(_flatten(value, f"{prefix}{key}."))
+        else:
+            flat[prefix + key] = value
+    return flat
 
 
 def _write(data: dict) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    # 值都是字串：JSON 的字串寫法也是合法的 TOML
-    text = "".join(f"{key} = {json.dumps(value, ensure_ascii=False)}\n" for key, value in data.items())
+    # 沒有區塊的設定在前，「區塊.名稱」寫到各自的 [區塊] 底下。值都是字串：JSON 的字串寫法也是合法的 TOML
+    line = lambda key, value: f"{key} = {json.dumps(value, ensure_ascii=False)}\n"  # noqa: E731
+    sections: dict[str, dict] = {}
+    for key, value in data.items():
+        section, _, name = key.rpartition(".")
+        sections.setdefault(section, {})[name] = value
+    text = "".join(line(k, v) for k, v in sections.pop("", {}).items())
+    for section, values in sections.items():
+        text += ("\n" if text else "") + f"[{section}]\n" + "".join(line(k, v) for k, v in values.items())
     # 裡面有 API key：只有自己能讀，建檔時就設好，避免寫入過程中被別人讀到
     fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     os.chmod(CONFIG_PATH, 0o600)

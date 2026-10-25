@@ -48,13 +48,13 @@ def run(key: bool = True, theme: bool = False, name: bool = False) -> None:
                 break
             except InvalidName as e:
                 print(e)
-    if theme and not settings.get("theme"):
+    if theme and not settings.get("terminal.theme"):
         from story.shells.textual.style import THEME, THEMES
 
         print(ui["setup_theme"])
         for i, name in enumerate(THEMES, 1):
             print(f"  {i}. {name}")
-        settings.put("theme", choose(ui["setup_theme_prompt"].format(default=THEME), THEMES, THEME))
+        settings.put("terminal.theme", choose(ui["setup_theme_prompt"].format(default=THEME), THEMES, THEME))
 
 
 def ask_language() -> None:

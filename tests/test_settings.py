@@ -6,11 +6,11 @@ from story import settings
 
 
 def test_put_and_get_and_remove(isolated):
-    settings.put("theme", "nord")
+    settings.put("terminal.theme", "nord")
     settings.put("api_key", 'k"ey')
-    assert settings.get("theme") == "nord" and settings.get("api_key") == 'k"ey'
+    assert settings.get("terminal.theme") == "nord" and settings.get("api_key") == 'k"ey'
     settings.put("api_key", None)
-    assert settings.get("api_key") is None and settings.get("theme") == "nord"
+    assert settings.get("api_key") is None and settings.get("terminal.theme") == "nord"
     assert stat.S_IMODE((isolated / "config.toml").stat().st_mode) == 0o600  # 裡面可能有 API key
 
 
@@ -28,9 +28,22 @@ def test_environment_variables_win(monkeypatch):
 def test_old_files_move_into_the_config(isolated):
     (isolated / "api_key").write_text("old-key\n")
     (isolated / "theme").write_text("dracula")
-    assert settings.api_key() == "old-key" and settings.get("theme") == "dracula"
+    assert settings.api_key() == "old-key" and settings.get("terminal.theme") == "dracula"
     assert not (isolated / "api_key").exists() and not (isolated / "theme").exists()
     assert 'api_key = "old-key"' in (isolated / "config.toml").read_text()
+
+
+def test_old_setting_names_are_renamed(isolated):
+    (isolated / "config.toml").write_text('theme = "nord"\n')
+    assert settings.get("terminal.theme") == "nord"
+    assert (isolated / "config.toml").read_text() == '[terminal]\ntheme = "nord"\n'
+
+
+def test_sections_are_written_as_tables(isolated):
+    settings.put("terminal.theme", "nord")
+    settings.put("language", "en")
+    assert (isolated / "config.toml").read_text() == 'language = "en"\n\n[terminal]\ntheme = "nord"\n'
+    assert settings.get("terminal.theme") == "nord" and settings.get("language") == "en"
 
 
 def test_first_launch_asks_only_for_what_is_missing(monkeypatch):
@@ -43,7 +56,7 @@ def test_first_launch_asks_only_for_what_is_missing(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     monkeypatch.setattr(setup, "getpass", lambda prompt="": "my-key")
     setup.run(key=True, theme=True)
-    assert settings.get("language") == "en" and settings.get("api_key") == "my-key" and settings.get("theme") == "gruvbox"
+    assert settings.get("language") == "en" and settings.get("api_key") == "my-key" and settings.get("terminal.theme") == "gruvbox"
 
     monkeypatch.setattr("builtins.input", lambda prompt="": (_ for _ in ()).throw(AssertionError("不該再問")))
     setup.run(key=True, theme=True)  # 都有了：什麼都不問

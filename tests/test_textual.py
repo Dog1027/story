@@ -336,7 +336,7 @@ async def test_theme_command_changes_colors_and_is_remembered(isolated):
         await pilot.pause()
         assert app.colors == palette(app.current_theme)
         assert app.colors["healthy"] != palette(app.get_theme("tokyo-night"))["healthy"]
-    assert settings.get("theme") == "solarized-light"
+    assert settings.get("terminal.theme") == "solarized-light"
 
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:

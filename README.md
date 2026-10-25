@@ -34,8 +34,10 @@ The first time it runs, it asks you four things: the language, your Gemini API k
 ```toml
 language = "en"         # or "zh-TW"
 api_key = "your key"
-theme = "tokyo-night"
 name = "Alex"            # your character in the terminal version
+
+[terminal]
+theme = "tokyo-night"
 ```
 
 Environment variables take precedence over the file: `STORY_LANG`, `GEMINI_API_KEY`.

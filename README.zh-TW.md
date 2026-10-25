@@ -34,8 +34,10 @@ just play
 ```toml
 language = "zh-TW"      # 或 "en"
 api_key = "你的金鑰"
-theme = "tokyo-night"
 name = "阿明"            # 終端機版的角色名字
+
+[terminal]
+theme = "tokyo-night"
 ```
 
 環境變數優先於設定檔：`STORY_LANG`、`GEMINI_API_KEY`。
