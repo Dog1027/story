@@ -91,10 +91,6 @@ Type an action, or a number to pick a choice.
 ## no_story_yet
 No story has started yet.
 
-## action_recorded
-<!-- With several characters: this character's action is recorded, still waiting for others. Variable: {name} -->
-Recorded {name}'s action.
-
 ## character_fallen
 Your character has fallen.
 

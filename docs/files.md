@@ -359,7 +359,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 | `handle()` | 依 `reply.phase` 決定要跳出哪個對話框、顯示劇情或結局 |
 | `show_turn()` | 先放好選項（看不見）→ 劇情 → 變化 → 選項出現 → 更新狀態列 → 開始倒數（網頁版改成告訴房間看完了） |
 | `show_ending()` | 按 Enter → 尾聲 → 按 Enter → 結局對話框（一段一段來，先讀完最後的劇情） |
-| `refresh_hint()`、`RoomClient.update_waiting()` | 輸入框的提示：網頁版行動完之後提示還在等誰，有人行動時通知 |
+| `refresh_hint()`、`RoomClient.update_waiting()` | 輸入框的提示：網頁版行動完之後提示還在等誰，還沒行動時提示誰已經行動了（不用通知，才不會蓋住劇情） |
 | `RoomClient.show_lobby()` | 大廳或房間的等人畫面：標題、在這裡的人、選項、輸入框提示都由大廳與房間決定，剛進來或剛離開房間時先清空畫面 |
 | `status_line()` | 把 `Status` 轉成狀態列要顯示的內容（`StatusLine`）：直接列出每個狀態與程度、核心判斷的警告（`Status.warning`）、沒有狀態時是「良好」，只說程度不說顏色；`named` 是要不要顯示名字（有好幾位角色時）。背包不放在狀態列（完整內容用 `/state` 看） |
 

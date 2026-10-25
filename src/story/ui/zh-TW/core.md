@@ -91,10 +91,6 @@
 ## no_story_yet
 還沒有開始故事。
 
-## action_recorded
-<!-- 有好幾位角色時：這位角色的行動記下來了，還在等其他人。變數：{name} -->
-已記下 {name} 的行動。
-
 ## character_fallen
 你的角色已經倒下了。
 

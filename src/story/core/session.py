@@ -320,7 +320,7 @@ class StoryCore:
                 raise ValueError("好幾位角色時，行動要用 send_as(名字, 文字) 送，才知道是誰的行動")
             self.pending[actor.name] = action
             if self._waiting():
-                return self._reply(notice=UI["action_recorded"].format(name=actor.name), **self._screen())
+                return self._reply(**self._screen())  # 還在等其他人：畫面上誰還沒行動由外殼用 waiting() 顯示
         return self._play_turn({c.name: self.pending[c.name] for c in self.state.characters if c.name in self.pending})
 
     def _play_turn(self, actions: dict[str, str]) -> Reply:

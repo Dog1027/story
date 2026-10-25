@@ -77,6 +77,10 @@ The End
 <!-- The input box hint -->
 ↑↓ to choose, or write your action
 
+## hint_others_acted
+<!-- Web: you haven't acted yet, but others have. Variable: {names} -->
+{names} acted. ↑↓ to choose, or write your action
+
 ## hint_waiting
 <!-- Web: you've already acted. Variable: {names} -->
 Waiting for {names}…
@@ -135,10 +139,6 @@ Lost the connection to the game room.
 
 ## room_disconnected
 Lost the connection to the game room. Please reload the page.
-
-## acted
-<!-- Someone acted. Variable: {names} -->
-{names} acted
 
 ## host_mark
 <!-- The host's name in the lobby. Variable: {name} -->

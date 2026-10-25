@@ -116,7 +116,7 @@ const handlers = {
     if (timed) { $("timer").hidden = false; $("timer").classList.add("reserved"); }
   },
   choices({ choices }) {
-    if (choicesList.classList.contains("hidden") && same(choices, state.choices)) {
+    if (choices.length && choicesList.classList.contains("hidden") && same(choices, state.choices)) { // 劇情打完字：讓先放好的選項出現
       choicesList.classList.remove("hidden");
       choicesList.classList.add("reveal");
     } else if (!choices.length && choicesList.children.length) {

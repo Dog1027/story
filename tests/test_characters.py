@@ -168,7 +168,7 @@ def test_everyone_acts_before_the_round_resolves(core, engine):
     assert core.waiting() == NAMES
 
     reply = core.send_as("阿明", "1")
-    assert reply.actor == "" and reply.narration == "" and "已記下 阿明 的行動" in reply.notice
+    assert reply.actor == "" and reply.narration == "" and reply.notice == ""
     assert engine.rounds == [] and core.waiting() == ["小華"]
 
     reply = core.send_as("小華", "自己想的行動")
@@ -289,7 +289,7 @@ def test_send_as_accepts_actions_in_any_order(core, engine):
     core.start()
     core.send("")
     reply = core.send_as("小華", "2")
-    assert "已記下 小華 的行動" in reply.notice and reply.actor == "" and reply.choices == []
+    assert reply.notice == "" and reply.actor == "" and reply.choices == []
     assert core.waiting() == ["阿明"]
     assert "已經行動" in core.send_as("小華", "1").notice
     core.send_as("阿明", "1")

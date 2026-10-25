@@ -72,9 +72,13 @@ class RoomClient(Client):
             self.room.close()
 
     def refresh_hint(self) -> None:
-        """自己行動完之後，改成提示還在等誰。"""
+        """行動的進度放在輸入框的提示，不用會蓋住劇情的通知：自己行動完了提示還在等誰，還沒行動時提示誰已經行動了。"""
+        team = [s.name for s in self.shown[1] if s.alive]  # 狀態列上的隊伍
+        acted = [n for n in team if n not in self.waiting and n != self.my_name] if self.waiting else []
         if not self.actor and self.waiting:
             self.view.set_hint(UI["hint_waiting"].format(names=UI["list_sep"].join(self.waiting)))
+        elif self.actor and acted:
+            self.view.set_hint(UI["hint_others_acted"].format(names=UI["list_sep"].join(acted)))
         else:
             super().refresh_hint()
 
@@ -114,11 +118,7 @@ class RoomClient(Client):
         self.view.notify(UI["room_disconnected"], error=True, lasting=True)
 
     def update_waiting(self, names: list[str]) -> None:
-        """這回合還沒行動的人變了：有人行動時跳出通知，並更新提示（不重建選項，畫面才不會閃）。"""
-        if set(names) < set(self.waiting):  # 名單變短：有人剛行動（新回合時名單會變回全部的人）
-            acted = [n for n in self.waiting if n not in names and n != self.my_name]
-            if acted:
-                self.view.notify(UI["acted"].format(names=UI["list_sep"].join(acted)))
+        """這回合還沒行動的人變了：更新提示（不重建選項，畫面才不會閃）。"""
         self.waiting = names
         self.refresh_hint()
 

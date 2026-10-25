@@ -62,7 +62,7 @@ The web version calls the AI with the host's API key (entered the first time you
 - Enter a name when you join (unique on the whole server); your name is your character in the story
 - You start in the lobby: open a new room, or join a room that's still waiting for players. Playing alone is just a room of your own. Several rooms can play at once, so different groups can team up separately (at most 10 rooms, 4 players per room)
 - Whoever opens the room is the host, who chooses "Start game", the premise, whether to continue a save, and whether to start over. Once the host sends the premise, everyone sees it, and you all enter the story together when the AI finishes the opening
-- In the game everyone sees their own choices and can act in any order; others are notified when someone acts, and the turn advances once everyone has acted. In timed mode the room runs a single countdown, which starts only after everyone has finished reading
+- In the game everyone sees their own choices and can act in any order; the input box hint shows who has acted and who you are waiting for, and the turn advances once everyone has acted. In timed mode the room runs a single countdown, which starts only after everyone has finished reading
 - If you disconnect, come back with the same name and you go straight back to your room. If everyone else has acted and you're still away, your character "steps away" for that turn
 - If the host leaves, the next person in the room becomes host
 - When the story ends you return to the room's waiting screen and can play again, or choose "Leave room" to go back to the lobby (you can also type `/leave` during a game). A room closes when nobody is left in it

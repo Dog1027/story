@@ -122,7 +122,7 @@ async def test_two_players_play_a_round_in_any_order(lobby):
 
     await guest.send("2")  # 小華先行動
     acted = await guest.reply()
-    assert acted.choices == [] and "已記下 小華 的行動" in acted.notice
+    assert acted.choices == [] and acted.notice == ""
     await host.expect(lambda m: m["type"] == "waiting" and m["names"] == ["阿明"])
 
     await host.send("1")
