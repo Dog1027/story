@@ -291,6 +291,7 @@ function renderStatus(status) {
 // 按鈕送出的是選項的編號，跟在輸入框打編號一樣
 function renderLobby(screen) {
   renderStatus(null);
+  renderChoices([]); // 上一局留下來、看不見但還佔著位置的選項也清掉：等人的畫面的按鈕在面板裡
   $("app").classList.toggle("wide", screen.view === "lobby"); // 大廳兩欄並排：上下的狀態列、輸入框跟著變寬
   log.querySelectorAll(".lobby-panel").forEach((el) => el.remove());
   const panel = screen.view === "room" ? roomPanel(screen) : lobbyPanel(screen);

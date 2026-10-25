@@ -26,7 +26,7 @@ class RoomClient(Client):
 
     @property
     def connected(self) -> bool:
-        return self.room is not None
+        return self.room is not None and self.room.open  # 連線斷了就不再接受輸入（再送會丟出 ConnectionError）
 
     async def run(self) -> None:
         self.room = self.lobby.connect()
@@ -49,6 +49,11 @@ class RoomClient(Client):
 
     async def premise_request(self, *commands: str) -> Reply:
         return await self.ask_room(list(commands))  # 請房間代問後等結果
+
+    async def handle(self, reply: Reply) -> None:
+        if reply.phase != "playing":
+            self.waiting = []  # 這一局的行動結束了（結局、回到前提……）：提示不再寫「等待 X 行動」
+        await super().handle(reply)
 
     def echo_for(self, text: str) -> str:
         """還沒行動時，照畫面上的選項對應；房間的時間到、指令不顯示。"""
@@ -109,6 +114,8 @@ class RoomClient(Client):
                 self.premise_answer.set_result(Reply.from_dict(message["reply"]))
             else:
                 self.inbox.put_nowait(message)
+        if self.premise_answer and not self.premise_answer.done():  # 前提對話框還在等房間：不然會一直等下去
+            self.premise_answer.set_exception(ConnectionError(UI["room_disconnected"]))
         self.set_busy(False)
         self.view.notify(UI["room_disconnected"], error=True, lasting=True)
 

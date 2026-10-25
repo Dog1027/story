@@ -24,8 +24,13 @@ class Connection:
         one.peer, other.peer = other, one
         return one, other
 
+    @property
+    def open(self) -> bool:
+        """兩端都還沒 close()。"""
+        return not self.closed and not self.peer.closed
+
     async def send(self, message: dict) -> None:
-        if self.closed or self.peer.closed:
+        if not self.open:
             raise ConnectionError("connection closed")
         # 轉成 JSON 再轉回來：兩端不會共用同一個物件，收到的只有 JSON 的型別（tuple 變成 list），訊息格式才是唯一的約定
         self.outbox.put_nowait(json.loads(json.dumps(message, ensure_ascii=False)))

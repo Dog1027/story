@@ -9,6 +9,8 @@ import story.shells.client as client_module
 from story.core import GENRE_AUTO, GENRE_NONE, Reply, StoryCore
 from story.core.session import Status
 from story.shells.client import LocalClient, PremiseForm, View, status_line
+from story.shells.connection import Connection
+from story.shells.room_client import RoomClient
 
 
 class RecordingView(View):
@@ -281,3 +283,35 @@ async def test_premise_form_suggest_errors_are_raised_for_the_interface_to_show(
     form, _ = premise_form(**{"/suggest": Reply(phase="ask_premise", error="api", notice="額度用完了")})
     with pytest.raises(RuntimeError, match="額度用完了"):
         await form.suggest("")
+
+
+# ---------- 網頁版的共用層（RoomClient） ----------
+
+
+async def test_room_hint_stops_waiting_once_the_story_ends():
+    """最後一回合結束後，提示不再寫「等待 X 行動」（房間在結局時不會再送還在等誰）。"""
+    view = RecordingView()
+    client = RoomClient(view, lobby=None)
+    client.waiting = ["小華"]
+    await client.handle(Reply(phase="ending"))
+    hints = [c[1] for c in view.calls if c[0] == "set_hint"]
+    assert hints[-1] == client_module.UI["hint_input"]
+
+
+async def test_room_client_stops_taking_input_when_the_connection_closes():
+    client = RoomClient(RecordingView(), lobby=None)
+    client.room, server = Connection.pair()
+    assert client.ready
+    server.close()
+    assert not client.ready  # 再送會丟出 ConnectionError
+
+
+async def test_premise_request_fails_instead_of_waiting_forever_when_the_room_is_gone():
+    client = RoomClient(RecordingView(), lobby=None)
+    client.room, server = Connection.pair()
+    request = asyncio.create_task(client.premise_request("/genre 武俠", "/random"))
+    await asyncio.sleep(0)
+    server.close()
+    await client.listen()
+    with pytest.raises(ConnectionError):
+        await asyncio.wait_for(request, 2)  # 沒修好時會一直等：逾時就是失敗
