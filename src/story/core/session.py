@@ -82,7 +82,7 @@ class Reply:
     suggestion: str = ""  # ask_premise：/suggest 想出來的前提
     ending: Ending | None = None  # ended：尾聲與旅程紀錄
     error: Literal["api_key", "api"] | None = None  # api_key：key 無效，外殼換 key 後可以重送同一句
-    actor: str = ""  # 多人模式：現在輪到哪位角色輸入行動；choices 就是這位角色的選項（單人模式是空的）
+    actor: str = ""  # 多人模式：這位玩家（send_as、view 的對象）這回合還沒行動時是他的名字，choices 是他的選項；單人模式是空的
 
     def to_dict(self) -> dict:
         """轉成可以存成 JSON 的 dict（網頁版的房間傳送回覆用）。"""

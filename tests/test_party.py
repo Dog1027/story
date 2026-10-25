@@ -1,4 +1,4 @@
-"""多人模式：engine 的隊伍規則，以及 PartyCore 收齊每位角色的行動才推進的流程。"""
+"""多人模式：engine 的隊伍規則，以及 PartyCore 收齊每位角色的行動（send_as）才推進的流程。"""
 
 from pathlib import Path
 
@@ -142,6 +142,11 @@ def core(engine, isolated):
     return PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine)
 
 
+def act(core, text: str):
+    """替這回合還沒行動的第一位角色送出行動（房間裡是每個人各自用 send_as 送）。"""
+    return core.send_as(core.waiting()[0], text)
+
+
 def test_needs_one_to_four_unique_players():
     PartyCore("test", ["阿明"], save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakePartyEngine())  # 一個人也能開始
     for players in ([], ["阿明", "阿明"], ["a", "b", "c", "d", "e"]):
@@ -149,36 +154,36 @@ def test_needs_one_to_four_unique_players():
             PartyCore("test", players, save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakePartyEngine())
 
 
-def test_players_take_turns_before_the_round_resolves(core, engine):
+def test_everyone_acts_before_the_round_resolves(core, engine):
     core.start()
     reply = core.send("")
-    assert reply.phase == "playing" and reply.actor == "阿明"
-    assert reply.choices == ["阿明往上爬", "阿明躲起來"]
+    assert reply.phase == "playing" and reply.actor == "" and reply.choices == []  # 選項看 view() 或 send_as() 的回覆
     assert [s.name for s in reply.characters] == NAMES
+    assert core.waiting() == NAMES
 
-    reply = core.send("1")
-    assert reply.actor == "小華" and reply.narration == "" and "已記下 阿明 的行動" in reply.notice
-    assert engine.rounds == []
+    reply = core.send_as("阿明", "1")
+    assert reply.actor == "" and reply.narration == "" and "已記下 阿明 的行動" in reply.notice
+    assert engine.rounds == [] and core.waiting() == ["小華"]
 
-    reply = core.send("自己想的行動")
+    reply = core.send_as("小華", "自己想的行動")
     assert engine.rounds == [{"阿明": "阿明往上爬", "小華": "自己想的行動"}]
-    assert reply.narration and reply.actor == "阿明"
+    assert reply.narration and reply.actor == "小華" and reply.choices == ["小華往上爬", "小華躲起來"]  # 新的一回合
     assert reply.changes == [("阿明", [("獲得", [("油燈", "plain")])])]
-    assert "輪到 阿明 行動" in reply.text
 
 
-def test_action_for_uses_the_current_actors_choices(core):
+def test_actions_without_a_name_are_refused(core):
+    """遊戲中的行動要說是誰的：用 send() 送行動是用錯了（以前同一台電腦輪流輸入時才會這樣用）。"""
     core.start()
     core.send("")
-    assert core.action_for("2") == "阿明躲起來"
-    core.send("1")
-    assert core.action_for("2") == "小華躲起來"
+    with pytest.raises(ValueError, match="send_as"):
+        core.send("1")
+    assert core.send("/state").info  # 指令照常可以用 send()
 
 
 def test_timeout_fills_everyone_who_has_not_acted(core, engine):
     core.start()
     core.send("")
-    core.send("1")
+    act(core, "1")
     core.send("/timeout")
     assert engine.rounds == [{"阿明": "阿明往上爬", "小華": TIMEOUT_ACTION}]
 
@@ -186,27 +191,27 @@ def test_timeout_fills_everyone_who_has_not_acted(core, engine):
 def test_dead_characters_are_skipped(core, engine):
     core.start()
     core.send("")
-    core.send("1")
-    core.send("1")  # 第 2 回合
-    core.send("1")
-    reply = core.send("1")  # 第 3 回合：阿明倒下
-    assert reply.actor == "小華"
+    act(core, "1")
+    act(core, "1")  # 第 2 回合
+    act(core, "1")
+    reply = act(core, "1")  # 第 3 回合：阿明倒下
+    assert core.waiting() == ["小華"]
     assert [s.alive for s in reply.characters] == [False, True]
-    core.send("1")
+    act(core, "1")
     assert engine.rounds[-1] == {"小華": "小華往上爬"}
 
 
 def test_failed_round_lets_everyone_choose_again(core, engine):
     core.start()
     core.send("")
-    core.send("1")
+    act(core, "1")
     engine.fail_with = InvalidKeyError()
-    reply = core.send("2")
-    assert reply.error == "api_key" and reply.actor == "阿明"  # 撤回所有人的行動，從第一位重新輸入
+    reply = act(core, "2")
+    assert reply.error == "api_key" and core.waiting() == NAMES  # 撤回所有人的行動，大家重新選
     assert core.state.turn == 1  # 已從存檔還原
     core.set_api_key("新的 key")
-    core.send("2")
-    core.send("2")
+    act(core, "2")
+    act(core, "2")
     assert engine.rounds == [{"阿明": "阿明躲起來", "小華": "小華躲起來"}]
 
 
@@ -214,7 +219,7 @@ def test_failed_timeout_round_does_not_get_stuck(core, engine):
     """時間到替大家填入的行動推進失敗：要撤回，不然每個人都「已行動」卻沒人能重送。"""
     core.start()
     core.send("")
-    core.send("1")
+    act(core, "1")
     engine.fail_with = RuntimeError("503 UNAVAILABLE")
     reply = core.send("/timeout")
     assert reply.error == "api" and "請重新選擇行動" in reply.notice
@@ -225,9 +230,9 @@ def test_party_ending(core):
     core.start()
     core.send("")
     for _ in range(2):
-        core.send("1")
-        core.send("1")
-    core.send("1")  # 第 3 回合阿明倒下，只剩小華行動，第 4 回合故事結束
+        act(core, "1")
+        act(core, "1")
+    act(core, "1")  # 第 3 回合阿明倒下，只剩小華行動，第 4 回合故事結束
     assert core.phase == "ending"
     reply = core.send("")
     assert reply.phase == "ended" and reply.ending.title == "燈塔雙人行"
@@ -238,14 +243,14 @@ def test_resume_party_save(engine, isolated):
     first = PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine)
     first.start()
     first.send("")
-    first.send("1")
-    first.send("1")
+    act(first, "1")
+    act(first, "1")
     assert load(isolated / "party.json").turn == 2
 
     same = PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=FakePartyEngine())
     assert same.start().phase == "ask_continue"
     reply = same.send("1")
-    assert reply.resumed and reply.actor == "阿明"
+    assert reply.resumed and same.view("阿明", reply).choices == ["阿明往上爬", "阿明躲起來"]
 
     others = PartyCore("test", ["阿明", "小美"], save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=FakePartyEngine())
     assert others.start().phase == "ask_premise"  # 玩家不同就開新局
@@ -256,10 +261,10 @@ def test_resume_ignores_player_order(engine, isolated):
     first.start()
     first.send("")
     reversed_order = PartyCore("test", NAMES[::-1], save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=FakePartyEngine())
-    assert reversed_order.start().phase == "ask_continue"  # 線上多人加入的順序不同也能接續
+    assert reversed_order.start().phase == "ask_continue"  # 房間裡加入的順序不同也能接續
 
 
-# ---------- 線上多人：send_as 與 view ----------
+# ---------- 網頁版的房間：send_as 與 view ----------
 
 
 def test_away_is_an_action_whose_text_the_core_decides(core, engine):
@@ -301,8 +306,8 @@ def test_send_as_rejects_fallen_characters(core):
     core.start()
     core.send("")
     for _ in range(2):
-        core.send("1")
-        core.send("1")  # 第 3 回合阿明倒下
+        act(core, "1")
+        act(core, "1")  # 第 3 回合阿明倒下
     assert "倒下" in core.send_as("阿明", "1").notice
 
 
@@ -313,8 +318,8 @@ def test_reply_survives_json_round_trip(core):
 
     core.start()
     core.send("")
-    core.send("1")
-    reply = core.send("1")
+    act(core, "1")
+    reply = act(core, "1")
     back = Reply.from_dict(json.loads(json.dumps(reply.to_dict(), ensure_ascii=False)))
     assert back.characters[0].name == "阿明" and back.characters[0].alive and back.turn == reply.turn == 2
     assert back.changes[0][0] == "阿明"
@@ -331,12 +336,12 @@ def test_party_core_with_real_engine(isolated):
     core = PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine)
     core.start()
     reply = core.send("")
-    assert reply.narration == "兩人醒來。" and reply.actor == "阿明" and reply.choices == ["推門", "點燈"]
-    core.send("1")
-    reply = core.send("2")
+    assert reply.narration == "兩人醒來。" and core.view("阿明", reply).choices == ["推門", "點燈"]
+    core.send_as("阿明", "1")
+    reply = core.send_as("小華", "2")
     assert "阿明：推門\n小華：搜索" in gemini.prompts[-2]
     assert "惡犬撲來。" in reply.narration and "（倒下的場景）" in reply.narration
-    assert reply.actor == "小華" and reply.choices == ["逃走"]  # 阿明倒下了，只剩小華
+    assert core.waiting() == ["小華"] and reply.choices == ["逃走"]  # 阿明倒下了，只剩小華
     assert [(s.name, s.alive) for s in reply.characters] == [("阿明", False), ("小華", True)]
     assert ("小華", [("獲得", [("鑰匙", "plain")])]) in reply.changes
     assert load(isolated / "party.json").party[0].alive is False

@@ -3,15 +3,15 @@
 PartyEngine 繼承單人的 Engine，PartyCore 繼承單人的 StoryCore，只覆寫「主角變成一支隊伍」不一樣的地方；
 規則（傷勢、痊癒、時間、背包、限時）、記憶、大綱與節奏、存檔、文字指令都直接沿用單人模式。
 
-介面和單人一樣是 send(文字) → Reply。差別在遊戲中：
-- reply.actor 是現在輪到誰輸入；送進來的文字就算是那位角色的行動，reply.choices 是那位角色的選項
+介面和單人一樣是 send(文字) → Reply，再加上 send_as(名字, 文字)。差別在遊戲中：
+- 每位角色的行動用 send_as() 送，誰先送誰先記；reply.actor、reply.choices 是送的那位角色的（已經行動就是空的）
 - 所有還活著的角色都輸入後，才呼叫 AI 寫這一回合
 - reply.characters 是每位角色的狀態，reply.changes 是每位角色這回合的變化（單人模式也用這兩個欄位，只是只有一位、沒有名字）
 - /timeout 會把還沒行動的人都當作「時間到」，直接推進這一回合
 - /away 是這位角色暫時離開（例如網頁版斷線），這回合不行動；給 AI 的文字是 AWAY_ACTION
 
-網頁版的房間（story.shells.room）用 send_as(名字, 文字) 送每位玩家的輸入，誰先送誰先記，
-再用 view(名字) 取得某位玩家眼中的畫面（自己的選項）。不屬於某位玩家的輸入（時間到、房主的回答、寫尾聲）用 send()。
+網頁版的房間（story.shells.room）用 send_as() 送每位玩家的輸入，再用 view(名字) 取得某位玩家眼中的畫面（自己的選項）。
+不屬於某位玩家的輸入（時間到、房主的回答、寫尾聲、/state）用 send()；遊戲中的行動不能用 send()，因為不知道是誰的。
 """
 
 import json
@@ -214,6 +214,8 @@ class PartyCore(StoryCore):
                 self.pending[c.name] = action
         else:
             actor = self._actor()
+            if actor is None:
+                raise ValueError("多人模式的行動要用 send_as(名字, 文字) 送，才知道是誰的行動")
             self.pending[actor.name] = action
             if self._waiting():
                 return self._reply(notice=UI["action_recorded"].format(name=actor.name), **self._screen())
@@ -293,17 +295,17 @@ class PartyCore(StoryCore):
         """這回合還沒行動的角色名字。"""
         return [c.name for c in self._waiting()] if self.state and self._phase == "playing" else []
 
-    # ---------- 輪到誰 ----------
+    # ---------- 誰還沒行動 ----------
 
     def _waiting(self) -> list[Character]:
         """還活著、這回合還沒輸入行動的角色，依隊伍順序。"""
         return [c for c in self.state.party if c.alive and c.name not in self.pending]
 
     def _actor(self) -> Character | None:
-        waiting = self._waiting() if self.state else []
-        if self._as is not None:
-            return next((c for c in waiting if c.name == self._as), None)
-        return waiting[0] if waiting else None
+        """send_as() 指定的角色（這回合還沒行動的話）；用 send() 時沒有。"""
+        if self._as is None or self.state is None:
+            return None
+        return next((c for c in self._waiting() if c.name == self._as), None)
 
 
 def reply_status(c: Character) -> Status:
