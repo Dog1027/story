@@ -53,26 +53,3 @@ def test_every_genre_pack_has_a_tone_scenario():
 def test_unknown_scenario_lists_the_choices(monkeypatch, capsys):
     with pytest.raises(SystemExit, match="可以用：opening"):
         run(monkeypatch, capsys, ["nope"])
-
-
-def test_throttle_waits_out_the_rate_limit_and_retries(monkeypatch):
-    from google.genai import errors
-
-    slept = []
-    monkeypatch.setattr(evals.time, "sleep", slept.append)
-    calls = []
-
-    def send():
-        calls.append(1)
-        if len(calls) == 1:
-            raise errors.ClientError(429, {"error": {"message": "Please retry in 12.5s."}})
-        return "ok"
-
-    assert evals.Throttle(60_000).call(send) == "ok" and len(calls) == 2 and 12.5 in slept
-
-
-def test_judge_calibration_expects_bad_samples_to_fail(monkeypatch, capsys):
-    """一律判通過的評審：沒問題的範例過關，故意寫壞的範例全部被抓出來。"""
-    out = run(monkeypatch, capsys, ["judge", "--runs", "1"])
-    assert "✓ 沒問題的劇情判通過（不替玩家做決定）  1/1" in out
-    assert "✗ 識破替玩家做決定  0/1" in out and "✗ 識破文風不符題材  0/1" in out

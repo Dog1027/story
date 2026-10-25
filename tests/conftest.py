@@ -21,7 +21,6 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr("story.settings.CONFIG_DIR", tmp_path)  # 看不到你的設定檔（config.toml）
     monkeypatch.setattr("story.settings.CONFIG_PATH", tmp_path / "config.toml")
     monkeypatch.setattr("story.core.genres.PERSONAL_DIR", tmp_path / "genres")  # 看不到你個人的題材包
-    monkeypatch.setattr("story.shells.players.Player.online", set())  # 每個測試的在線名單各自獨立
     return tmp_path
 
 

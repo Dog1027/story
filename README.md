@@ -15,7 +15,7 @@ The design principle is **the AI tells the story, the program keeps the memory a
 - **Long-term memory**: the full text of every turn is kept, so the AI sees the whole story; only when it grows past a limit is the oldest part compacted into a summary
 - **Genre packs**: Wuxia, Cthulhu, Ghost Story, Monsters & Aliens, and Cyberpunk, each with its own writing guide, opening ideas, and twist ideas. One is picked automatically to fit your premise, or you choose. You can write your own genre pack without touching code; see [docs/genres.md](docs/genres.md) (in Chinese)
 - **Random openings**: a new story starts from an opening drawn from the genre packs; press "Another one" to draw again, or "Inspire me" to have the AI invent a new one
-- **Multiplayer**: 1 to 4 players, each playing one character with their own conditions, inventory, and choices. The turn advances once everyone has acted. Everyone joins the web page from their own phone or computer
+- **Multiplayer**: 1 to 4 players, each playing one character with their own conditions, inventory, and choices. The turn advances once everyone has acted. Everyone joins the web page from their own phone or computer, opening rooms or joining friends' rooms in the lobby; several rooms can play at once
 
 ## Getting started
 
@@ -47,29 +47,25 @@ Environment variables take precedence over the file: `STORY_LANG`, `GEMINI_API_K
 |---|---|---|
 | `just play` | `uv run story` | Terminal version |
 | `just plain` | `uv run story --plain` | Plain-text version (just input/print) |
-| `just serve-solo` | `uv run story-web --host 0.0.0.0` | Web version, everyone plays their own story |
-| `just serve` | `uv run story-web --party --host 0.0.0.0` | Web version, online multiplayer in one shared story |
-| `just start` / `just stop` | | Start / stop the online multiplayer server in the background (restarts it if already running; output goes to `server.log`) |
+| `just serve` | `uv run story-web --host 0.0.0.0` | Web version: everyone enters a lobby and opens rooms, to play alone or as a team |
+| `just start` / `just stop` | | Start / stop the web server in the background (restarts it if already running; output goes to `server.log`) |
 
 The web server uses port 8080 by default (`just serve 9000` to change it). Open `http://this-computer's-IP:8080` in a browser; on the same computer that's <http://localhost:8080>. Phones and computers use the same page, which follows the system's light or dark mode.
 
-Both web versions call the AI with the host's API key (entered the first time you start the server); players only enter a name.
+### Web: the lobby and rooms
 
-### Web: everyone plays their own story
+The web version calls the AI with the host's API key (entered the first time you start the server); players only enter a name.
 
-- Enter a name first; each name has its own save, and only one person can use a name at a time
-- At most 10 people online at once
+- Enter a name when you join (unique on the whole server); your name is your character in the story
+- You start in the lobby: open a new room, or join a room that's still waiting for players. Playing alone is just a room of your own. Several rooms can play at once, so different groups can team up separately (at most 10 rooms, 4 players per room)
+- Whoever opens the room is the host, who chooses "Start game", the premise, whether to continue a save, and whether to start over. Once the host sends the premise, everyone sees it, and you all enter the story together when the AI finishes the opening
+- In the game everyone sees their own choices and can act in any order; others are notified when someone acts, and the turn advances once everyone has acted. In timed mode the room runs a single countdown, which starts only after everyone has finished reading
+- If you disconnect, come back with the same name and you go straight back to your room. If everyone else has acted and you're still away, your character "steps away" for that turn
+- If the host leaves, the next person in the room becomes host
+- When the story ends you return to the room's waiting screen and can play again, or choose "Leave room" to go back to the lobby (you can also type `/leave` during a game). A room closes when nobody is left in it
+- All rooms share one API key: the free tier allows 15 AI calls per minute, so with many rooms calls queue up, and the screen shows "queued"
 
-### Web: online multiplayer
-
-- Enter a name when you join; your name is your character. The first person in is the host, who chooses "Start game" (you can start alone; at most 4 players)
-- The host picks the premise, whether to continue a save, and whether to start over. Once the host sends the premise, everyone sees it, and you all enter the story together when the AI finishes the opening
-- In the game everyone sees their own choices and can act in any order; others are notified when someone acts, and the turn advances once everyone has acted. In timed mode the server runs a single countdown, which starts only after everyone has finished reading
-- If you disconnect, come back with the same name. If everyone else has acted and you're still away, your character "steps away" for that turn
-- If the host goes offline, the next player online becomes host
-- When the story ends, everyone returns to the lobby and can play again. The server has a single room, so everyone joins the same story
-
-> ⚠ The web server accepts connections from other computers on the same network. There's no HTTPS yet, so traffic is sent in plain text, and names have no password: anyone who knows a name can continue that save. Only use it on a network you trust.
+> ⚠ The web server accepts connections from other computers on the same network. There's no HTTPS yet, so traffic is sent in plain text, and names have no password: anyone who knows the names can continue that team's save. Only use it on a network you trust.
 
 ## Controls
 
@@ -95,8 +91,7 @@ Both web versions call the AI with the host's API key (entered the first time yo
 | How you play | Save |
 |---|---|
 | Terminal | `save.json` in the current folder |
-| Web, own story | `saves/name.json` |
-| Web, online multiplayer | `saves/party.json` (continued only by the same group of players) |
+| Web | `saves/team-name.json`, or `saves/team-Alex+Sam.json` for a group (the same group can continue when they open a room again) |
 
 ## How it's built
 
@@ -110,14 +105,15 @@ src/story/
     ├── client.py   The flow shared by interfaces for human players
     ├── textual/    The terminal interface
     ├── web/        The web server and page
-    ├── room.py     The online multiplayer room
+    ├── lobby.py    The web lobby: names and the room list
+    ├── room.py     A web room: one game per room
     └── plain.py    The plain-text version
 ```
 
 Three layers, each with one job:
 
 - **Core** (`core/`): works like calling an LLM. Send in a line of text, get a reply back (narration, choices, conditions…). It knows nothing about screens, so a new shell such as a Discord bot only has to handle display and input. The plain-text version is the simplest example
-- **Shared layer** (`shells/client.py`): when to show what. What to ask when starting, choices appearing only after the text finishes typing, the ending arriving in steps, how online multiplayer connects to the room. Both the terminal and web versions use it
+- **Shared layer** (`shells/client.py`): when to show what. What to ask when starting, choices appearing only after the text finishes typing, the ending arriving in steps, how the web version connects to the lobby and rooms. Both the terminal and web versions use it
 - **Interfaces** (`textual/`, `web/`): only decide how things look
 
 Where a new feature goes: changes the game's outcome or facts → core; changes the order, timing, or flow of what a person sees → shared layer; changes the look → interface.
@@ -154,8 +150,7 @@ What the AI proposed each turn and what the program actually applied are logged 
 | How you play | Log |
 |---|---|
 | Terminal | `story_log.jsonl` |
-| Web, own story | `saves/name.log.jsonl` |
-| Web, online multiplayer | `saves/party.log.jsonl` |
+| Web | `saves/team-name.log.jsonl` (one per team, as above) |
 
 Each line's `calls` lists every AI call in that period: the kind (`kind`: `genre` picking a genre, `arc` planning the outline, `turn` a story turn, `rewrite` rewriting an ending that came too early, `death` falling to wounds, `epilogue`, `suggest` inspire me, `compaction` memory compaction), how long it took (`seconds`), and the token counts Gemini reports: sent (`prompt`), of which cached (`cached`), output (`output`), and thinking (`thinking`). If you're waiting a long time, this shows where the time goes.
 

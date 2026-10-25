@@ -1,5 +1,5 @@
 <!--
-Text shared by the shells: the shared layer (story/shells/client.py), the online room (room.py), name checks (players.py),
+Text shared by the shells: the shared layer (story/shells/client.py), the web lobby and rooms (lobby.py, room.py), name checks (players.py),
 the web server (web/__init__.py), and the plain-text shell (plain.py). Same format as core.md.
 -->
 
@@ -38,8 +38,6 @@ No Gemini API key found.
 ## ask_new_key
 The API key is invalid or lacks permission. Please enter it again.
 
-## name_in_use
-That name is already in a game. Choose another name, or wait for them to leave.
 
 ## busy
 <!-- Shown while waiting for the AI. Variable: {progress} (busy_progress, or blank) -->
@@ -69,16 +67,57 @@ The End
 ↑↓ to choose, or write your action
 
 ## hint_waiting
-<!-- Online multiplayer: you've already acted. Variable: {names} -->
+<!-- Web: you've already acted. Variable: {names} -->
 Waiting for {names}…
 
 ## list_sep
 , 
 
-<!-- ---------- Online multiplayer ---------- -->
+<!-- ---------- Lobby and rooms (lobby.py, room.py) ---------- -->
 
-## room_name_hint
-Everyone is in the same story; each name is one character. If you disconnect, come back with the same name.
+## lobby_title
+<!-- The lobby's title (in the status bar, followed by the people in the lobby) -->
+Lobby
+
+## room_create
+Open a new room
+
+## room_entry
+<!-- A room waiting for players. Variables: {host}, {count}, {max} -->
+Join {host}'s room ({count}/{max})
+
+## rooms_hint
+<!-- The lobby's input hint -->
+Pick a room to join, or open a new one (playing alone is a room of your own too)
+
+## rooms_busy
+<!-- Added after rooms_hint when rooms are in a game. Variable: {count} -->
+; {count} room(s) in a game
+
+## rooms_full
+<!-- Variable: {max} -->
+All rooms are taken (at most {max}). Please wait for a game to finish.
+
+## room_gone
+That room has closed.
+
+## room_title
+<!-- The title of a room's waiting screen. Variable: {host} -->
+{host}'s room
+
+## room_hint_host
+Choose "Start game" and everyone in the room enters the story together, or wait for friends to join
+
+## leave_room
+<!-- A choice on the waiting screen; during a game you can also type /leave -->
+Leave room
+
+## queued
+<!-- While waiting for the AI: the shared call limit is used up, so the call is queued -->
+queued (everyone shares one API key)
+
+<!-- ---------- Notices in a room ---------- -->
+
 
 ## room_lost
 Lost the connection to the game room.
@@ -94,12 +133,7 @@ Lost the connection to the game room. Please reload the page.
 <!-- The host's name in the lobby. Variable: {name} -->
 {name} (host)
 
-## lobby_start
-Choose "Start game" and everyone enters the story together
 
-## lobby_waiting_players
-<!-- Variable: {min} -->
-Waiting for other players (at least {min})…
 
 ## lobby_waiting_host
 <!-- Variable: {host} -->
@@ -110,7 +144,7 @@ Waiting for {host} (the host) to start…
 Start game
 
 ## room_name_taken
-That name is already in the room. Please choose another.
+That name is already taken. Please choose another.
 
 ## room_members_only
 <!-- Variable: {players} -->
@@ -139,9 +173,6 @@ Waiting for {host} (the host) to set up the story.
 <!-- Variable: {host} -->
 Waiting for {host} (the host) to start the game.
 
-## need_players
-<!-- Variable: {min} -->
-At least {min} players are needed to start.
 
 ## host_only_restart
 Only the host can start over.
@@ -173,8 +204,6 @@ Play Story in the browser
 ## server_host_help
 Address to listen on; 0.0.0.0 lets other computers connect (default: this computer only)
 
-## server_party_help
-Online multiplayer: everyone who connects plays the same story, using the server's API key
 
 ## server_no_key
 The web server calls the AI with the host's API key: run uv run story-web once in a terminal to enter it, or set the GEMINI_API_KEY environment variable.
@@ -182,15 +211,11 @@ The web server calls the AI with the host's API key: run uv run story-web once i
 ## server_open_warning
 ⚠ Other computers can connect. There's no HTTPS yet, so traffic (names, the story) is sent in plain text and names have no password; only use this on a network you trust.
 
-## server_mode_party
-online multiplayer (everyone plays the same story)
 
-## server_mode_solo
-solo (everyone plays their own story)
 
 ## server_started
-<!-- Variables: {host}, {port}, {mode} -->
-Server running at http://{host}:{port}  Mode: {mode}  Press Ctrl+C to stop.
+<!-- Variables: {host}, {port} -->
+Server running at http://{host}:{port}  Press Ctrl+C to stop.
 
 <!-- ---------- Plain-text shell ---------- -->
 

@@ -8,9 +8,9 @@ PartyEngine 繼承單人的 Engine，PartyCore 繼承單人的 StoryCore，只�
 - 所有還活著的角色都輸入後，才呼叫 AI 寫這一回合
 - reply.characters 是每位角色的狀態，reply.changes 是每位角色這回合的變化（單人模式也用這兩個欄位，只是只有一位、沒有名字）
 - /timeout 會把還沒行動的人都當作「時間到」，直接推進這一回合
-- /away 是這位角色暫時離開（例如線上多人斷線），這回合不行動；給 AI 的文字是 AWAY_ACTION
+- /away 是這位角色暫時離開（例如網頁版斷線），這回合不行動；給 AI 的文字是 AWAY_ACTION
 
-線上多人（story.shells.room）用 send_as(名字, 文字) 送每位玩家的輸入，誰先送誰先記，
+網頁版的房間（story.shells.room）用 send_as(名字, 文字) 送每位玩家的輸入，誰先送誰先記，
 再用 view(名字) 取得某位玩家眼中的畫面（自己的選項）。不屬於某位玩家的輸入（時間到、房主的回答、寫尾聲）用 send()。
 """
 
@@ -47,8 +47,8 @@ from story.core.session import UI, Reply, Status, StoryCore, render_text
 PARTY_SYSTEM_PROMPT = prompts.load("party_system")
 PARTY_TURN = prompts.sections("party_turn")
 
-MIN_PLAYERS, MAX_PLAYERS = 1, 4  # 一個人也能開線上多人的房間先玩，其他人之後再一起玩下一局
-AWAY_ACTION = PARTY_TURN["away_action"]  # /away：角色暫時不在（線上多人斷線時由房間送出），這句會寫進劇情紀錄給 AI
+MIN_PLAYERS, MAX_PLAYERS = 1, 4  # 網頁版一個人玩就是只有一位角色的隊伍
+AWAY_ACTION = PARTY_TURN["away_action"]  # /away：角色暫時不在（網頁版斷線時由房間送出），這句會寫進劇情紀錄給 AI
 
 
 class PartyEngine(Engine):
@@ -178,11 +178,13 @@ class PartyCore(StoryCore):
         save_path: Path,
         log_path: Path,
         engine: Engine | None = None,
+        client=None,
     ):
+        """client：要共用的 Gemini client（例如受 RateLimit 限制的），沒給就用 api_key 建一個。"""
         names = [n.strip() for n in players if n.strip()]
         if not MIN_PLAYERS <= len(names) <= MAX_PLAYERS or len(set(names)) != len(names):
             raise ValueError(UI["party_size"].format(min=MIN_PLAYERS, max=MAX_PLAYERS))
-        super().__init__(api_key, save_path=save_path, log_path=log_path, engine=engine or PartyEngine(api_key=api_key, log_path=log_path))
+        super().__init__(api_key, save_path=save_path, log_path=log_path, engine=engine or PartyEngine(api_key=api_key, client=client, log_path=log_path))
         self._players = names
         self.pending: dict[str, str] = {}  # 這一回合已經輸入的行動
         self._as: str | None = None  # send_as() 指定的角色
@@ -251,7 +253,7 @@ class PartyCore(StoryCore):
     def _characters(self) -> list[Status]:
         return [reply_status(c) for c in self.state.party]
 
-    # ---------- 線上多人：每位玩家各自送行動 ----------
+    # ---------- 網頁版的房間：每位玩家各自送行動 ----------
 
     @property
     def players(self) -> list[str]:

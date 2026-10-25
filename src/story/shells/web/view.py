@@ -7,7 +7,6 @@
   {"t": "answer", "id": 1, "value": …}       回答對話框，或回報劇情顯示完、按了 Enter（value 不用）
   {"t": "act", "text": "1"}                  行動：選項編號或自由輸入
   {"t": "command", "text": "/state"}         指令
-  {"t": "timeout"}                           倒數到了
   {"t": "premise_ask", "req": 3, "commands": ["/genre 武俠", "/random"]}   前提對話框裡的操作（換題材、換一個、幫我想）
 """
 
@@ -79,8 +78,6 @@ class WebView(View):
             text = str(message.get("text", "")).strip()
             if text:
                 self.spawn(self.client.act(text) if kind == "act" else self.client.command(text))
-        elif kind == "timeout":
-            self.spawn(self.client.timeout())
         elif kind == "premise_ask" and self.premise_ask:
             self.spawn(self.answer_premise(message.get("req"), [str(c) for c in message.get("commands", [])]))
 
@@ -151,8 +148,8 @@ class WebView(View):
     def set_status(self, status: StatusLine | None) -> None:
         self.post("status", status=asdict(status) if status else None)
 
-    def show_lobby(self, members: list[str]) -> None:
-        self.post("lobby", members=members)
+    def show_lobby(self, title: str, members: list[str]) -> None:
+        self.post("lobby", title=title, members=members)
 
     def set_busy(self, busy: bool) -> None:
         self.post("busy", on=busy)
@@ -175,8 +172,7 @@ class WebView(View):
             await asyncio.sleep(BUSY_POLL)
 
     def start_timer(self, seconds: int) -> None:
-        # 線上多人大家共用一個倒數（房間計時），開著對話框也不能暫停
-        self.post("timer", seconds=seconds, pausable=self.client.room is None)
+        self.post("timer", seconds=seconds)  # 房間統一計時，時間到由房間送出，瀏覽器只負責顯示
 
     def stop_timer(self) -> None:
         self.post("stop_timer")

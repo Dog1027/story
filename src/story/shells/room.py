@@ -1,22 +1,19 @@
-"""線上多人的房間：網頁伺服器裡唯一的一局多人遊戲。
+"""網頁版的房間：一個房間就是一局遊戲（一個人玩也是一個只有自己的房間）。
 
-每個瀏覽器分頁的共用層 Client 用 connect() 連到房間，拿到一端 Connection，彼此用訊息溝通。
-房間和所有分頁都在網頁伺服器這個程式裡，訊息直接在記憶體裡傳。
+房間由大廳（lobby.py）建立與關閉；玩家的連線、名字也由大廳管理，大廳把進到這個房間的人交給 add()，
+離開或斷線時呼叫 remove()，房間裡的訊息交給 handle()。
 房間持有一份 PartyCore：把每位玩家的輸入交給核心，再把回覆送給每位玩家（各自看到自己的選項）。
-API key 用伺服器的，玩家不用輸入。
 
-流程：大廳（等人加入，房主按開始）→ 房主回答「繼續存檔／故事前提」→ 遊戲中（每個人各自行動，到齊才推進）
-→ 結局 → 回到大廳。房主是第一位加入的人；房主離線時交給下一位在線的玩家。
+流程：等人（房主按開始）→ 房主回答「繼續存檔／故事前提」→ 遊戲中（每個人各自行動，到齊才推進）
+→ 結局 → 回到等人的畫面。房主是第一位進來的人；房主離開時交給下一位在線的人。
 
-訊息是可以轉成 JSON 的 dict。
+訊息是可以轉成 JSON 的 dict，經過 Connection 傳送。
 玩家 → 房間
-  {"type": "join", "name": "阿明"}        第一則訊息
   {"type": "send", "text": "1"}           玩家的輸入：行動、指令，或房主回答對話框
                                           房主在前提對話框送的指令可以加 "answer": true，要求回傳結果
   {"type": "ready"}                       新劇情顯示完了（大家都顯示完才開始限時倒數）
 房間 → 玩家
-  {"type": "joined"} 或 {"type": "rejected", "reason": "..."}
-  {"type": "lobby", "members": [...], "host": "阿明"}
+  {"type": "lobby", ...}                  等人的畫面：見 lobby.py 的說明（title、members、choices、hint）
   {"type": "reply", "reply": {...}}       核心的回覆（Reply.to_dict()，已換成這位玩家的選項）
   {"type": "premise", "reply": {...}}     前提對話框的指令（幫我想、換一個、換題材）的結果，只回給要求 answer 的房主
   {"type": "new_story", "premise": "..."}  新故事開始：清空畫面，先顯示故事前提
@@ -32,18 +29,17 @@ import json
 from collections.abc import Callable
 from dataclasses import replace
 
-from story.core import MAX_PLAYERS, MIN_PLAYERS, PartyCore, Reply, ui_text
-from story.shells.players import SAVES_DIR, InvalidName, check_name
+from story.core import MAX_PLAYERS, PartyCore, Reply, pick_choice, ui_text
 
 UI = ui_text("shells")  # story/ui/語言/shells.md
-START = UI["start_game"]  # 房主在大廳裡的選項
+START, LEAVE = UI["start_game"], UI["leave_room"]  # 等人的畫面裡的選項
 READY_WAIT = 90  # 等大家看完劇情最多幾秒，超過就直接開始倒數
 TIMEOUT_GRACE = 1  # 倒數結束後多等一下，抵銷網路延遲
 PROGRESS_POLL = 0.1  # 呼叫 AI 時每隔幾秒看一次進度與 AI 寫到哪裡
 
 
 class Connection:
-    """玩家與房間之間連線的一端：send() 的訊息由另一端的 receive() 收到。
+    """玩家與伺服器之間連線的一端：send() 的訊息由另一端的 receive() 收到。
     任一端 close() 之後，另一端的 receive() 回傳 None，再 send() 會丟出 ConnectionError。"""
 
     def __init__(self, inbox: asyncio.Queue, outbox: asyncio.Queue):
@@ -84,9 +80,10 @@ class Member:
 
 
 class Room:
-    def __init__(self, make_core: Callable[[list[str]], PartyCore]):
+    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None]], PartyCore]):
+        """make_core(玩家, on_queue) 建立這一局的核心；on_queue(是否排隊中) 讓 AI 呼叫排隊時畫面顯示「排隊中」。"""
         self.make_core = make_core
-        self.members: dict[str, Member] = {}  # 依加入順序；遊戲中斷線的人會保留，可以重新連線
+        self.members: dict[str, Member] = {}  # 依進來的順序；遊戲中斷線的人會保留，可以重新連線
         self.host = ""
         self.core: PartyCore | None = None
         self.host_reply: Reply | None = None  # 正在等房主回答的畫面（存檔、前提、確認重來），換房主時重送
@@ -96,76 +93,54 @@ class Room:
         self.waiting_ready = False  # 倒數還沒開始，在等大家看完劇情
         self.deadline = 0.0  # 倒數結束的時間（loop.time()），給中途連線的人接著倒數
         self.time_limit = 0  # 這回合的限時秒數（從核心的回覆記下來）
-        self.links: dict[Connection, asyncio.Task] = {}  # 房間這一端的每條連線，與處理它的工作
+        self.queued = False  # AI 呼叫正在排隊（所有房間共用一把 key 的次數上限）
 
-    @staticmethod
-    def for_server(api_key: str) -> "Room":
-        SAVES_DIR.mkdir(exist_ok=True)
-        save_path, log_path = SAVES_DIR / "party.json", SAVES_DIR / "party.log.jsonl"
-        return Room(lambda players: PartyCore(api_key, players, save_path=save_path, log_path=log_path))
+    # ---------- 給大廳用的 ----------
 
-    def connect(self) -> Connection:
-        """一位玩家連進來：回傳玩家那一端，房間這一端交給 serve() 處理。"""
-        player_end, room_end = Connection.pair()
-        self.links[room_end] = asyncio.create_task(self.serve(room_end))
-        return player_end
+    @property
+    def online(self) -> list[str]:
+        return [m.name for m in self._online_members()]
 
-    async def stop(self) -> None:
-        self._stop_countdown()
-        for conn, task in list(self.links.items()):
-            conn.close()
-            task.cancel()
-        await asyncio.gather(*self.links.values(), return_exceptions=True)
+    @property
+    def playing(self) -> bool:
+        return self.core is not None
 
-    # ---------- 連線 ----------
-
-    async def serve(self, conn: Connection) -> None:
-        name = None
-        try:
-            while name is None:  # 名字不能用時讓玩家換一個再試
-                message = await conn.receive()
-                if not message or message.get("type") != "join":
-                    return
-                async with self.lock:
-                    if error := self._join_error(message.get("name", "")):
-                        await conn.send({"type": "rejected", "reason": error})
-                        continue
-                    name = check_name(message["name"])
-                    await self._join(name, conn)
-            while message := await conn.receive():
-                async with self.lock:
-                    await self._on_message(name, message)
-        except ConnectionError:
-            pass
-        finally:
-            if name:
-                async with self.lock:
-                    await self._leave(name)
-            conn.close()
-            self.links.pop(conn, None)
-
-    def _join_error(self, raw: str) -> str:
-        try:
-            name = check_name(raw)
-        except InvalidName as e:
-            return str(e)
-        member = self.members.get(name)
-        if member and member.online:
-            return UI["room_name_taken"]
+    def entry_error(self, name: str) -> str:
+        """這個人能不能進來；不能時回傳原因。名字不重複由大廳負責。"""
         if self.core is not None:
             if name not in self.core.players:
                 return UI["room_members_only"].format(players=UI["list_sep"].join(self.core.players))
-        elif len(self._online()) >= MAX_PLAYERS:
+        elif len(self.online) >= MAX_PLAYERS:
             return UI["room_full"].format(max=MAX_PLAYERS)
         return ""
+
+    def is_leaving(self, name: str, text: str) -> bool:
+        """這句輸入是不是要離開房間：/leave，或在等人的畫面選了「離開房間」。"""
+        return text == "/leave" or (self.core is None and pick_choice(text, self._lobby_choices(name)) == LEAVE)
+
+    async def add(self, name: str, conn: Connection) -> None:
+        async with self.lock:
+            await self._join(name, conn)
+
+    async def remove(self, name: str) -> None:
+        async with self.lock:
+            await self._leave(name)
+
+    async def handle(self, name: str, message: dict) -> None:
+        async with self.lock:
+            await self._on_message(name, message)
+
+    async def close(self) -> None:
+        self._stop_countdown()
+
+    # ---------- 進出 ----------
 
     async def _join(self, name: str, conn: Connection) -> None:
         self.members[name] = Member(name, conn)
         if not self.host or not self.members[self.host].online:
             self.host = name
-        await conn.send({"type": "joined"})
         if self.core is None:
-            await self._broadcast_lobby()
+            await self._broadcast_lobby(clear_for=name)
             return
         await self._broadcast_notice(UI["room_back"].format(name=name), skip=name)
         if self.core.phase == "playing":
@@ -181,18 +156,20 @@ class Room:
             await self._send_notice(name, UI["host_setting_up"])
 
     async def _leave(self, name: str) -> None:
+        if name not in self.members:
+            return
         if self.core is None:
             del self.members[name]
         else:
             self.members[name].online = False
             self.ready.discard(name)
-        online = self._online()
+        online = self.online
         if name == self.host:
             self.host = online[0] if online else ""
+        if not online:
+            return
         if self.core is None:
             await self._broadcast_lobby()
-            return
-        if not online:
             return
         await self._broadcast_notice(UI["room_left"].format(name=name))
         if self.core.phase == "playing":
@@ -232,12 +209,13 @@ class Room:
         if name != self.host:
             await self._send_notice(name, UI["wait_host_start"].format(host=self.host))
             return
-        players = self._online()
-        if text not in ("1", START) or len(players) < MIN_PLAYERS:
-            await self._send_notice(name, UI["need_players"].format(min=MIN_PLAYERS))
+        if pick_choice(text, self._lobby_choices(name)) != START:
             return
-        self.core = self.make_core(players)
+        self.core = self.make_core(self.online, self._set_queued)
         await self._route(self.core.start())
+
+    def _set_queued(self, queued: bool) -> None:
+        self.queued = queued  # 在背景執行緒呼叫：_call() 每隔一下看一次，有變就告訴大家
 
     async def _on_playing(self, name: str, text: str) -> None:
         if text == "/timeout":
@@ -258,7 +236,7 @@ class Room:
 
     async def _fill_offline(self) -> None:
         """在線的人都行動了、只剩離線的人：替離線的人送出「暫時離開」，讓這回合可以推進。"""
-        if self.core is None or self.core.phase != "playing" or not self._online():
+        if self.core is None or self.core.phase != "playing" or not self.online:
             return
         waiting = self.core.waiting()
         if waiting and not any(self.members[n].online for n in waiting if n in self.members):
@@ -275,8 +253,9 @@ class Room:
                 await asyncio.wait({task}, timeout=PROGRESS_POLL)
                 if not self.core or task.done():
                     continue
-                if self.core.progress != progress:
-                    progress = self.core.progress
+                now = UI["queued"] if self.queued else self.core.progress
+                if now != progress:
+                    progress = now
                     await self._broadcast({"type": "busy", "on": True, "progress": progress})
                 if self.core.draft and self.core.draft != draft:
                     draft = self.core.draft
@@ -340,7 +319,7 @@ class Room:
     # ---------- 限時倒數：大家都看完劇情才開始，時間到由房間送出 /timeout ----------
 
     async def _maybe_start_countdown(self) -> None:
-        if self.waiting_ready and self.ready >= set(self._online()):
+        if self.waiting_ready and self.ready >= set(self.online):
             self.countdown.cancel()
             self.countdown = asyncio.create_task(self._countdown(self.time_limit, wait_first=False))
 
@@ -366,16 +345,27 @@ class Room:
     def _online_members(self) -> list[Member]:
         return [m for m in self.members.values() if m.online]
 
-    def _online(self) -> list[str]:
-        return [m.name for m in self._online_members()]
-
     async def _broadcast(self, message: dict, skip: str = "") -> None:
         for member in self._online_members():
             if member.name != skip:
                 await self._safe_write(member, message)
 
-    async def _broadcast_lobby(self) -> None:
-        await self._broadcast({"type": "lobby", "members": self._online(), "host": self.host})
+    def _lobby_choices(self, name: str) -> list[str]:
+        return [START, LEAVE] if name == self.host else [LEAVE]
+
+    async def _broadcast_lobby(self, clear_for: str = "") -> None:
+        """等人的畫面：房間裡有誰、房主能開始、大家都能離開。clear_for 是剛進來的人，他的畫面要先清空。"""
+        members = [UI["host_mark"].format(name=n) if n == self.host else n for n in self.online]
+        for member in self._online_members():
+            host = member.name == self.host
+            await self._safe_write(member, {
+                "type": "lobby",
+                "title": UI["room_title"].format(host=self.host),
+                "members": members,
+                "choices": self._lobby_choices(member.name),
+                "hint": UI["room_hint_host"] if host else UI["lobby_waiting_host"].format(host=self.host),
+                "clear": member.name == clear_for,
+            })
 
     async def _broadcast_waiting(self) -> None:
         if self.core and self.core.phase == "playing":
@@ -392,4 +382,4 @@ class Room:
         try:
             await member.conn.send(message)
         except ConnectionError:
-            pass  # 對方已經斷線，serve() 結束時會處理離開
+            pass  # 對方已經斷線，大廳會處理離開

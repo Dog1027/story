@@ -16,19 +16,16 @@ import json
 import re
 import sys
 import tempfile
-import threading
-import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 
-from google.genai import errors, types
+from google.genai import types
 from pydantic import BaseModel, Field
 
-from story.core import prompts
+from story.core import RateLimit, prompts
 from story.core.engine import ACT_TURNS, MODEL, Engine, body_level, body_score, new_client
 from story.core.genres import Genre, load_genres
 from story.core.models import SCHEMA, GameState
@@ -40,8 +37,7 @@ EVAL = prompts.sections("eval")
 JUDGE_MODEL = MODEL
 RUNS = 3
 WORKERS = 8  # 同時跑幾個情境
-RPM = 14  # 每分鐘最多呼叫幾次 AI：免費方案的 flash-lite 上限是 15。全部情境跑 3 次約 90 次呼叫，要六、七分鐘
-RATE_LIMIT_RETRIES = 3  # 還是超過上限（429）時，等 Gemini 說的秒數再送，最多幾次
+RPM = 14  # 每分鐘最多呼叫幾次 AI（RateLimit）：免費方案的 flash-lite 上限是 15。全部情境跑 3 次約 90 次呼叫，要六、七分鐘
 RESULTS_DIR = Path("eval_results")
 
 
@@ -53,51 +49,6 @@ def schema_range(text: str) -> tuple[int, int]:
 
 NARRATION_LEN = schema_range(SCHEMA["StoryBeat.narration"])
 CHOICE_COUNT = schema_range(SCHEMA["StoryBeat.choices"])
-
-
-class Throttle:
-    """所有情境共用：AI 呼叫排隊，平均分散在每分鐘的上限內，超過上限時等一下再送。"""
-
-    def __init__(self, rpm: int):
-        self.interval = 60 / rpm
-        self.next = time.monotonic()
-        self.lock = threading.Lock()
-
-    def wait(self) -> None:
-        with self.lock:
-            now = time.monotonic()
-            start, self.next = max(now, self.next), max(now, self.next) + self.interval
-        time.sleep(start - now)
-
-    def call(self, send):
-        for attempt in range(RATE_LIMIT_RETRIES + 1):
-            self.wait()
-            try:
-                return send()
-            except errors.ClientError as e:
-                if e.code != 429 or attempt == RATE_LIMIT_RETRIES:
-                    raise
-                delay = re.search(r"retry in ([\d.]+)s", str(e))
-                time.sleep(float(delay.group(1)) if delay else 30)
-
-    def wrap(self, client):
-        """包住 Gemini client，讓 Engine 和評審的呼叫都經過這裡。串流的請求在讀第一段時才送出，所以把讀第一段也包進來。"""
-        models = client.models
-
-        def stream(**request):
-            def first():
-                chunks = models.generate_content_stream(**request)
-                return chunks, next(chunks, None)
-
-            chunks, head = self.call(first)
-            if head is not None:
-                yield head
-                yield from chunks
-
-        return SimpleNamespace(client=client, models=SimpleNamespace(  # client 要留著，被回收時會關掉連線
-            generate_content=lambda **request: self.call(lambda: models.generate_content(**request)),
-            generate_content_stream=stream,
-        ))
 
 
 class Verdict(BaseModel):
@@ -344,10 +295,10 @@ def main(argv: list[str] | None = None) -> None:
     print(f"評估 {len(names)} 個情境，各跑 {runs} 次（遊戲：{MODEL}，評審：{JUDGE_MODEL}，每分鐘最多 {rpm} 次）")
     results: dict[str, list[Run]] = {name: [] for name in names}
     jobs = [(name, i) for name in names for i in range(runs)]
-    throttle = Throttle(rpm)
+    limit = RateLimit(rpm)
     with tempfile.TemporaryDirectory() as logs, ThreadPoolExecutor(WORKERS) as pool:
         futures = {
-            pool.submit(attempt, found[name][1], throttle.wrap(new_client(key)), genres, Path(logs) / f"{name}-{i}.jsonl"): name
+            pool.submit(attempt, found[name][1], limit.wrap(new_client(key)), genres, Path(logs) / f"{name}-{i}.jsonl"): name
             for name, i in jobs
         }
         for done, future in enumerate(as_completed(futures), 1):

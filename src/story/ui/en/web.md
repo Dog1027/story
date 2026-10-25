@@ -55,10 +55,6 @@ Left
 <!-- The label of the premise at the top of the story -->
 Premise
 
-## lobby
-<!-- The label before the lobby list in the status bar -->
-Lobby
-
 ## turn
 <!-- The turn in the status bar. Variable: {turn} -->
 Turn {turn}
@@ -81,4 +77,4 @@ What the program remembers: inventory, established facts, key events, story summ
 Start over: abandon this story and begin a new one
 Appearance: follow the system, light, or dark
 
-Timed mode (chosen when starting a new story): a countdown appears when things get tense; when it runs out, you hesitated. In solo play it pauses while a dialog is open.
+Timed mode (chosen when starting a new story): a countdown appears when things get tense; when it runs out, you hesitated. Everyone in the room shares one countdown, which starts once everyone has read the text.

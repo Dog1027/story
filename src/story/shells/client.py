@@ -2,7 +2,7 @@
 
 分工：
 - 核心（story.core）：遊戲規則、AI、存檔。送文字進去、拿 Reply 出來，沒有時間感，也不知道畫面的存在。
-- 這一層（Client）：「什麼時候顯示什麼」。開局要問什麼、連本機核心還是線上多人的房間、
+- 這一層（Client）：「什麼時候顯示什麼」。開局要問什麼、連本機核心還是網頁版的大廳與房間、
   依回覆的階段跳出哪個對話框、打完字才顯示選項、大家看完才倒數、結局一段一段出現……
 - 介面（View 的實作，例如 Textual 的 StoryApp）：只負責「長什麼樣子」，把 View 的每個方法畫出來，
   再把玩家的輸入交給 Client（act、command、timeout）。
@@ -14,10 +14,11 @@
 import asyncio
 from dataclasses import dataclass, field
 
-from story.core import MIN_PLAYERS, ChangeGroups, Ending, Reply, Status, StoryCore, pick_choice, ui_text, word
+from story.core import ChangeGroups, Ending, Reply, Status, StoryCore, pick_choice, ui_text, word
 from story import settings
-from story.shells.players import MAX_NAME_LEN, InvalidName, Player, check_name
-from story.shells.room import START, Connection, Room
+from story.shells.lobby import Lobby
+from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
+from story.shells.room import Connection
 
 # 介面的對話框也會用到的規則（名字怎樣才能用、key 存在哪裡），一律從這裡取用
 CONFIG_PATH = settings.CONFIG_PATH
@@ -123,14 +124,14 @@ class View:
         raise NotImplementedError
 
     def set_hint(self, placeholder: str) -> None:
-        """輸入框的提示，例如線上多人行動完之後的「等待 小華 行動…」。"""
+        """輸入框的提示，例如網頁版行動完之後的「等待 小華 行動…」。"""
         raise NotImplementedError
 
     def set_status(self, status: StatusLine | None) -> None:
         raise NotImplementedError
 
-    def show_lobby(self, members: list[str]) -> None:
-        """線上多人的大廳：狀態列列出在房間裡的人（房主已標出）。"""
+    def show_lobby(self, title: str, members: list[str]) -> None:
+        """網頁版的大廳或房間的等人畫面：狀態列顯示標題（「大廳」「阿明 的房間」）與在這裡的人。"""
         raise NotImplementedError
 
     def set_busy(self, busy: bool) -> None:
@@ -183,25 +184,22 @@ class View:
 
 
 class Client:
-    def __init__(self, view: View, web: bool = False, room: Room | None = None, api_key: str | None = None):
+    def __init__(self, view: View, lobby: Lobby | None = None):
         self.view = view
-        self.web = web  # 網頁版：先問名字，存檔依名字分開
-        self.server_key = api_key  # 網頁版：架站者的 API key，玩家不用輸入
-        self.shared_room = room  # 線上多人：伺服器裡的房間；這時不建立自己的核心
-        self.core: StoryCore | None = None
-        self.room: Connection | None = None  # 連進房間後，和房間的連線
-        self.player: Player | None = None
-        self.my_name = ""  # 線上多人：自己的名字
-        self.actor = ""  # 線上多人：自己這回合還沒行動時是自己的名字，行動完是空的
-        self.waiting: list[str] = []  # 線上多人：這回合還沒行動的人
+        self.lobby = lobby  # 網頁版：伺服器的大廳；這時不建立自己的核心，遊戲在大廳的房間裡
+        self.core: StoryCore | None = None  # 終端機版、純文字版：自己的核心
+        self.room: Connection | None = None  # 網頁版：和大廳（與房間）的連線
+        self.my_name = ""  # 網頁版：自己的名字
+        self.actor = ""  # 網頁版：自己這回合還沒行動時是自己的名字，行動完是空的
+        self.waiting: list[str] = []  # 網頁版：這回合還沒行動的人
         self.choices: list[str] = []
         self.draft = ""  # 已經交給介面、還在串流中的劇情
         self.busy = False
-        self.progress = ""  # 線上多人：房間推來的進度（單人直接讀核心的 progress）
+        self.progress = ""  # 網頁版：房間推來的進度（終端機版直接讀核心的 progress）
         self.timed = False
         self.shown: tuple[int, list[Status]] = (0, [])  # 狀態列目前的內容：(回合, 每位角色)，模式改變時重畫
         self.inbox: asyncio.Queue[dict] = asyncio.Queue()  # 房間推來、要依序處理的訊息
-        self.premise_answer: asyncio.Future | None = None  # 線上多人：前提對話框在等房間回覆
+        self.premise_answer: asyncio.Future | None = None  # 網頁版：前提對話框在等房間回覆
 
     @property
     def connected(self) -> bool:
@@ -213,31 +211,20 @@ class Client:
         return self.connected and not self.busy
 
     def close(self) -> None:
-        if self.player:
-            self.player.release()
         if self.room:
             self.room.close()
 
     # ---------- 啟動：取得 key，建立核心 ----------
 
     async def run(self) -> None:
-        if self.shared_room:
-            await self.join_room()
+        if self.lobby:
+            await self.join_lobby()
             return
-        if self.web:
-            if await self.ask_name(self.claim_name) is None:
-                self.view.exit()
-                return
-            key = self.server_key
-        else:
-            key = settings.api_key() or await self.ask_api_key(UI["ask_missing_key"])
+        key = settings.api_key() or await self.ask_api_key(UI["ask_missing_key"])
         if key is None:
             self.view.exit()
             return
-        if self.player:
-            self.core = StoryCore(api_key=key, save_path=self.player.save_path, log_path=self.player.log_path)
-        else:
-            self.core = StoryCore(api_key=key)
+        self.core = StoryCore(api_key=key)
         await self.handle(self.core.start())
 
     async def ask_name(self, claim, hint: str = "") -> str | None:
@@ -254,13 +241,6 @@ class Client:
                 continue
             if not (error := await claim(name)):
                 return name
-
-    async def claim_name(self, name: str) -> str:
-        player = Player(name)
-        if not player.acquire():
-            return UI["name_in_use"]
-        self.player = player
-        return ""
 
     async def ask_api_key(self, reason: str) -> str | None:
         result = await self.view.ask_api_key(reason)
@@ -282,13 +262,13 @@ class Client:
         await self.send(text)
 
     async def timeout(self) -> None:
-        """介面的倒數到了。線上多人由房間統一計時，不用送。"""
+        """介面的倒數到了。網頁版由房間統一計時，不用送。"""
         if self.room is None and self.core is not None:
             await self.send("/timeout", echo=self.core.action_for("/timeout") or "")
 
     def echo_for(self, text: str) -> str:
         """送出前先顯示的行動。"""
-        if self.room:  # 線上多人沒有自己的核心：還沒行動時，照畫面上的選項對應
+        if self.room:  # 網頁版沒有自己的核心：還沒行動時，照畫面上的選項對應
             if not self.actor or text.startswith("/"):
                 return ""
             return pick_choice(text, self.choices) or text
@@ -304,7 +284,7 @@ class Client:
         if echo:
             self.set_choices([])
             self.view.show_action(echo)
-        if self.room:  # 線上多人：回覆會由房間推回來
+        if self.room:  # 網頁版：回覆會由房間推回來
             await self.room.send({"type": "send", "text": text})
             return
         reply = await self.ask_core(text)
@@ -312,7 +292,7 @@ class Client:
             await self.handle(reply)
 
     async def ask_core(self, text: str) -> Reply | None:
-        """在背景執行緒呼叫核心；超過一下子才顯示等待提示。key 無效時請玩家換一個再重送（網頁版用架站者的 key，只能通知）。"""
+        """在背景執行緒呼叫核心；超過一下子才顯示等待提示。key 無效時請玩家換一個再重送。"""
         self.set_busy(True)
         try:
             while True:
@@ -326,9 +306,6 @@ class Client:
                         self.view.show_busy()
                 reply = await task
                 if reply.error != "api_key":
-                    return reply
-                if self.web:
-                    self.view.notify(UI["server_key_invalid"], error=True, lasting=True)
                     return reply
                 settings.put("api_key", None)
                 self.set_busy(False)
@@ -401,7 +378,7 @@ class Client:
             await self.send("1" if sure else "2")
         elif reply.phase in ("playing", "ending"):
             await self.show_turn(reply)
-            if reply.phase == "ending" and not self.room:  # 線上多人由房間接著寫尾聲
+            if reply.phase == "ending" and not self.room:  # 網頁版由房間接著寫尾聲
                 await self.send("")  # 讓核心接著寫尾聲
         elif reply.phase == "ended":
             await self.show_ending(reply.ending)
@@ -451,7 +428,7 @@ class Client:
             self.set_choices(reply.choices)
         self.set_status(reply.turn, reply.characters)
         if reply.narration and reply.time_limit:
-            if self.room:  # 線上多人：告訴房間看完了，大家都看完房間才開始倒數
+            if self.room:  # 網頁版：告訴房間看完了，大家都看完房間才開始倒數
                 await self.room.send({"type": "ready"})
             else:
                 self.view.start_timer(reply.time_limit)
@@ -467,7 +444,7 @@ class Client:
         await self.view.wait_enter(UI["wait_ending"])
         if not await self.view.ask_ending(ending.title, ending.record):
             self.view.exit()
-        elif not self.room:  # 線上多人：房間會自動回到大廳
+        elif not self.room:  # 網頁版：房間會自動回到大廳
             await self.send("1")
 
     def clear_story(self, premise: str = "") -> None:
@@ -486,17 +463,17 @@ class Client:
         self.view.set_status(status_line(turn, characters, self.timed))
 
     def refresh_hint(self) -> None:
-        """輸入框的提示：線上多人自己行動完之後，改成提示還在等誰。"""
+        """輸入框的提示：網頁版自己行動完之後，改成提示還在等誰。"""
         if self.room and not self.actor and self.waiting:
             self.view.set_hint(UI["hint_waiting"].format(names=UI["list_sep"].join(self.waiting)))
         else:
             self.view.set_hint(UI["hint_input"])
 
-    # ---------- 線上多人：和房間對話 ----------
+    # ---------- 網頁版：和大廳、房間對話 ----------
 
-    async def join_room(self) -> None:
-        self.room = self.shared_room.connect()
-        name = await self.ask_name(self.claim_seat, hint=UI["room_name_hint"])
+    async def join_lobby(self) -> None:
+        self.room = self.lobby.connect()
+        name = await self.ask_name(self.claim_seat)
         if name is None:
             self.view.exit()
             return
@@ -556,7 +533,7 @@ class Client:
             if kind == "reply":
                 await self.handle(Reply.from_dict(message["reply"]))
             elif kind == "lobby":
-                self.show_lobby(message["members"], message["host"])
+                self.show_lobby(message)
 
     async def ask_room(self, commands: list[str]) -> Reply:
         """依序送出指令，只有最後一個要求房間回覆（answer），收到的一定是這一個的結果。"""
@@ -568,14 +545,11 @@ class Client:
         finally:
             self.premise_answer = None
 
-    def show_lobby(self, members: list[str], host: str) -> None:
-        self.view.show_lobby([UI["host_mark"].format(name=n) if n == host else n for n in members])
+    def show_lobby(self, screen: dict) -> None:
+        """大廳或房間的等人畫面（內容由大廳、房間決定）。剛進來或剛離開房間時先清空畫面。"""
+        if screen.get("clear"):
+            self.clear_story()
+        self.view.show_lobby(screen["title"], screen["members"])
         self.actor, self.waiting = "", []
-        if self.my_name == host:
-            ready = len(members) >= MIN_PLAYERS
-            self.set_choices([START] if ready else [])
-            placeholder = UI["lobby_start"] if ready else UI["lobby_waiting_players"].format(min=MIN_PLAYERS)
-        else:
-            self.set_choices([])
-            placeholder = UI["lobby_waiting_host"].format(host=host)
-        self.view.set_hint(placeholder)
+        self.set_choices(screen["choices"])
+        self.view.set_hint(screen["hint"])

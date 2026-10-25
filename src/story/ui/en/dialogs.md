@@ -45,7 +45,7 @@ Send
 Your name
 
 ## name_hint
-Each name has its own save; come back with the same name to pick up where you left off.
+Your name is your character in the story. Come back with the same names as the same group to pick up where you left off.
 
 ## name_placeholder
 e.g. Alex

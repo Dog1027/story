@@ -20,7 +20,7 @@ def main() -> None:
 
 
 def web() -> None:
-    """uv run story-web：網頁版（加 --party 是線上多人）。第一次啟動時先問語言與 API key（玩家不用輸入 key，都用這一個）。
+    """uv run story-web：網頁版（大廳與房間）。第一次啟動時先問語言與 API key（玩家不用輸入 key，都用這一個）。
     --setup-only 只做第一次的設定就結束（just start 在背景啟動伺服器前用，背景裡沒辦法問）。"""
     setup.run(key=True)
     if "--setup-only" in sys.argv[1:]:

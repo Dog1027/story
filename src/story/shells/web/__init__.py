@@ -4,9 +4,8 @@
 共用層的每個呼叫變成一則 JSON 訊息，經由 WebSocket 送到瀏覽器，瀏覽器（static/）只負責畫出來。
 流程都在共用層，跟終端機版是同一份。
 
-沒加 --party：每個人各自玩，先輸入名字（每個名字有自己的存檔）。
-加上 --party：線上多人，伺服器裡開一個房間（room.py），每個分頁的 Client 都連進這個房間，大家一起玩同一局。
-兩種都用架站者的 Gemini API key（設定檔或環境變數），玩家不用輸入。
+伺服器裡有一個大廳（lobby.py）：每個分頁的 Client 都連進大廳，輸入名字後開房間或加入別人的房間，
+每個房間各自玩一局（一個人玩就是只有自己的房間）。呼叫 AI 用架站者的 Gemini API key（設定檔或環境變數），玩家不用輸入。
 """
 
 import argparse
@@ -19,15 +18,15 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from story.core import ui_text
+from story.core import MAX_PLAYERS, ui_text
 from story import settings
 from story.shells.client import Client
-from story.shells.room import Room
+from story.shells.lobby import MAX_ROOMS, Lobby
 from story.shells.web.view import WebView
 
 DEFAULT_HOST, DEFAULT_PORT = "127.0.0.1", 8080  # 預設只接受本機連線
 UI = ui_text("shells")  # story/ui/語言/shells.md
-MAX_SESSIONS = 10  # 同時在線的人數上限，避免太多人同時連線把主機資源用光
+MAX_SESSIONS = MAX_ROOMS * MAX_PLAYERS  # 同時在線的人數上限：每個房間都坐滿的人數，避免太多連線把主機資源用光
 STATIC = Path(__file__).parent / "static"
 
 
@@ -42,8 +41,8 @@ def render_page() -> str:
 PAGE = render_page()
 
 
-def make_app(api_key: str, room: Room | None = None) -> web.Application:
-    """建立網頁伺服器，呼叫 AI 用架站者的 api_key（玩家不用輸入）。給了 room 就是線上多人：伺服器關閉時房間跟著關閉。"""
+def make_app(lobby: Lobby) -> web.Application:
+    """建立網頁伺服器：每個分頁都連進 lobby（大廳）。伺服器關閉時大廳跟著關閉。"""
     app = web.Application()
     sessions = 0  # 目前在線的分頁數
 
@@ -66,7 +65,7 @@ def make_app(api_key: str, room: Room | None = None) -> web.Application:
             return ws
         sessions += 1
         view = WebView(ws)
-        client = Client(view, web=room is None, room=room, api_key=api_key)
+        client = Client(view, lobby=lobby)
         view.client = client
         writer = asyncio.create_task(view.write_loop())
         game = asyncio.create_task(client.run())
@@ -92,8 +91,7 @@ def make_app(api_key: str, room: Room | None = None) -> web.Application:
     app.router.add_get("/", index)
     app.router.add_get("/ws", websocket)
     app.router.add_static("/static", STATIC)
-    if room:
-        app.on_cleanup.append(lambda _: room.stop())
+    app.on_cleanup.append(lambda _: lobby.stop())
     return app
 
 
@@ -101,16 +99,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=UI["server_description"])
     parser.add_argument("--host", default=DEFAULT_HOST, help=UI["server_host_help"])
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--party", action="store_true", help=UI["server_party_help"])
     args = parser.parse_args()
 
     key = settings.api_key()
     if not key:
         sys.exit(UI["server_no_key"])
-    room = Room.for_server(key) if args.party else None
 
     if args.host != "127.0.0.1":
         print(UI["server_open_warning"], flush=True)
-    mode = UI["server_mode_party" if args.party else "server_mode_solo"]
-    print(UI["server_started"].format(host=args.host, port=args.port, mode=mode), flush=True)
-    web.run_app(make_app(key, room), host=args.host, port=args.port, print=None)
+    print(UI["server_started"].format(host=args.host, port=args.port), flush=True)
+    web.run_app(make_app(Lobby.for_server(key)), host=args.host, port=args.port, print=None)

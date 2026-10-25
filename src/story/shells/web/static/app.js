@@ -25,7 +25,7 @@ const state = {
   active: -1, // 用 ↑↓ 移到的選項
   follow: true, // 故事區停在最底時，新內容出現就跟著捲
   busyLine: null,
-  timer: null, // { total, left, pausable, last }
+  timer: null, // { total, left, last }
   premise: null, // 開著的前提對話框
   exited: false,
 };
@@ -132,10 +132,10 @@ const handlers = {
     if (!state.waitingEnter) input.placeholder = placeholder;
   },
   status({ status }) { renderStatus(status); },
-  lobby({ members }) {
+  lobby({ title, members }) {
     const box = $("status");
     box.replaceChildren();
-    const line = tag("div", "lobby", t("lobby") + "　");
+    const line = tag("div", "lobby", title + "　");
     members.forEach((m, i) => { if (i) line.append(" · "); line.append(tag("strong", "", m)); });
     box.append(line);
     $("turn").textContent = "";
@@ -151,7 +151,7 @@ const handlers = {
     state.busyLine.lastChild.textContent = text;
     scrollLog();
   },
-  timer({ seconds, pausable }) { startTimer(seconds, pausable); },
+  timer({ seconds }) { startTimer(seconds); },
   stop_timer() { stopTimer(); },
   notify({ text, error, lasting }) { toast(text, { error, lasting }); },
   info({ title, body }) { infoSheet(title, body); },
@@ -366,8 +366,8 @@ document.addEventListener("keydown", (event) => {
 
 // ---------- 限時 ----------
 
-function startTimer(seconds, pausable) {
-  state.timer = { total: seconds, left: seconds, pausable, last: performance.now() };
+function startTimer(seconds) {
+  state.timer = { total: seconds, left: seconds, last: performance.now() };
   $("timer").hidden = false;
   $("timer").classList.remove("reserved");
   renderTimer();
@@ -392,14 +392,10 @@ setInterval(() => {
   const now = performance.now();
   const elapsed = (now - timer.last) / 1000;
   timer.last = now;
-  // 開著對話框時暫停（線上多人大家共用一個倒數，不能暫停）
-  if (state.busy || (timer.pausable && !$("overlay").hidden)) return;
+  if (state.busy) return;
   timer.left = Math.max(0, timer.left - elapsed);
   renderTimer();
-  if (timer.left === 0) {
-    stopTimer();
-    send({ t: "timeout" });
-  }
+  if (timer.left === 0) stopTimer(); // 時間到由房間處理，這裡只負責顯示
 }, 100);
 
 // ---------- 對話框 ----------

@@ -85,7 +85,7 @@ class Reply:
     actor: str = ""  # 多人模式：現在輪到哪位角色輸入行動；choices 就是這位角色的選項（單人模式是空的）
 
     def to_dict(self) -> dict:
-        """轉成可以存成 JSON 的 dict（線上多人在程序之間傳送回覆用）。"""
+        """轉成可以存成 JSON 的 dict（網頁版的房間傳送回覆用）。"""
         return asdict(self)
 
     @classmethod
@@ -99,7 +99,7 @@ class Reply:
 
 
 def pick_choice(raw: str, options: list[str]) -> str | None:
-    """把「2」或選項本身的文字對應到選項，對不上時回傳 None。線上多人的外殼也用它，先顯示自己選了什麼。"""
+    """把「2」或選項本身的文字對應到選項，對不上時回傳 None。網頁版也用它，先顯示自己選了什麼。"""
     if raw.isdigit() and 1 <= int(raw) <= len(options):
         return options[int(raw) - 1]
     return raw if raw in options else None
@@ -123,7 +123,7 @@ class StoryCore:
 
     @property
     def phase(self) -> Phase:
-        """目前的遊戲階段（唯讀），和最近一次回覆的 reply.phase 相同。線上多人的房間用它決定輸入要交給誰。"""
+        """目前的遊戲階段（唯讀），和最近一次回覆的 reply.phase 相同。網頁版的房間用它決定輸入要交給誰。"""
         return self._phase
 
     @property

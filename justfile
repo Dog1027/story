@@ -12,22 +12,18 @@ play:
 plain:
     uv run story --plain
 
-# 網頁伺服器：線上多人，大家用瀏覽器一起玩同一局（開放區網連線）
+# 網頁伺服器：大家進大廳開房間，一個人玩或和朋友組隊都可以（開放區網連線）
 serve port="8080":
-    uv run story-web --party --host 0.0.0.0 --port {{port}}
-
-# 網頁伺服器：每個人各自玩（開放區網連線）
-serve-solo port="8080":
     uv run story-web --host 0.0.0.0 --port {{port}}
 
-# 在背景啟動線上多人的網頁伺服器（已經在執行就重啟）；畫面輸出寫在 server.log
+# 在背景啟動網頁伺服器（已經在執行就重啟）；畫面輸出寫在 server.log
 start port="8080":
     #!/usr/bin/env bash
     set -euo pipefail
     uv run story-web --setup-only  # 第一次啟動：先問語言與 API key（背景裡沒辦法問）
     just stop
     # setsid：伺服器自成一個程序群組，just stop 才能把 uv 和底下的 Python 一起關掉
-    setsid nohup uv run story-web --party --host 0.0.0.0 --port {{port}} > server.log 2>&1 < /dev/null &
+    setsid nohup uv run story-web --host 0.0.0.0 --port {{port}} > server.log 2>&1 < /dev/null &
     echo $! > .server.pid
     sleep 2
     if kill -0 "$(cat .server.pid)" 2>/dev/null; then

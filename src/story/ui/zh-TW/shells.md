@@ -1,5 +1,5 @@
 <!--
-外殼共用的文字：共用層（story/shells/client.py）、線上多人的房間（room.py）、名字檢查（players.py）、
+外殼共用的文字：共用層（story/shells/client.py）、網頁版的大廳與房間（lobby.py、room.py）、名字檢查（players.py）、
 網頁伺服器（web/__init__.py）與純文字版（plain.py）。格式同 core.md。
 -->
 
@@ -38,8 +38,6 @@ Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
 ## ask_new_key
 API key 無效或沒有權限，請重新輸入。
 
-## name_in_use
-這個名字正在遊戲中，請換一個名字，或等對方離開。
 
 ## busy
 <!-- 等 AI 時的提示。變數：{progress}（busy_progress，或空白） -->
@@ -69,16 +67,57 @@ API key 無效或沒有權限，請重新輸入。
 ↑↓ 選擇，或寫下你的行動
 
 ## hint_waiting
-<!-- 線上多人：自己行動完了。變數：{names} -->
+<!-- 網頁版：自己行動完了。變數：{names} -->
 等待 {names} 行動…
 
 ## list_sep
 、
 
-<!-- ---------- 線上多人 ---------- -->
+<!-- ---------- 大廳與房間（lobby.py、room.py） ---------- -->
 
-## room_name_hint
-大家在同一局裡，每個名字就是一位角色。中途斷線可以用同一個名字回來。
+## lobby_title
+<!-- 大廳的標題（狀態列上，後面接著在大廳的人） -->
+大廳
+
+## room_create
+開一個新房間
+
+## room_entry
+<!-- 大廳裡一個等人中的房間。變數：{host}、{count}、{max} -->
+加入 {host} 的房間（{count}/{max} 人）
+
+## rooms_hint
+<!-- 大廳的輸入框提示 -->
+選一個房間加入，或開一個新房間（一個人玩也是開自己的房間）
+
+## rooms_busy
+<!-- 接在 rooms_hint 後面：有房間正在遊戲中。變數：{count} -->
+；{count} 個房間正在遊戲中
+
+## rooms_full
+<!-- 變數：{max} -->
+房間已經開滿了（最多 {max} 間），請等其他房間的遊戲結束。
+
+## room_gone
+這個房間已經關閉了。
+
+## room_title
+<!-- 房間等人畫面的標題。變數：{host} -->
+{host} 的房間
+
+## room_hint_host
+選「開始遊戲」，房間裡的人會一起進入故事；也可以等朋友加入
+
+## leave_room
+<!-- 等人畫面裡的選項；遊戲中也可以輸入 /leave -->
+離開房間
+
+## queued
+<!-- 等 AI 時，所有房間共用的呼叫次數用完了，正在排隊 -->
+排隊中（大家共用一把 API key）
+
+<!-- ---------- 房間裡的通知 ---------- -->
+
 
 ## room_lost
 和遊戲房間的連線中斷了。
@@ -94,12 +133,7 @@ API key 無效或沒有權限，請重新輸入。
 <!-- 大廳裡房主的名字。變數：{name} -->
 {name}（房主）
 
-## lobby_start
-選「開始遊戲」，大家就會一起進入故事
 
-## lobby_waiting_players
-<!-- 變數：{min} -->
-等其他玩家加入（至少 {min} 人）…
 
 ## lobby_waiting_host
 <!-- 變數：{host} -->
@@ -110,7 +144,7 @@ API key 無效或沒有權限，請重新輸入。
 開始遊戲
 
 ## room_name_taken
-這個名字已經在房間裡了，請換一個名字。
+這個名字已經有人在用了，請換一個名字。
 
 ## room_members_only
 <!-- 變數：{players} -->
@@ -139,9 +173,6 @@ API key 無效或沒有權限，請重新輸入。
 <!-- 變數：{host} -->
 等房主 {host} 開始遊戲。
 
-## need_players
-<!-- 變數：{min} -->
-至少要 {min} 位玩家才能開始。
 
 ## host_only_restart
 只有房主能重新開始。
@@ -173,8 +204,6 @@ API key 無效或沒有權限，請重新輸入。
 ## server_host_help
 監聽位址；0.0.0.0 代表開放其他電腦連線（預設只有本機）
 
-## server_party_help
-線上多人：所有連進來的人一起玩同一局，使用伺服器的 API key
 
 ## server_no_key
 網頁伺服器呼叫 AI 用架站者的 API key：請先在終端機裡執行一次 uv run story-web 輸入 key，或設定環境變數 GEMINI_API_KEY。
@@ -182,15 +211,11 @@ API key 無效或沒有權限，請重新輸入。
 ## server_open_warning
 ⚠ 已開放其他電腦連線。目前沒有 HTTPS，連線內容（名字、劇情）以明文傳送，名字也沒有密碼保護，只建議在信任的網路使用。
 
-## server_mode_party
-線上多人（大家一起玩同一局）
 
-## server_mode_solo
-單人（每個人各自玩）
 
 ## server_started
-<!-- 變數：{host}、{port}、{mode} -->
-伺服器已啟動：http://{host}:{port}　模式：{mode}　按 Ctrl+C 結束。
+<!-- 變數：{host}、{port} -->
+伺服器已啟動：http://{host}:{port}　按 Ctrl+C 結束。
 
 <!-- ---------- 純文字版 ---------- -->
 
