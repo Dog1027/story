@@ -1,7 +1,5 @@
 """Textual 外殼的對話框：API key、新故事、確認、結局、說明。"""
 
-import asyncio
-from collections.abc import Callable
 
 from textual import on, work
 from textual.app import ComposeResult
@@ -12,8 +10,8 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Select, Static, TextArea
 
-from story.core import GENRE_AUTO, GENRE_NONE, Reply, ui_text
-from story.shells.client import CONFIG_PATH
+from story.core import ui_text
+from story.shells.client import CONFIG_PATH, PremiseForm
 
 UI, TERMINAL = ui_text("dialogs"), ui_text("terminal")  # story/ui/語言/
 
@@ -173,64 +171,49 @@ class PremiseDialog(Dialog):
     PremiseDialog #genre-hint { margin: 0 0 1 2; }
     """
 
-    def __init__(self, reply: Reply, ask: Callable[..., Reply]):
+    def __init__(self, form: PremiseForm):
         super().__init__()
-        self.default, self.timed = reply.premise_default, reply.timed
-        self.genre, self.genres = reply.genre, dict(reply.genres)  # 目前的題材選擇；可選的題材（名稱 → 描述）
-        # 把指令送給核心並拿回最後一個回覆，例如 ask("/genre 武俠", "/random")；會在背景執行緒呼叫
-        self.ask = ask
-        self.asking = asyncio.Lock()  # 一次只送一個請求：核心不能同時被兩個執行緒呼叫
-        self.latest = 0  # 最新一次操作的編號；被後面的操作取代的舊結果就不用了
+        self.form = form  # 規則（題材選單、換不換掉文字框、送什麼指令）在共用層，這裡只負責畫出來
 
     def compose(self) -> ComposeResult:
+        form = self.form
         with Vertical():
             yield Static(UI["premise_title"], classes="title")
-            if self.genres:
-                options = [(UI["genre_auto_option"], GENRE_AUTO), (UI["genre_none_option"], GENRE_NONE)]
-                options += [(UI["genre_option"].format(name=name), name) for name in self.genres]
-                value = self.genre if self.genre in (GENRE_AUTO, GENRE_NONE, *self.genres) else GENRE_AUTO
-                yield GenreSelect(options, value=value, allow_blank=False, compact=True, id="genre")
-                yield Static(self.genre_hint(value), id="genre-hint", classes="hint")
+            if options := form.genre_options():
+                yield GenreSelect(options, value=form.genre, allow_blank=False, compact=True, id="genre")
+                yield Static(form.genre_hint(form.genre), id="genre-hint", classes="hint")
             yield Static(UI["premise_hint"], classes="hint")
-            yield PremiseArea(self.default, placeholder=UI["premise_placeholder"], id="premise", highlight_cursor_line=False)
-            yield Checkbox(UI["timed_option"], value=self.timed, id="timed")
+            yield PremiseArea(form.default, placeholder=UI["premise_placeholder"], id="premise", highlight_cursor_line=False)
+            yield Checkbox(UI["timed_option"], value=form.timed, id="timed")
             with Horizontal():
                 yield Button(UI["reroll"], id="reroll", compact=True)
                 yield Button(UI["suggest"], id="suggest", compact=True)
                 yield Button(UI["start"], variant="primary", id="ok", compact=True)
-
-    async def request(self, *commands: str, latest_only: bool = True) -> Reply | None:
-        """排隊把指令送給核心。latest_only 時，如果等待期間又有新的操作（例如快速切換題材），回傳 None。"""
-        self.latest += 1
-        mine = self.latest
-        async with self.asking:
-            reply = await asyncio.to_thread(self.ask, *commands)
-        return reply if not latest_only or mine == self.latest else None
 
     def on_mount(self) -> None:
         field = self.query_one("#premise", PremiseArea)
         field.focus()
         field.move_cursor(field.document.end)
 
-    def set_default(self, premise: str, replace: bool = False) -> None:
-        """換了預設的開頭：玩家還沒改過文字框（或 replace）就換上新的，改過的就保留玩家寫的。"""
-        field = self.query_one("#premise", PremiseArea)
-        if replace or " ".join(field.text.split()) in ("", " ".join(self.default.split())):
+    @property
+    def text(self) -> str:
+        return self.query_one("#premise", PremiseArea).text
+
+    def show_premise(self, premise: str | None) -> None:
+        """換上新的開頭；None 時保持原樣。"""
+        if premise is not None:
+            field = self.query_one("#premise", PremiseArea)
             field.text = premise
             field.move_cursor(field.document.end)
-        self.default = premise
 
     @on(Button.Pressed, "#suggest")
     @work
     async def ask_ai(self) -> None:
-        button, field = self.query_one("#suggest", Button), self.query_one("#premise", PremiseArea)
+        button = self.query_one("#suggest", Button)
         button.disabled, button.label = True, UI["thinking"]
         try:
-            reply = await self.request(f"/genre {self.chosen_genre()}", "/suggest", latest_only=False)
-            if reply.error:
-                raise RuntimeError(reply.notice)
-            self.set_default(reply.suggestion, replace=True)
-            field.focus()
+            self.show_premise(await self.form.suggest(self.text))
+            self.query_one("#premise", PremiseArea).focus()
         except Exception as e:  # 網路、key、額度等錯誤都只提示，不中斷開新局
             self.notify(str(e)[:200], title=UI["suggest_failed"], severity="error")
         finally:
@@ -239,36 +222,21 @@ class PremiseDialog(Dialog):
     @on(Button.Pressed, "#reroll")
     @work
     async def reroll(self) -> None:
-        """換一個：從題材包的開頭靈感裡重抽，不用等 AI。"""
-        if reply := await self.request(f"/genre {self.chosen_genre()}", "/random"):
-            self.set_default(reply.premise_default, replace=True)  # 玩家按了「換一個」：文字框一定換掉
+        self.show_premise(await self.form.reroll(self.text))
 
     @on(Select.Changed, "#genre")
     @work
     async def show_genre(self, event: Select.Changed) -> None:
-        """換題材：顯示題材的描述；隨機抽到的開頭也換成新題材的。"""
-        self.query_one("#genre-hint", Static).update(self.genre_hint(event.value))
-        if reply := await self.request(f"/genre {event.value}"):
-            self.set_default(reply.premise_default)
-
-    def genre_hint(self, choice: str) -> str:
-        if choice == GENRE_AUTO:
-            return UI["genre_auto_hint"]
-        if choice == GENRE_NONE:
-            return UI["genre_none_hint"]
-        return self.genres.get(choice, "")
-
-    def chosen_genre(self) -> str:
-        return self.query_one("#genre", Select).value if self.genres else self.genre
+        self.query_one("#genre-hint", Static).update(self.form.genre_hint(event.value))
+        self.show_premise(await self.form.change_genre(event.value, self.text))
 
     @on(PremiseArea.Submitted)
     @on(Button.Pressed, "#ok")
     def submit(self) -> None:
-        premise = " ".join(self.query_one("#premise", PremiseArea).text.split()) or self.default
-        self.dismiss((premise, self.query_one("#timed", Checkbox).value, self.chosen_genre()))
+        self.dismiss(self.form.finish(self.text, self.query_one("#timed", Checkbox).value))
 
     def action_cancel(self) -> None:
-        self.dismiss((self.default, self.query_one("#timed", Checkbox).value, self.chosen_genre()))
+        self.dismiss(self.form.finish("", self.query_one("#timed", Checkbox).value))
 
 
 class ConfirmDialog(Dialog):

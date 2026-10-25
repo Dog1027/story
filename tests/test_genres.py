@@ -1,10 +1,9 @@
 """題材包：讀取與檢查格式、個人的覆蓋內建的、AI 依前提挑選、提示詞裡的位置、「幫我想」與 /genre 指令。"""
 
-from conftest import ARC, HERO, FakeEngine, beat, make_engine, solo
+from conftest import HERO, FakeEngine, beat, make_engine, solo
 
 from story.core import GENRE_AUTO, GENRE_NONE, StoryCore
 from story.core.genres import BUILTIN_DIR, MAX_GUIDE, load_genres
-from story.core.models import Turn
 from story.core.records import DEFAULT_PREMISE
 
 

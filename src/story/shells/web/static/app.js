@@ -590,23 +590,16 @@ function nameSheet({ id, hint, error, max_len }) {
   }, (value) => answer(id, value), false, true);
 }
 
-const GENRE_AUTO = "auto", GENRE_NONE = "none"; // 題材的兩個特別選項（核心的代號）
 
-function premiseSheet({ id, default: initial, timed, genre, genres }) {
+// 規則（題材選單、換不換掉文字框、送什麼指令）在伺服器的共用層（PremiseForm）：這裡只畫出來，把操作連同文字框的內容送過去，
+// 照回覆換上新的開頭（text 是 null 時保持原樣）
+function premiseSheet({ id, default: initial, timed, genre, options, hints }) {
   openSheet((sheet, close) => {
-    const descriptions = Object.fromEntries(genres);
-    let latest = 0, nextReq = 0, current = initial;
-    const squash = (text) => text.split(/\s+/).join(" ").trim();
-
+    let nextReq = 0;
     const area = tag("textarea");
     area.id = "premise-input";
     area.placeholder = t("premise_placeholder");
     area.value = initial;
-    // 換了預設的開頭：玩家還沒改過文字框（或 replace）就換上新的，改過的就保留玩家寫的
-    const setDefault = (text, replace = false) => {
-      if (replace || ["", squash(current)].includes(squash(area.value))) area.value = text;
-      current = text;
-    };
     area.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); start(); } });
 
     const timedBox = tag("input");
@@ -618,65 +611,52 @@ function premiseSheet({ id, default: initial, timed, genre, genres }) {
 
     const select = tag("select");
     select.id = "genre-input";
-    const genreHint = tag("p", "hint");
-    const describe = (value) => {
-      genreHint.textContent = value === GENRE_AUTO ? t("genre_auto_hint")
-        : value === GENRE_NONE ? t("genre_none_hint") : descriptions[value] || "";
-    };
-    if (genres.length) {
-      for (const [label, value] of [[t("genre_auto_option"), GENRE_AUTO], [t("genre_none_option"), GENRE_NONE], ...genres.map(([n]) => [t("genre_option", { name: n }), n])]) {
-        const option = tag("option", "", label);
-        option.value = value;
-        select.append(option);
-      }
-      select.value = [GENRE_AUTO, GENRE_NONE, ...genres.map(([n]) => n)].includes(genre) ? genre : GENRE_AUTO;
-      describe(select.value);
+    const genreHint = tag("p", "hint", hints[genre] || "");
+    for (const [label, value] of options) {
+      const option = tag("option", "", label);
+      option.value = value;
+      select.append(option);
     }
-    const chosenGenre = () => (genres.length ? select.value : genre);
+    select.value = genre;
 
-    // 送指令給核心（換題材、換一個、幫我想），等 premise_update；被後面的操作取代的舊結果就不用
     const pending = {};
-    const request = (commands, latestOnly = true) => new Promise((resolve) => {
+    const request = (fields) => new Promise((resolve) => {
       const req = ++nextReq;
-      if (latestOnly) latest = req;
-      pending[req] = (reply) => resolve(!latestOnly || req === latest ? reply : null);
-      send({ t: "premise_ask", req, commands });
+      pending[req] = resolve;
+      send({ t: "premise_event", req, text: area.value, ...fields });
     });
     state.premise = { update: (reply) => { const done = pending[reply.req]; delete pending[reply.req]; if (done) done(reply); } };
+    const show = (reply) => { if (reply.text !== null && reply.text !== undefined) area.value = reply.text; };
 
     select.addEventListener("change", async () => {
-      describe(select.value);
-      const reply = await request([`/genre ${select.value}`]);
-      if (reply && !reply.error) setDefault(reply.default);
+      genreHint.textContent = hints[select.value] || "";
+      show(await request({ action: "genre", genre: select.value }));
     });
 
     const reroll = tag("button", "btn", t("reroll"));
     reroll.type = "button";
-    reroll.onclick = async () => {
-      const reply = await request([`/genre ${chosenGenre()}`, "/random"]);
-      if (reply && !reply.error) setDefault(reply.default, true); // 按了「換一個」：文字框一定換掉
-    };
+    reroll.onclick = async () => show(await request({ action: "reroll" }));
     const suggest = tag("button", "btn", t("suggest"));
     suggest.type = "button";
     suggest.onclick = async () => {
       suggest.disabled = true;
       suggest.textContent = t("thinking");
-      const reply = await request([`/genre ${chosenGenre()}`, "/suggest"], false);
+      const reply = await request({ action: "suggest" });
       suggest.disabled = false;
       suggest.textContent = t("suggest");
       if (reply.error) toast(reply.error, { error: true, title: t("suggest_failed") });
-      else { setDefault(reply.suggestion, true); if (!TOUCH) area.focus(); }
+      else { show(reply); if (!TOUCH) area.focus(); }
     };
     const startButton = tag("button", "btn primary", t("start"));
     startButton.type = "button";
-    const start = () => close([area.value.trim() || current, timedBox.checked, chosenGenre()]);
+    const start = () => close([area.value, timedBox.checked]);
     startButton.onclick = start;
 
     const row = tag("div", "buttons");
     reroll.classList.add("spacer");
     row.append(reroll, suggest, startButton);
     sheet.append(tag("h2", "", t("premise_title")));
-    if (genres.length) sheet.append(select, genreHint);
+    if (options.length) sheet.append(select, genreHint);
     sheet.append(tag("p", "hint", t("premise_hint")), area, timedLabel, row);
   }, (value) => {
     state.premise = null;

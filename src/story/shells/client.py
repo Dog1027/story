@@ -13,17 +13,19 @@
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
-from story.core import ChangeGroups, Ending, Reply, Status, StoryCore, ui_text, word
+from story.core import GENRE_AUTO, GENRE_NONE, ChangeGroups, Ending, Reply, Status, StoryCore, ui_text, word
 from story import settings
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 
 # 介面的對話框也會用到的規則（名字怎樣才能用、key 存在哪裡），一律從這裡取用
 CONFIG_PATH = settings.CONFIG_PATH
-__all__ = ["CONFIG_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "LocalClient", "StatusLine", "View", "status_line"]
+__all__ = ["CONFIG_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "LocalClient", "PremiseForm", "StatusLine", "View", "status_line"]
 
 UI = ui_text("shells")  # 外殼共用的文字（story/ui/語言/shells.md）
+DIALOGS = ui_text("dialogs")  # 兩種介面都有的對話框的文字（story/ui/語言/dialogs.md）
 BUSY_DELAY = 0.15  # 核心超過這麼久還沒回覆才顯示「故事生成中」，很快的回覆就不閃一下
 DRAFT_POLL = 0.1  # 等核心時每隔幾秒看一次 AI 寫到哪裡（串流），有新的字就先顯示
 
@@ -159,9 +161,9 @@ class View:
     async def ask_confirm(self, question: str, yes: str, no: str) -> bool:
         raise NotImplementedError
 
-    async def ask_premise(self, reply: Reply, ask) -> tuple[str, bool, str] | None:
-        """開新故事：回傳 (前提, 要不要限時, 題材)。ask(*指令) 會在背景執行緒呼叫，送指令給核心並回傳最後一個回覆
-        （換題材、換一個、幫我想）。"""
+    async def ask_premise(self, form: "PremiseForm") -> tuple[str, bool, str] | None:
+        """開新故事的對話框：照 form 畫出題材選單、題材介紹、預設的開頭、限時模式；玩家的操作交給 form，
+        照它回傳的結果更新文字框。按開始時回傳 form.finish(文字框, 要不要限時)，離開時 None。"""
         raise NotImplementedError
 
     async def ask_ending(self, title: str, record: str) -> bool:
@@ -178,6 +180,75 @@ class View:
 
     def exit(self) -> None:
         raise NotImplementedError
+
+
+# ---------- 新故事的對話框 ----------
+
+
+class PremiseForm:
+    """新故事對話框的規則，終端機版與網頁版共用：介面只負責畫出來，把玩家的操作交給這裡，照回傳的文字更新文字框。
+    回傳 None 時文字框保持原樣（玩家改過了，或這個結果已經被後來的操作取代）。"""
+
+    def __init__(self, reply: Reply, request: Callable[..., Awaitable[Reply]]):
+        self.default = reply.premise_default  # 目前預設的開頭：文字框留白、或玩家沒改過時用它
+        self.timed = reply.timed
+        self.genres = dict(reply.genres)  # 可選的題材：名稱 → 描述；沒有題材包時是空的，介面不顯示題材選單
+        known = (GENRE_AUTO, GENRE_NONE, *self.genres)
+        self.genre = reply.genre if not self.genres or reply.genre in known else GENRE_AUTO
+        self.request = request  # 送指令給核心，見 Client.premise_request()
+        self.asking = asyncio.Lock()  # 一次只送一個：核心不能同時處理兩個請求
+        self.latest = 0  # 最新一次操作的編號
+
+    def genre_options(self) -> list[tuple[str, str]]:
+        """題材選單：(顯示的文字, 題材)。自動、不指定在最前面。"""
+        if not self.genres:
+            return []
+        return [(DIALOGS["genre_auto_option"], GENRE_AUTO), (DIALOGS["genre_none_option"], GENRE_NONE)] + [
+            (DIALOGS["genre_option"].format(name=name), name) for name in self.genres
+        ]
+
+    def genre_hint(self, choice: str) -> str:
+        """選單下面的題材介紹。"""
+        if choice == GENRE_AUTO:
+            return DIALOGS["genre_auto_hint"]
+        if choice == GENRE_NONE:
+            return DIALOGS["genre_none_hint"]
+        return self.genres.get(choice, "")
+
+    async def change_genre(self, choice: str, text: str) -> str | None:
+        """換題材：隨機抽到的開頭也換成新題材的（玩家改過文字框就不換）。text 是文字框目前的內容。"""
+        self.genre = choice
+        reply = await self._ask(f"/genre {choice}")
+        return None if reply is None or reply.error else self._new_default(reply.premise_default, text)
+
+    async def reroll(self, text: str) -> str | None:
+        """換一個：從題材包的開頭靈感裡重抽，不用等 AI。玩家按了就一定換掉文字框。"""
+        reply = await self._ask(f"/genre {self.genre}", "/random")
+        return None if reply is None or reply.error else self._new_default(reply.premise_default, text, replace=True)
+
+    async def suggest(self, text: str) -> str:
+        """幫我想：請 AI 想一個開頭，一定換掉文字框。失敗時丟出 RuntimeError（介面提示就好，不中斷開新局）。"""
+        reply = await self._ask(f"/genre {self.genre}", "/suggest", latest_only=False)
+        if reply.error:
+            raise RuntimeError(reply.notice)
+        return self._new_default(reply.suggestion, text, replace=True)
+
+    def finish(self, text: str, timed: bool) -> tuple[str, bool, str]:
+        """按開始：(前提, 要不要限時, 題材)。文字框留白就用預設的開頭。"""
+        return " ".join(text.split()) or self.default, timed, self.genre
+
+    async def _ask(self, *commands: str, latest_only: bool = True) -> Reply | None:
+        """latest_only 時，等待期間又有新的操作（例如快速切換題材）就回傳 None，舊的結果不用了。"""
+        self.latest += 1
+        mine = self.latest
+        async with self.asking:
+            reply = await self.request(*commands)
+        return reply if not latest_only or mine == self.latest else None
+
+    def _new_default(self, premise: str, text: str, replace: bool = False) -> str | None:
+        edited = " ".join(text.split()) not in ("", " ".join(self.default.split()))
+        self.default = premise
+        return None if edited and not replace else premise
 
 
 # ---------- 共用的流程 ----------
@@ -213,8 +284,8 @@ class Client:
         """前提對話框選好的模式與題材：交給核心或房間，回覆不需要顯示。"""
         raise NotImplementedError
 
-    def premise_asker(self):
-        """前提對話框用的 ask(*指令)：在背景執行緒呼叫，送出指令並回傳最後一個回覆（換題材、換一個、幫我想）。"""
+    async def premise_request(self, *commands: str) -> Reply:
+        """前提對話框的操作（換題材、換一個、幫我想）：依序送出指令，回傳最後一個的回覆。"""
         raise NotImplementedError
 
     def echo_for(self, text: str) -> str:
@@ -349,7 +420,7 @@ class Client:
     async def ask_premise(self, reply: Reply) -> None:
         if reply.error == "api":
             return  # 開場生成失敗：錯誤已經提示了，留在原處，玩家可以用 /restart 再試
-        answer = await self.view.ask_premise(reply, self.premise_asker())
+        answer = await self.view.ask_premise(PremiseForm(reply, self.premise_request))
         if answer is None:
             return
         premise, want_timed, genre = answer
@@ -448,13 +519,13 @@ class LocalClient(Client):
     async def deliver_quietly(self, text: str) -> None:
         await asyncio.to_thread(self.core.send, text)
 
-    def premise_asker(self):
-        def ask(*commands: str) -> Reply:
+    async def premise_request(self, *commands: str) -> Reply:
+        def ask() -> Reply:
             for command in commands:
                 answer = self.core.send(command)
             return answer
 
-        return ask
+        return await asyncio.to_thread(ask)
 
     def echo_for(self, text: str) -> str:
         return self.core.action_for(text) or ""

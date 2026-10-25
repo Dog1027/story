@@ -16,8 +16,8 @@ from textual.containers import VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Input, OptionList, Static
 
-from story.core import ChangeGroups, Reply, ui_text
-from story.shells.client import CharacterLine, LocalClient, StatusLine, View
+from story.core import ChangeGroups, ui_text
+from story.shells.client import CharacterLine, LocalClient, PremiseForm, StatusLine, View
 from story.shells.textual.commands import COMMANDS, help_text
 from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, PremiseDialog
 from story.shells.textual.prose import Marked, Prose
@@ -182,8 +182,8 @@ class StoryApp(App, View):
     async def ask_confirm(self, question: str, yes: str, no: str) -> bool:
         return await self.push_screen_wait(ConfirmDialog(question, yes=yes, no=no))
 
-    async def ask_premise(self, reply: Reply, ask) -> tuple[str, bool, str] | None:
-        return await self.push_screen_wait(PremiseDialog(reply, ask))
+    async def ask_premise(self, form: PremiseForm) -> tuple[str, bool, str] | None:
+        return await self.push_screen_wait(PremiseDialog(form))
 
     async def ask_ending(self, title: str, record: str) -> bool:
         return await self.push_screen_wait(EndingDialog(title, record))

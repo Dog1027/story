@@ -3,7 +3,6 @@
 import asyncio
 import io
 import time
-from pathlib import Path
 
 import pytest
 from rich.text import Text
@@ -440,14 +439,14 @@ async def test_premise_dialog_reroll_and_genre_change_update_the_default(monkeyp
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))
         dialog = app.screen
         dialog.query_one("#genre", Select).value = "克蘇魯"
-        await wait_until(pilot, lambda: dialog.default == "你收到舅舅的包裹。")
+        await wait_until(pilot, lambda: dialog.form.default == "你收到舅舅的包裹。")
         assert dialog.query_one("#premise").text == "你收到舅舅的包裹。"  # 還沒改過文字框：跟著換成新題材的開頭
         dialog.query_one("#genre", Select).value = "武俠"
-        await wait_until(pilot, lambda: dialog.default in ("你是鏢師。", "你是捕快。"))
-        before = dialog.default
+        await wait_until(pilot, lambda: dialog.form.default in ("你是鏢師。", "你是捕快。"))
+        before = dialog.form.default
         dialog.query_one("#reroll", Button).press()
-        await wait_until(pilot, lambda: dialog.default != before)  # 換一個
-        chosen = dialog.default
+        await wait_until(pilot, lambda: dialog.form.default != before)  # 換一個
+        chosen = dialog.form.default
         dialog.query_one("#ok", Button).press()
         await wait_until(pilot, lambda: app.choices and not app.typing)
         assert app.client.core.state.premise == chosen and app.client.core.state.genre == "武俠"
@@ -468,7 +467,7 @@ async def test_premise_typed_by_the_player_is_kept_when_the_genre_changes(monkey
         dialog = app.screen
         dialog.query_one("#premise").text = "我自己寫的開頭"
         dialog.query_one("#genre", Select).value = "克蘇魯"
-        await wait_until(pilot, lambda: dialog.default == "你收到舅舅的包裹。")
+        await wait_until(pilot, lambda: dialog.form.default == "你收到舅舅的包裹。")
         assert dialog.query_one("#premise").text == "我自己寫的開頭"  # 玩家改過的不會被換掉
         dialog.query_one("#ok", Button).press()
         await wait_until(pilot, lambda: app.choices and not app.typing)
@@ -494,7 +493,7 @@ async def test_rapid_genre_switching_shows_the_last_genres_premise(monkeypatch):
         # 選項順序：自動、不套用、武俠、克蘇魯（循環）。右 5 次停在「不套用」，再左 3 次停在「武俠」
         await pilot.press("right", "right", "right", "right", "right")
         await pilot.press("left", "left", "left")
-        await wait_until(pilot, lambda: not dialog.asking.locked())
+        await wait_until(pilot, lambda: not dialog.form.asking.locked())
         await pilot.pause(0.3)
-        assert dialog.chosen_genre() == "武俠"
-        assert dialog.default in ("你是鏢師。", "你是捕快。")
+        assert dialog.form.genre == "武俠"
+        assert dialog.form.default in ("你是鏢師。", "你是捕快。")

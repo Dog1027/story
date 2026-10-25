@@ -47,13 +47,8 @@ class RoomClient(Client):
     async def deliver_quietly(self, text: str) -> None:
         await self.room.send({"type": "send", "text": text})
 
-    def premise_asker(self):
-        loop = asyncio.get_running_loop()
-
-        def ask(*commands: str) -> Reply:  # 請房間代問後等結果
-            return asyncio.run_coroutine_threadsafe(self.ask_room(list(commands)), loop).result()
-
-        return ask
+    async def premise_request(self, *commands: str) -> Reply:
+        return await self.ask_room(list(commands))  # 請房間代問後等結果
 
     def echo_for(self, text: str) -> str:
         """還沒行動時，照畫面上的選項對應；房間的時間到、指令不顯示。"""

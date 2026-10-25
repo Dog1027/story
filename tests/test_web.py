@@ -66,7 +66,7 @@ async def enter_own_room(client) -> Browser:
     await browser.expect("lobby", lambda m: m["screen"]["title"] == "阿明 的房間" and m["screen"]["choices"] == ["開始遊戲", "離開房間"])
     await browser.send("act", text="1")
     premise = await browser.expect("premise")
-    await browser.answer(premise["id"], ["燈塔", False, "auto"])
+    await browser.answer(premise["id"], ["燈塔", False])
     await browser.expect("choices", lambda m: m["choices"] == ["阿明往上爬", "阿明躲起來"])
     return browser
 
@@ -112,10 +112,11 @@ async def test_premise_dialog_can_ask_the_core_while_open(isolated):
             await browser.expect("lobby", lambda m: m["screen"]["choices"][0] in ("開一個新房間", "開始遊戲"))
             await browser.send("act", text="1")
         premise = await browser.expect("premise")
-        await browser.send("premise_ask", req=1, commands=["/suggest"])
+        assert premise["default"] and "options" in premise and "hints" in premise  # 選單與介紹由共用層給
+        await browser.send("premise_event", req=1, action="suggest", text="")
         update = await browser.expect("premise_update")
-        assert update["req"] == 1 and update["suggestion"] == "AI 想的開頭"
-        await browser.answer(premise["id"], ["", True, "auto"])  # 留白：用預設的前提
+        assert update["req"] == 1 and update["text"] == "AI 想的開頭"
+        await browser.answer(premise["id"], ["", True])  # 留白：用預設的前提
         assert (await browser.expect("status", lambda m: m["status"]))["status"]["mode"] == "限時模式"
 
 
@@ -151,7 +152,7 @@ async def test_friends_join_the_same_room(isolated):
         await guest.expect("lobby", lambda m: m["screen"]["view"] == "room" and m["screen"]["choices"] == ["離開房間"])
         await host.send("act", text="1")
         premise = await host.expect("premise")
-        await host.answer(premise["id"], ["燈塔", False, "auto"])
+        await host.answer(premise["id"], ["燈塔", False])
         await guest.expect("clear", lambda m: m["premise"] == "燈塔")
         await guest.expect("choices", lambda m: m["choices"] == ["小華往上爬", "小華躲起來"])
         status = (await guest.expect("status", lambda m: m["status"]))["status"]

@@ -1,12 +1,14 @@
 """外殼共用層：用一個只記錄呼叫的假介面，確認「什麼時候顯示什麼」的流程。不需要 Textual，任何介面都適用。"""
 
+import asyncio
+
 import pytest
-from conftest import FakeEngine, FakeGroupEngine, InvalidKeyError
+from conftest import FakeEngine, InvalidKeyError
 
 import story.shells.client as client_module
-from story.core import GENRE_AUTO, StoryCore
+from story.core import GENRE_AUTO, GENRE_NONE, Reply, StoryCore
 from story.core.session import Status
-from story.shells.client import LocalClient, View, status_line
+from story.shells.client import LocalClient, PremiseForm, View, status_line
 
 
 class RecordingView(View):
@@ -90,9 +92,9 @@ class RecordingView(View):
         self.record("ask_confirm", question)
         return True
 
-    async def ask_premise(self, reply, ask):
-        self.record("ask_premise", reply.premise_default)
-        return self.premise, self.timed, GENRE_AUTO
+    async def ask_premise(self, form):
+        self.record("ask_premise", form.default)
+        return form.finish(self.premise, self.timed)
 
     async def ask_ending(self, title, record):
         self.record("ask_ending", title)
@@ -237,3 +239,45 @@ async def test_half_written_narration_is_taken_back_when_the_turn_fails(monkeypa
     assert "start_narration" in names and "discard_narration" in names and "show_narration" not in names
     assert any(c[0] == "notify" and c[2] for c in view.calls)  # 出錯的通知
     assert client.draft == ""
+
+
+# ---------- 新故事的對話框（兩種介面共用的規則） ----------
+
+
+def premise_form(**replies):
+    """假的核心：記下送出的指令，依最後一個指令回覆。"""
+    sent = []
+
+    async def request(*commands):
+        sent.append(list(commands))
+        await asyncio.sleep(0)
+        return replies[commands[-1].split()[0]]
+
+    reply = Reply(phase="ask_premise", premise_default="燈塔", genre="", genres=[("武俠", "江湖"), ("克蘇魯", "不可名狀")])
+    return PremiseForm(reply, request), sent
+
+
+async def test_premise_form_keeps_what_the_player_typed():
+    form, sent = premise_form(**{"/genre": Reply(phase="ask_premise", premise_default="鏢局"), "/random": Reply(phase="ask_premise", premise_default="客棧")})
+    assert form.genre == GENRE_AUTO and [v for _, v in form.genre_options()][:3] == [GENRE_AUTO, GENRE_NONE, "武俠"]
+    assert form.genre_hint("武俠") == "江湖"
+    assert await form.change_genre("武俠", "燈塔") == "鏢局"  # 沒改過：換成新題材的開頭
+    assert await form.change_genre("武俠", "我自己寫的") is None  # 改過：保留
+    assert await form.reroll("我自己寫的") == "客棧"  # 按了「換一個」：一定換
+    assert sent[-1] == ["/genre 武俠", "/random"]
+    assert form.finish("  ", True) == ("客棧", True, "武俠")  # 留白用預設的開頭
+    assert form.finish(" 一個 \n人 ", False) == ("一個 人", False, "武俠")
+
+
+async def test_premise_form_drops_results_overtaken_by_a_newer_action():
+    form, _ = premise_form(**{"/genre": Reply(phase="ask_premise", premise_default="新的")})
+    first = asyncio.create_task(form.change_genre("武俠", ""))
+    second = asyncio.create_task(form.change_genre("克蘇魯", ""))
+    assert await first is None and await second == "新的"
+    assert form.genre == "克蘇魯"
+
+
+async def test_premise_form_suggest_errors_are_raised_for_the_interface_to_show():
+    form, _ = premise_form(**{"/suggest": Reply(phase="ask_premise", error="api", notice="額度用完了")})
+    with pytest.raises(RuntimeError, match="額度用完了"):
+        await form.suggest("")

@@ -7,7 +7,9 @@
   {"t": "answer", "id": 1, "value": …}       回答對話框，或回報劇情顯示完、按了 Enter（value 不用）
   {"t": "act", "text": "1"}                  行動：選項編號或自由輸入
   {"t": "command", "text": "/state"}         指令
-  {"t": "premise_ask", "req": 3, "commands": ["/genre 武俠", "/random"]}   前提對話框裡的操作（換題材、換一個、幫我想）
+  {"t": "premise_event", "req": 3, "action": "genre", "genre": "武俠", "text": "…"}
+      前提對話框裡的操作：action 是 genre（換題材）、reroll（換一個）、suggest（幫我想），text 是文字框目前的內容。
+      回覆 {"t": "premise_update", "req": 3, "text": "…" 或 null（文字框保持原樣）, "error": "…"}
 """
 
 import asyncio
@@ -15,21 +17,10 @@ from dataclasses import asdict
 
 from aiohttp import web
 
-from story.core import ChangeGroups, Reply
-from story.shells.client import MAX_NAME_LEN, Client, StatusLine, View
+from story.core import ChangeGroups
+from story.shells.client import MAX_NAME_LEN, Client, PremiseForm, StatusLine, View
 
 BUSY_POLL = 0.3  # 等待時每隔幾秒看一次進度文字有沒有變
-
-
-def premise_fields(reply: Reply) -> dict:
-    return {
-        "default": reply.premise_default,
-        "suggestion": reply.suggestion,
-        "timed": reply.timed,
-        "genre": reply.genre,
-        "genres": [list(g) for g in reply.genres],
-        "error": reply.notice if reply.error else "",
-    }
 
 
 class WebView(View):
@@ -39,8 +30,7 @@ class WebView(View):
         self.outbox: asyncio.Queue[dict] = asyncio.Queue()  # 依序送出，不會因為同時送而交錯
         self.pending: dict[int, asyncio.Future] = {}
         self.next_id = 0
-        self.premise_ask = None  # 前提對話框開著時：把指令送給核心的函式
-        self.asking = asyncio.Lock()  # 核心一次只能被一個執行緒呼叫
+        self.premise_form: PremiseForm | None = None  # 前提對話框開著時：它的規則（共用層）
         self.busy_task: asyncio.Task | None = None
         self.tasks: set[asyncio.Task] = set()  # 玩家輸入觸發的工作（連線結束時一起取消）
 
@@ -78,23 +68,29 @@ class WebView(View):
             text = str(message.get("text", "")).strip()
             if text:
                 self.spawn(self.client.act(text) if kind == "act" else self.client.command(text))
-        elif kind == "premise_ask" and self.premise_ask:
-            self.spawn(self.answer_premise(message.get("req"), [str(c) for c in message.get("commands", [])]))
+        elif kind == "premise_event" and self.premise_form:
+            self.spawn(self.answer_premise(self.premise_form, message))
 
     def spawn(self, coroutine) -> None:
         task = asyncio.create_task(coroutine)
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
 
-    async def answer_premise(self, req, commands: list[str]) -> None:
-        ask = self.premise_ask
-        async with self.asking:
-            try:
-                reply = await asyncio.to_thread(ask, *commands)
-            except Exception as e:  # 網路、key 等錯誤只提示，不中斷開新局
-                self.post("premise_update", req=req, error=str(e)[:200])
+    async def answer_premise(self, form: PremiseForm, message: dict) -> None:
+        action, text, req = message.get("action"), str(message.get("text", "")), message.get("req")
+        try:
+            if action == "genre":
+                premise = await form.change_genre(str(message.get("genre", "")), text)
+            elif action == "reroll":
+                premise = await form.reroll(text)
+            elif action == "suggest":
+                premise = await form.suggest(text)
+            else:
                 return
-        self.post("premise_update", req=req, **premise_fields(reply))
+        except Exception as e:  # 網路、key 等錯誤只提示，不中斷開新局
+            self.post("premise_update", req=req, text=None, error=str(e)[:200])
+            return
+        self.post("premise_update", req=req, text=premise, error="")
 
     def close(self) -> None:
         for future in self.pending.values():
@@ -186,16 +182,20 @@ class WebView(View):
     async def ask_confirm(self, question: str, yes: str, no: str) -> bool:
         return bool(await self.ask("confirm", question=question, yes=yes, no=no))
 
-    async def ask_premise(self, reply: Reply, ask) -> tuple[str, bool, str] | None:
-        self.premise_ask = ask
+    async def ask_premise(self, form: PremiseForm) -> tuple[str, bool, str] | None:
+        options = form.genre_options()
+        self.premise_form = form
         try:
-            answer = await self.ask("premise", **premise_fields(reply))
+            answer = await self.ask(
+                "premise", default=form.default, timed=form.timed, genre=form.genre,
+                options=options, hints={value: form.genre_hint(value) for _, value in options},
+            )
         finally:
-            self.premise_ask = None
+            self.premise_form = None
         if not answer:
             return None
-        premise, timed, genre = answer
-        return " ".join(str(premise).split()) or reply.premise_default, bool(timed), str(genre)
+        text, timed = answer  # 瀏覽器回傳文字框的內容、要不要限時；題材在換的時候就交給 form 了
+        return form.finish(str(text), bool(timed))
 
     async def ask_ending(self, title: str, record: str) -> bool:
         return bool(await self.ask("ending", title=title, record=record))
