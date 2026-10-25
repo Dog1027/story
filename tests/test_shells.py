@@ -57,7 +57,7 @@ def test_interfaces_go_through_the_shared_client_layer():
     interfaces = [*Path(story.shells.textual.__file__).parent.rglob("*.py"), Path(story.shells.web.view.__file__)]
     for path in sorted(interfaces):
         source = path.read_text(encoding="utf-8")
-        for name in ("StoryCore", "PartyCore", "RoomConnection", "story.shells.room", "story.shells.apikey", "story.shells.players"):
+        for name in ("StoryCore", "PartyCore", "RoomConnection", "story.shells.room", "story.shells.players"):
             if name in source:
                 problems.append(f"{path.name}: 用到 {name}（應該交給共用層）")
         if re.search(r"\bcore\.\w+", source):

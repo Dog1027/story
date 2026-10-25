@@ -37,6 +37,8 @@ src/story/
 ├── samples/             範例故事（just prompts、just eval 用的燈塔故事），每種語言一份
 ├── preview.py           預覽送給 AI 的完整提示詞（just prompts），不會呼叫 AI
 ├── evals.py             評估 AI 寫得好不好（just eval），會呼叫真的 AI
+├── settings.py          玩家的設定檔 ~/.config/story/config.toml（語言、API key、配色主題）
+├── setup.py             第一次啟動時在終端機裡問語言、API key、配色主題
 ├── core/                核心：完全不知道有任何介面，也不 import shells/
 │   ├── __init__.py      對外只匯出 StoryCore、Reply、Status 等
 │   ├── session.py       StoryCore（單人）
@@ -57,9 +59,7 @@ src/story/
     ├── web/             網頁介面：伺服器、WebView、瀏覽器頁面（static/），流程交給 client.py
     ├── room.py          線上多人的房間
     ├── plain.py         純文字外殼
-    ├── players.py       網頁版的玩家
-    ├── apikey.py        API key 的存取
-    └── prefs.py         偏好設定（配色主題）
+    └── players.py       網頁版的玩家
 ```
 
 **相依的方向只有一個**：介面 → 共用層（`client.py`）→ `story.core`。核心不 import 任何外殼；外殼只用 `story.core` 匯出的名稱，不直接 import `engine`、`models` 這些內部模組。介面（`textual/`、網頁的 `web/view.py`）不自己建立核心、不直接連房間，流程一律交給共用層。這兩條規則都有測試把關（`test_shells.py`）。
@@ -72,12 +72,23 @@ src/story/
 
 ### `__init__.py`：程式進入點
 
-只有 `main()`，負責啟動外殼。`uv run story` 執行的就是這個函式（定義在 `pyproject.toml` 的 `[project.scripts]`）。
+兩個進入點（定義在 `pyproject.toml` 的 `[project.scripts]`），都會先做第一次啟動的設定（`setup.py`），再 import 核心：語言在 import 時就決定了。
 
-- 沒有參數：Textual 外殼 `StoryApp`
-- `--plain`：純文字外殼
+- `main()`：`uv run story`。沒有參數是 Textual 外殼 `StoryApp`，`--plain` 是純文字外殼
+- `web()`：`uv run story-web`，網頁版（加 `--party` 是線上多人，見 `shells/web/`）。`--setup-only` 只做第一次的設定就結束，`just start` 在背景啟動前用
 
-網頁版（包括線上多人）是另一個指令 `story-web`（`shells/web/`）。
+### `settings.py`：玩家的設定檔
+
+`~/.config/story/config.toml`，可以直接編輯：`language`（`zh-TW`、`en`）、`api_key`、`theme`。環境變數優先：`STORY_LANG` 蓋過 `language`，`GEMINI_API_KEY`（或 `GOOGLE_API_KEY`）蓋過 `api_key`。檔案權限 600（裡面有 API key）。程式改寫時手寫的註解會不見。以前存在 `~/.config/story/api_key`、`~/.config/story/theme` 的設定，讀取時自動搬進來。核心（語言、個人題材包的位置）與外殼都讀它。
+
+| 名稱 | 做什麼 |
+|---|---|
+| `get(名稱)`、`put(名稱, 值)` | 讀寫一項設定；值是 `None` 時刪掉 |
+| `language()`、`api_key()` | 加上環境變數之後的語言與 API key |
+
+### `setup.py`：第一次啟動的設定
+
+在終端機裡依序問設定檔還沒有的：語言（用兩種語言問，選項是 `story/ui/` 底下的語言，名稱是各語言 `shells.md` 的 `language_name`）、API key、配色主題（終端機版，從 `style.py` 的 `THEMES` 選）。不是在終端機裡執行時不問。網頁伺服器也會問 API key：兩種網頁版都用架站者的 key，玩家不用輸入。
 
 ## 核心 `core/`
 
@@ -342,7 +353,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 | 名稱 | 做什麼 |
 |---|---|
 | `View` | 介面要實作的方法：故事區（`start_narration()`、`extend_narration()`、`finish_narration()`、`discard_narration()`：劇情邊收邊顯示；`show_action()`、`show_changes()`、`wait_enter()`…）、選項與提示（`prepare_choices()`、`show_choices()`、`set_hint()`）、狀態列（`set_status()`、`show_lobby()`）、等待與倒數（`set_busy()`、`show_busy()`、`start_timer()`）、通知與對話框（`ask_premise()`、`ask_confirm()`、`ask_ending()`、`ask_name()`、`ask_api_key()`…） |
-| `Client.run()` | 開局：取得名字（網頁模式）與 API key，建立 `StoryCore`／`PartyCore`；線上多人時改成連到房間、收房間推來的訊息 |
+| `Client.run()` | 開局：取得名字（網頁模式）與 API key（終端機版從設定檔或問玩家，網頁版用架站者的），建立 `StoryCore`；線上多人時改成連到房間、收房間推來的訊息 |
 | `Client.act()`、`command()`、`timeout()` | 介面把玩家的輸入交給這裡：行動（先顯示在故事區）、指令、倒數到了 |
 | `send()`、`ask_core()` | 把一句文字送給核心（在背景執行緒，超過 `BUSY_DELAY` 才顯示「故事生成中…」）；等待時每 `DRAFT_POLL` 秒讀一次 `core.draft`；key 無效時請玩家換 key 後重送 |
 | `follow_draft()`、`narrate()` | 串流：AI 寫的劇情有新的字就交給介面（線上多人時是房間轉來的 `draft` 訊息）；回覆到了再接著顯示完。這回合失敗時收回寫到一半的劇情 |
@@ -352,7 +363,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 | `refresh_hint()`、`update_waiting()` | 輸入框的提示：線上多人行動完之後提示還在等誰，有人行動時通知 |
 | `status_line()` | 把 `Status` 轉成狀態列要顯示的內容（`StatusLine`）：直接列出每個狀態與程度、核心判斷的警告（`Status.warning`）、沒有狀態時是「良好」，只說程度不說顏色。背包不放在狀態列（完整內容用 `/state` 看） |
 
-介面的對話框也會用到的規則（名字的檢查 `check_name()`、key 的存放位置 `KEY_PATH`）也從這裡取用。
+介面的對話框也會用到的規則（名字的檢查 `check_name()`、設定檔的位置 `CONFIG_PATH`）也從這裡取用。
 
 ### `shells/textual/`：Textual 外殼
 
@@ -386,7 +397,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 
 | 常數 | 意義 |
 |---|---|
-| `THEME` | 預設配色主題（`tokyo-night`）。遊戲中用 `/theme`（F2）打開 Textual 內建的主題選擇器；終端機版的選擇存在 `~/.config/story/theme`（`prefs.py`），網頁版不存（設定檔在伺服器上，存了會影響所有玩家） |
+| `THEME` | 預設配色主題（`tokyo-night`）。遊戲中用 `/theme`（F2）打開 Textual 內建的主題選擇器；終端機版的選擇存在設定檔的 `theme`（`settings.py`），網頁版不存（設定檔在伺服器上，存了會影響所有玩家） |
 | `CHAR_DELAY`、`FAST_FACTOR`、`PAUSE_AFTER` | 打字效果的速度、按 Enter 後的加速倍率、標點停頓 |
 | `palette(主題)` | 狀態程度、整體狀態、變化語氣、倒數的顏色，從主題的成功／警告／錯誤色算出來，換主題時跟著變；並轉成 Rich 認得的寫法（ansi 主題的 `ansi_red` 要換成 `color(1)`） |
 
@@ -415,16 +426,16 @@ Textual 底層的 Rich 只會在空格處換行，是為英文設計的。AI 常
 | `__init__.py`：`make_app()` | 網頁伺服器：首頁、靜態檔、WebSocket（`/ws`）。首頁是 `index.html` 換上這個語言的文字（`render_page()`：雙大括號包起來的名稱換成 `web.md`、`dialogs.md` 的文字，再把整份字串表放進頁面給 `app.js` 用）。限制同時在線人數（`MAX_SESSIONS`），滿了就顯示提示。線上多人時房間跟著伺服器一起啟動與關閉。頁面與 JS、CSS 都要求瀏覽器每次確認有沒有更新（`Cache-Control: no-cache`），`index.html` 引用時也帶版本號（`?v=`），更新後不會用到快取的舊檔 |
 | `__init__.py`：`main()` | `uv run story-web` 的進入點；參數 `--host`、`--port`、`--party` |
 | `view.py`：`WebView` | 實作共用層的 `View`。要等玩家的（劇情顯示完、按 Enter、對話框）帶一個 `id`，等瀏覽器回覆；前提對話框開著時，瀏覽器可以送指令給核心（換題材、換一個、幫我想）。訊息格式寫在檔案開頭 |
-| `static/index.html`、`style.css` | 頁面與外觀：上方狀態列（第幾回、限時模式、每位角色的狀態）、中間故事、下方選項按鈕與輸入框；手機上對話框從下方滑出，要打字的（名字、API key、故事前提）改從上方出現，鍵盤才不會蓋住。跟著系統的淺色／深色，也可以在選單裡切換（存在這個瀏覽器） |
+| `static/index.html`、`style.css` | 頁面與外觀：上方狀態列（第幾回、限時模式、每位角色的狀態）、中間故事、下方選項按鈕與輸入框；手機上對話框從下方滑出，要打字的（名字、故事前提）改從上方出現，鍵盤才不會蓋住。跟著系統的淺色／深色，也可以在選單裡切換（存在這個瀏覽器） |
 | `static/app.js` | 把訊息畫出來：打字效果（劇情邊收邊打；點故事區或按 Enter 加速、再按一次全部顯示）、往上捲時不自動跟隨、選項（點擊，或在輸入框用 ↑↓ 選擇）、倒數條（單人開著對話框時暫停）、對話框排隊、通知。手機上不會自動把焦點移到輸入框，不然鍵盤會一直跳出來 |
 
 **手機**：用一般的網頁輸入框打字（中文選字正常）、原生的捲動、字級 16px 以上（手機不會自動放大畫面）。
 
-**單人**（沒加 `--party`）：先問名字（每個名字有自己的存檔 `saves/名字.json`，同一個名字同時只能有一個人在線），再請玩家輸入自己的 API key（只留在這次連線，不存到伺服器）。
+**單人**（沒加 `--party`）：先問名字（每個名字有自己的存檔 `saves/名字.json`，同一個名字同時只能有一個人在線），呼叫 AI 用架站者的 API key，玩家不用輸入。
 
 **線上多人**（`--party`）：伺服器裡開一個房間（`room.py`），每個分頁的 `Client` 都連到這個房間，大家一起玩同一局，呼叫 AI 用伺服器的 API key。
 
-預設只監聽 `127.0.0.1`。`--host 0.0.0.0` 會開放其他電腦連線，但目前沒有 HTTPS，玩家的 API key 會以明文傳送。
+預設只監聽 `127.0.0.1`。`--host 0.0.0.0` 會開放其他電腦連線，但目前沒有 HTTPS，連線內容以明文傳送。
 
 ### `shells/room.py`：線上多人的房間
 
@@ -451,14 +462,6 @@ Textual 底層的 Rich 只會在空格處換行，是為英文設計的。AI 常
 
 同一個名字同時只能有一個連線：在線的名字記在 `Player.online`。整個網頁伺服器是同一個程式，所以記在記憶體裡就夠了，伺服器重開時自然清空；分頁關掉或斷線時，連線結束就會釋放。
 
-### `shells/apikey.py`：API key 的存取
-
-| 函式 | 做什麼 |
-|---|---|
-| `get_saved_api_key()` | 依序從環境變數（`GEMINI_API_KEY`、`GOOGLE_API_KEY`）、設定檔取得 key |
-| `save_api_key()` | 存到 `~/.config/story/api_key`，權限 600（只有自己能讀） |
-| `forget_api_key()` | 刪除已儲存的 key（key 無效時使用） |
-
 ---
 
 ## 測試 `tests/`
@@ -481,6 +484,7 @@ uv run pytest                  # 全部（約 30 秒）
 | `test_party.py` | 多人模式：每位角色各自的規則、未知角色與漏掉的角色、單人倒下與全員倒下、焦點輪替、依序收行動、時間到、失敗重試、讀檔；線上多人的 `send_as()`、`view()`、回覆轉 JSON；以及接上真的 engine 的整合測試 |
 | `test_room.py` | 線上多人的房間（用 `connect()` 連進去的好幾位玩家）：不照順序行動、名字檢查與人數上限、遊戲中只有隊員能回來、只有房主能回答與重來、斷線重連與替離線的人行動、換房主、大家看完才倒數、結局回到大廳、一個人也能開始、AI 寫劇情時大家都收到串流的劇情 |
 | `test_players.py` | 名字檢查、同名鎖定 |
+| `test_settings.py` | 設定檔：讀寫與權限、環境變數優先、舊的 api_key／theme 檔搬進來、第一次啟動只問還沒設定的、不在終端機裡時不問 |
 | `test_prose.py` | 中文換行：英文名字不造成提早換行、英文單字不拆開、標點不在行首、引號不留在行尾 |
 | `test_client.py` | 外殼共用層：用只記錄呼叫的假介面確認流程，不需要 Textual。開新故事先顯示前提、劇情顯示完才出現選項與狀態再開始倒數、結局一段一段出現、key 無效時換 key 重送、狀態列的內容；串流：回覆到之前就開始顯示劇情、寫到一半失敗時收回 |
 | `test_textual.py` | Textual 外殼：模擬按鍵跑完整流程，包括打字與狀態列時機、倒數與暫停、對話框方向鍵、結局、讀檔、窄畫面樣式、狀態在窄畫面換行時不拆開 |
@@ -510,6 +514,6 @@ uv run pytest                  # 全部（約 30 秒）
 | `saves/名字.json`、`saves/名字.log.jsonl` | 網頁版每個玩家的存檔、每回合紀錄 |
 | `saves/party.json`、`saves/party.log.jsonl` | 線上多人的存檔與每回合紀錄 |
 | `story_log.jsonl` | 終端機版每回合一行的紀錄：玩家行動、AI 提議的變化、套用前後的狀態、遊戲內時間。用來查「為什麼會這樣」 |
-| `~/.config/story/api_key` | 儲存的 API key（在家目錄，不在專案裡） |
+| `~/.config/story/config.toml` | 玩家的設定：語言、API key、配色主題（在家目錄，不在專案裡） |
 
 這些檔案會產生在執行 `uv run story` 或 `uv run story-web` 時所在的資料夾。

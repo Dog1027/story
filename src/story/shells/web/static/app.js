@@ -169,7 +169,6 @@ const handlers = {
     }, (value) => answer(id, value), false);
   },
   name(message) { nameSheet(message); },
-  api_key(message) { apiKeySheet(message); },
   premise(message) { premiseSheet(message); },
   premise_update(message) { if (state.premise) state.premise.update(message); },
   exit() {
@@ -483,22 +482,6 @@ function nameSheet({ id, hint, error, max_len }) {
     name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
     sheet.append(tag("h2", "", t("name_title")), tag("p", "hint", hint || t("name_hint")), name, errorLine);
     sheet.append(buttons([[t("leave"), () => close(null)], [t("enter"), submit, true]]));
-  }, (value) => answer(id, value), false, true);
-}
-
-function apiKeySheet({ id, reason }) {
-  openSheet((sheet, close) => {
-    const key = field("password", "key-input", t("key_placeholder"));
-    const submit = () => { if (key.value.trim()) close(key.value.trim()); };
-    key.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
-    const link = tag("p", "hint");
-    const a = tag("a", "", t("key_link_text"));
-    a.href = "https://aistudio.google.com/apikey";
-    a.target = "_blank";
-    a.rel = "noopener";
-    const [before, after] = T.key_where.split("{link}");
-    link.append(before, a, after, t("key_not_stored"));
-    sheet.append(tag("h2", "", reason), link, key, buttons([[t("leave"), () => close(null)], [t("ok"), submit, true]]));
   }, (value) => answer(id, value), false, true);
 }
 

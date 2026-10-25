@@ -208,9 +208,5 @@ class WebView(View):
         raw = await self.ask("name", hint=hint, error=error, max_len=MAX_NAME_LEN)
         return None if raw is None else str(raw)
 
-    async def ask_api_key(self, reason: str, can_save: bool) -> tuple[str, bool] | None:
-        key = await self.ask("api_key", reason=reason)
-        return (str(key).strip(), False) if key and str(key).strip() else None
-
     def exit(self) -> None:
         self.post("exit")

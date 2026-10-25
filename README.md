@@ -26,12 +26,20 @@ You need:
 - [just](https://github.com/casey/just) (recommended): shortcuts for common commands. Without it, use the `uv run …` commands in the table below
 
 ```bash
-STORY_LANG=en just play
+just play
 ```
 
-The first time, the game asks you to paste your API key and whether to save it (in `~/.config/story/api_key`). You can also use the `GEMINI_API_KEY` environment variable instead.
+The first time it runs, it asks you three things: the language, your Gemini API key, and a color theme for the terminal version. The answers are saved in `~/.config/story/config.toml`, so you won't be asked again. You can edit that file directly:
 
-**Language**: the default is Traditional Chinese. Put `STORY_LANG=en` in front of any command to play in English, e.g. `STORY_LANG=en just play` or `STORY_LANG=en just serve`. The story, the interface, and the genre packs all switch to English; everyone on the same server uses the same language.
+```toml
+language = "en"         # or "zh-TW"
+api_key = "your key"
+theme = "tokyo-night"
+```
+
+Environment variables take precedence over the file: `STORY_LANG`, `GEMINI_API_KEY`.
+
+**Language**: the language you choose the first time sticks. To switch temporarily, put `STORY_LANG=zh-TW` (or `en`) in front of a command, e.g. `STORY_LANG=zh-TW just serve`. The story, the interface, and the genre packs all switch; everyone on the same server uses the same language.
 
 ## Ways to play
 
@@ -45,15 +53,14 @@ The first time, the game asks you to paste your API key and whether to save it (
 
 The web server uses port 8080 by default (`just serve 9000` to change it). Open `http://this-computer's-IP:8080` in a browser; on the same computer that's <http://localhost:8080>. Phones and computers use the same page, which follows the system's light or dark mode.
 
+Both web versions call the AI with the host's API key (entered the first time you start the server); players only enter a name.
+
 ### Web: everyone plays their own story
 
 - Enter a name first; each name has its own save, and only one person can use a name at a time
-- Each player enters their own Gemini API key, which stays in that session only and is never stored on the server
 - At most 10 people online at once
 
 ### Web: online multiplayer
-
-The server calls the AI with its own API key (run `just play` once to save one, or set `GEMINI_API_KEY`), so players don't need one.
 
 - Enter a name when you join; your name is your character. The first person in is the host, who chooses "Start game" (you can start alone; at most 4 players)
 - The host picks the premise, whether to continue a save, and whether to start over. Once the host sends the premise, everyone sees it, and you all enter the story together when the AI finishes the opening
@@ -62,7 +69,7 @@ The server calls the AI with its own API key (run `just play` once to save one, 
 - If the host goes offline, the next player online becomes host
 - When the story ends, everyone returns to the lobby and can play again. The server has a single room, so everyone joins the same story
 
-> ⚠ The web server accepts connections from other computers on the same network. There's no HTTPS yet, so API keys players type are sent in plain text, and names have no password: anyone who knows a name can continue that save. Only use it on a network you trust.
+> ⚠ The web server accepts connections from other computers on the same network. There's no HTTPS yet, so traffic is sent in plain text, and names have no password: anyone who knows a name can continue that save. Only use it on a network you trust.
 
 ## Controls
 

@@ -3,6 +3,25 @@
 網頁伺服器（web/__init__.py）與純文字版（plain.py）。格式同 core.md。
 -->
 
+<!-- ---------- 第一次啟動時的設定（story/setup.py） ---------- -->
+
+## language_name
+<!-- 選語言時顯示的這個語言的名稱 -->
+繁體中文
+
+## setup_key
+需要 Gemini API key，可以到 https://aistudio.google.com/apikey 免費申請。會存在 ~/.config/story/config.toml。
+
+## setup_key_prompt
+Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
+
+## setup_theme
+選擇終端機版的配色主題（之後可以在遊戲裡按 F2 換）：
+
+## setup_theme_prompt
+<!-- 變數：{default} 是直接按 Enter 時用的主題 -->
+輸入編號（直接按 Enter 用 {default}）：
+
 <!-- ---------- 共用層 ---------- -->
 
 ## mode_timed
@@ -12,9 +31,6 @@
 ## mode_normal
 一般模式
 
-## ask_web_key
-<!-- 網頁版（各自玩）輸入名字之後。變數：{name} -->
-{name}，請輸入你的 Gemini API key
 
 ## ask_missing_key
 找不到 Gemini API key。
@@ -161,10 +177,10 @@ API key 無效或沒有權限，請重新輸入。
 線上多人：所有連進來的人一起玩同一局，使用伺服器的 API key
 
 ## server_no_key
-線上多人使用伺服器的 API key：請先設定環境變數 GEMINI_API_KEY，或執行一次 uv run story 儲存 key。
+網頁伺服器呼叫 AI 用架站者的 API key：請先在終端機裡執行一次 uv run story-web 輸入 key，或設定環境變數 GEMINI_API_KEY。
 
 ## server_open_warning
-⚠ 已開放其他電腦連線。目前沒有 HTTPS，玩家輸入的 API key 會以明文傳送，只建議在信任的網路使用。
+⚠ 已開放其他電腦連線。目前沒有 HTTPS，連線內容（名字、劇情）以明文傳送，名字也沒有密碼保護，只建議在信任的網路使用。
 
 ## server_mode_party
 線上多人（大家一起玩同一局）

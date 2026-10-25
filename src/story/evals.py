@@ -33,7 +33,7 @@ from story.core.engine import ACT_TURNS, MODEL, Engine, body_level, body_score, 
 from story.core.genres import Genre, load_genres
 from story.core.models import SCHEMA, GameState
 from story.preview import ARC, PREMISE, SAMPLE, conditions, listed, sample_state
-from story.shells.apikey import get_saved_api_key
+from story import settings
 
 EVAL = prompts.sections("eval")
 # 評審跟遊戲用同一個模型，但多想一點。免費方案的 gemini-3.5-flash 每分鐘只能呼叫 5 次，有付費的話換成它判斷會更可靠
@@ -336,7 +336,7 @@ def main(argv: list[str] | None = None) -> None:
     unknown = [n for n in args if n not in found]
     if unknown:
         sys.exit(f"沒有這個情境：{'、'.join(unknown)}。可以用：{'、'.join(found)}")
-    key = get_saved_api_key()
+    key = settings.api_key()
     if not key:
         sys.exit("找不到 Gemini API key：先玩一次遊戲輸入 key，或設定環境變數 GEMINI_API_KEY。")
 

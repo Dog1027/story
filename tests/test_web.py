@@ -13,8 +13,16 @@ from story.shells.room import Room
 
 
 @pytest.fixture(autouse=True)
-def fake_core(monkeypatch):
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=FakeEngine(), **kw))
+def fake_core(monkeypatch) -> list[str]:
+    """核心用假的 engine；回傳每次建立核心時拿到的 API key。"""
+    keys: list[str] = []
+
+    def make(api_key, **kw):
+        keys.append(api_key)
+        return StoryCore(api_key, engine=FakeEngine(), **kw)
+
+    monkeypatch.setattr(client_module, "StoryCore", make)
+    return keys
 
 
 class Browser:
@@ -43,9 +51,7 @@ class Browser:
 async def enter_single_game(client) -> Browser:
     browser = Browser(await client.ws_connect("/ws"))
     name = await browser.expect("name")
-    await browser.answer(name["id"], "阿明")
-    key = await browser.expect("api_key")
-    await browser.answer(key["id"], "test")
+    await browser.answer(name["id"], "阿明")  # 玩家不用輸入 API key：用架站者的
     premise = await browser.expect("premise")
     await browser.answer(premise["id"], ["燈塔", False, "自動"])
     await browser.expect("choices", lambda m: m["choices"] == ["往上爬", "檢查鑰匙"])
@@ -53,16 +59,17 @@ async def enter_single_game(client) -> Browser:
 
 
 async def test_page_is_served_with_phone_support():
-    async with TestClient(TestServer(web.make_app())) as client:
+    async with TestClient(TestServer(web.make_app("server-key"))) as client:
         page = await (await client.get("/")).text()
         assert '<meta name="viewport" content="width=device-width' in page and "/static/app.js" in page
         script = await client.get("/static/app.js")
         assert script.status == 200 and script.headers["Cache-Control"] == "no-cache"  # 更新後不會用到快取的舊檔
 
 
-async def test_single_player_plays_a_turn(isolated):
-    async with TestClient(TestServer(web.make_app())) as client:
+async def test_single_player_plays_a_turn(isolated, fake_core):
+    async with TestClient(TestServer(web.make_app("server-key"))) as client:
         browser = await enter_single_game(client)
+        assert fake_core == ["server-key"]  # 用架站者的 key，玩家不用輸入
         assert any(m["t"] == "clear" and m["premise"] == "燈塔" for m in browser.seen)  # 先顯示前提，再寫開場
         await browser.send("act", text="1")
         assert (await browser.expect("action"))["text"] == "往上爬"
@@ -73,7 +80,7 @@ async def test_single_player_plays_a_turn(isolated):
 
 
 async def test_name_problems_are_shown_and_asked_again(isolated):
-    async with TestClient(TestServer(web.make_app())) as client:
+    async with TestClient(TestServer(web.make_app("server-key"))) as client:
         first = await enter_single_game(client)
         second = Browser(await client.ws_connect("/ws"))
         name = await second.expect("name")
@@ -86,10 +93,9 @@ async def test_name_problems_are_shown_and_asked_again(isolated):
 
 
 async def test_premise_dialog_can_ask_the_core_while_open(isolated):
-    async with TestClient(TestServer(web.make_app())) as client:
+    async with TestClient(TestServer(web.make_app("server-key"))) as client:
         browser = Browser(await client.ws_connect("/ws"))
         await browser.answer((await browser.expect("name"))["id"], "阿明")
-        await browser.answer((await browser.expect("api_key"))["id"], "test")
         premise = await browser.expect("premise")
         await browser.send("premise_ask", req=1, commands=["/suggest"])
         update = await browser.expect("premise_update")
@@ -99,7 +105,7 @@ async def test_premise_dialog_can_ask_the_core_while_open(isolated):
 
 
 async def test_leaving_from_the_name_dialog_ends_the_session(isolated):
-    async with TestClient(TestServer(web.make_app())) as client:
+    async with TestClient(TestServer(web.make_app("server-key"))) as client:
         browser = Browser(await client.ws_connect("/ws"))
         await browser.answer((await browser.expect("name"))["id"], None)
         await browser.expect("exit")
@@ -107,7 +113,7 @@ async def test_leaving_from_the_name_dialog_ends_the_session(isolated):
 
 async def test_sessions_are_limited(isolated, monkeypatch):
     monkeypatch.setattr(web, "MAX_SESSIONS", 1)
-    async with TestClient(TestServer(web.make_app())) as client:
+    async with TestClient(TestServer(web.make_app("server-key"))) as client:
         first = Browser(await client.ws_connect("/ws"))
         await first.expect("name")
         second = Browser(await client.ws_connect("/ws"))
@@ -116,7 +122,7 @@ async def test_sessions_are_limited(isolated, monkeypatch):
 
 async def test_party_mode_puts_every_tab_in_one_lobby(isolated):
     room = Room(lambda players: PartyCore("test", players, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=FakePartyEngine()))
-    async with TestClient(TestServer(web.make_app(room))) as client:
+    async with TestClient(TestServer(web.make_app("server-key", room))) as client:
         host, guest = Browser(await client.ws_connect("/ws")), Browser(await client.ws_connect("/ws"))
         await host.answer((await host.expect("name"))["id"], "阿明")
         await host.expect("lobby")  # 阿明先進房間（第一個進來的是房主），小華才送出名字

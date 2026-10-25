@@ -22,12 +22,13 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from story import settings
 from story.core import prompts
 
 UI = prompts.ui("core")  # 題材包格式問題的說明（story/ui/語言/core.md）
-# 每種語言一整套題材包（跟 story/prompts/語言/ 一樣用 STORY_LANG 選擇）
+# 每種語言一整套題材包（跟 story/prompts/語言/ 一樣，語言見 story/settings.py）
 BUILTIN_DIR = Path(__file__).resolve().parent.parent / "genres" / prompts.LANGUAGE
-PERSONAL_DIR = Path.home() / ".config" / "story" / "genres" / prompts.LANGUAGE
+PERSONAL_DIR = settings.CONFIG_DIR / "genres" / prompts.LANGUAGE
 # 字數上限（中文算字、英文算詞，見 prompts.text_length）
 MAX_DESCRIPTION = 200  # 描述：目錄每次規劃大綱都會整份送出
 MAX_GUIDE = 2000  # 寫作指引：每回合都會送出，太長會拖慢、也會稀釋其他規則

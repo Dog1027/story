@@ -13,7 +13,7 @@ dependencies = [
 
 [project.scripts]
 story = "story:main"
-story-web = "story.shells.web:main"
+story-web = "story:web"
 
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13.0"]

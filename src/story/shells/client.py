@@ -15,12 +15,13 @@ import asyncio
 from dataclasses import dataclass, field
 
 from story.core import MIN_PLAYERS, ChangeGroups, Ending, Reply, Status, StoryCore, pick_choice, ui_text, word
-from story.shells.apikey import KEY_PATH, forget_api_key, get_saved_api_key, save_api_key
+from story import settings
 from story.shells.players import MAX_NAME_LEN, InvalidName, Player, check_name
 from story.shells.room import START, Connection, Room
 
 # 介面的對話框也會用到的規則（名字怎樣才能用、key 存在哪裡），一律從這裡取用
-__all__ = ["KEY_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "StatusLine", "View", "status_line"]
+CONFIG_PATH = settings.CONFIG_PATH
+__all__ = ["CONFIG_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "StatusLine", "View", "status_line"]
 
 UI = ui_text("shells")  # 外殼共用的文字（story/ui/語言/shells.md）
 BUSY_DELAY = 0.15  # 核心超過這麼久還沒回覆才顯示「故事生成中」，很快的回覆就不閃一下
@@ -170,8 +171,8 @@ class View:
         """問名字，回傳玩家輸入的文字（取消時 None）。error 是上一次不能用的原因，第一次是空字串；hint 空白時用介面自己的說明。"""
         raise NotImplementedError
 
-    async def ask_api_key(self, reason: str, can_save: bool) -> tuple[str, bool] | None:
-        """回傳 (key, 要不要存起來)。"""
+    async def ask_api_key(self, reason: str) -> tuple[str, bool] | None:
+        """終端機版：key 無效或沒有時問玩家。回傳 (key, 要不要存起來)。"""
         raise NotImplementedError
 
     def exit(self) -> None:
@@ -182,9 +183,10 @@ class View:
 
 
 class Client:
-    def __init__(self, view: View, web: bool = False, room: Room | None = None):
+    def __init__(self, view: View, web: bool = False, room: Room | None = None, api_key: str | None = None):
         self.view = view
-        self.web = web  # 網頁版：先問名字，存檔依名字分開，API key 不存到伺服器
+        self.web = web  # 網頁版：先問名字，存檔依名字分開
+        self.server_key = api_key  # 網頁版：架站者的 API key，玩家不用輸入
         self.shared_room = room  # 線上多人：伺服器裡的房間；這時不建立自己的核心
         self.core: StoryCore | None = None
         self.room: Connection | None = None  # 連進房間後，和房間的連線
@@ -223,13 +225,12 @@ class Client:
             await self.join_room()
             return
         if self.web:
-            name = await self.ask_name(self.claim_name)
-            if name is None:
+            if await self.ask_name(self.claim_name) is None:
                 self.view.exit()
                 return
-            key = await self.ask_api_key(UI["ask_web_key"].format(name=name))
+            key = self.server_key
         else:
-            key = get_saved_api_key() or await self.ask_api_key(UI["ask_missing_key"])
+            key = settings.api_key() or await self.ask_api_key(UI["ask_missing_key"])
         if key is None:
             self.view.exit()
             return
@@ -262,12 +263,12 @@ class Client:
         return ""
 
     async def ask_api_key(self, reason: str) -> str | None:
-        result = await self.view.ask_api_key(reason, can_save=not self.web)
+        result = await self.view.ask_api_key(reason)
         if result is None:
             return None
         key, keep = result
         if keep:
-            save_api_key(key)
+            settings.put("api_key", key)
         return key
 
     # ---------- 玩家的輸入 ----------
@@ -311,7 +312,7 @@ class Client:
             await self.handle(reply)
 
     async def ask_core(self, text: str) -> Reply | None:
-        """在背景執行緒呼叫核心；超過一下子才顯示等待提示。key 無效時請玩家換一個再重送。"""
+        """在背景執行緒呼叫核心；超過一下子才顯示等待提示。key 無效時請玩家換一個再重送（網頁版用架站者的 key，只能通知）。"""
         self.set_busy(True)
         try:
             while True:
@@ -326,8 +327,10 @@ class Client:
                 reply = await task
                 if reply.error != "api_key":
                     return reply
-                if not self.web:  # 網頁版本來就沒有存 key
-                    forget_api_key()
+                if self.web:
+                    self.view.notify(UI["server_key_invalid"], error=True, lasting=True)
+                    return reply
+                settings.put("api_key", None)
                 self.set_busy(False)
                 key = await self.ask_api_key(UI["ask_new_key"])
                 if key is None:

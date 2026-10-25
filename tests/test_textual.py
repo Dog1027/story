@@ -17,6 +17,7 @@ from story.core import StoryCore
 from story.core.records import DEFAULT_PREMISE
 from story.shells.textual import StoryApp
 from story.shells.textual.prose import Prose
+from story import settings
 from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, PremiseDialog
 
 SIZE = (100, 28)
@@ -230,7 +231,7 @@ async def test_missing_key_asks_for_it_and_saves_it(monkeypatch, isolated):
         app.screen.query_one("#key", Input).value = "my-key"
         await pilot.press("enter")
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog))
-    assert (isolated / "api_key").read_text() == "my-key"
+    assert settings.get("api_key") == "my-key"
 
 
 async def test_leaving_the_key_dialog_quits(monkeypatch):
@@ -335,7 +336,7 @@ async def test_theme_command_changes_colors_and_is_remembered(isolated):
         await pilot.pause()
         assert app.colors == palette(app.current_theme)
         assert app.colors["healthy"] != palette(app.get_theme("tokyo-night"))["healthy"]
-    assert (isolated / "theme").read_text() == "solarized-light"
+    assert settings.get("theme") == "solarized-light"
 
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:

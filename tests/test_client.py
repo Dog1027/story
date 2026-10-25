@@ -101,7 +101,7 @@ class RecordingView(View):
     async def ask_name(self, hint, error):
         return None
 
-    async def ask_api_key(self, reason, can_save):
+    async def ask_api_key(self, reason):
         self.record("ask_api_key", reason)
         return (self.keys.pop(0), False) if self.keys else None
 

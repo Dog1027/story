@@ -2,7 +2,7 @@
 給玩家看的介面文字放在 story/ui/語言/，格式相同，用 ui() 讀。
 
 想調整 AI 的寫法（規則、節奏提醒、尾聲……）時改那些檔案就好，不用動程式。怎麼改見 story/prompts/README.md。
-每種語言一個資料夾（zh-TW、en），檔名與段落名稱都一樣，用環境變數 STORY_LANG 選擇。
+每種語言一個資料夾（zh-TW、en），檔名與段落名稱都一樣。語言由設定檔的 language 或環境變數 STORY_LANG 選擇（story/settings.py）。
 
 檔案格式：
 - 開頭的 <!-- --> 註解是給寫提示詞的人看的說明（用途、可用的變數），不會送給 AI。
@@ -13,11 +13,12 @@
 - {名稱} 是變數，程式組合時填入（str.format）。內容裡不能出現其他的大括號。
 """
 
-import os
 import re
 from pathlib import Path
 
-LANGUAGE = os.environ.get("STORY_LANG", "zh-TW")  # 語言：story/prompts/、story/ui/ 底下的資料夾名稱
+from story import settings
+
+LANGUAGE = settings.language()  # 語言：story/prompts/、story/ui/ 底下的資料夾名稱
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts" / LANGUAGE
 UI_DIR = Path(__file__).resolve().parent.parent / "ui" / LANGUAGE
 COMMENT = re.compile(r"<!--.*?-->", re.S)
@@ -43,7 +44,7 @@ def clip(text: str, limit: int) -> str:
 def _read(name: str, folder: Path = PROMPTS_DIR) -> str:
     path = folder / f"{name}.md"
     if not path.exists():
-        raise FileNotFoundError(f"找不到 {path}（STORY_LANG={LANGUAGE}；每種語言要有一整套同名的檔案）")
+        raise FileNotFoundError(f"找不到 {path}（語言是 {LANGUAGE}；每種語言要有一整套同名的檔案）")
     return COMMENT.sub("", path.read_text(encoding="utf-8").replace("\r\n", "\n"))
 
 

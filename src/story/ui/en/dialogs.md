@@ -48,14 +48,6 @@ Paste your API key
 <!-- Where to get an API key. Variable: {link} (the address; a link on the web) -->
 You can get one free at {link}. 
 
-## key_link_text
-<!-- The link text on the web -->
-Google AI Studio
-
-## key_not_stored
-<!-- Web: the key isn't stored on the server -->
-The key is only used for this session and never stored on the server; you'll enter it again next time.
-
 ## key_save
 <!-- Terminal: whether to save it. Variable: {path} -->
 Save to {path} and use it automatically next time

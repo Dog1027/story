@@ -3,6 +3,25 @@ Text shared by the shells: the shared layer (story/shells/client.py), the online
 the web server (web/__init__.py), and the plain-text shell (plain.py). Same format as core.md.
 -->
 
+<!-- ---------- First-launch setup (story/setup.py) ---------- -->
+
+## language_name
+<!-- This language's name, shown when choosing a language -->
+English
+
+## setup_key
+A Gemini API key is needed; get one free at https://aistudio.google.com/apikey. It's saved in ~/.config/story/config.toml.
+
+## setup_key_prompt
+Gemini API key (hidden while typing; press Enter to skip for now): 
+
+## setup_theme
+Choose a color theme for the terminal version (you can change it in the game with F2):
+
+## setup_theme_prompt
+<!-- Variable: {default} is the theme used if you just press Enter -->
+Enter a number (or press Enter for {default}): 
+
 <!-- ---------- Shared layer ---------- -->
 
 ## mode_timed
@@ -12,9 +31,6 @@ Timed mode
 ## mode_normal
 Normal mode
 
-## ask_web_key
-<!-- Web (everyone plays their own story), after entering a name. Variable: {name} -->
-{name}, please enter your Gemini API key
 
 ## ask_missing_key
 No Gemini API key found.
@@ -161,10 +177,10 @@ Address to listen on; 0.0.0.0 lets other computers connect (default: this comput
 Online multiplayer: everyone who connects plays the same story, using the server's API key
 
 ## server_no_key
-Online multiplayer uses the server's API key: set the GEMINI_API_KEY environment variable, or run uv run story once to save a key.
+The web server calls the AI with the host's API key: run uv run story-web once in a terminal to enter it, or set the GEMINI_API_KEY environment variable.
 
 ## server_open_warning
-⚠ Other computers can connect. There's no HTTPS yet, so API keys players type are sent in plain text; only use this on a network you trust.
+⚠ Other computers can connect. There's no HTTPS yet, so traffic (names, the story) is sent in plain text and names have no password; only use this on a network you trust.
 
 ## server_mode_party
 online multiplayer (everyone plays the same story)

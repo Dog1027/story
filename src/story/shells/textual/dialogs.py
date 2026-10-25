@@ -13,7 +13,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Select, Static, TextArea
 
 from story.core import GENRE_AUTO, GENRE_NONE, Reply, ui_text
-from story.shells.client import KEY_PATH
+from story.shells.client import CONFIG_PATH
 
 UI, TERMINAL = ui_text("dialogs"), ui_text("terminal")  # story/ui/語言/
 
@@ -98,7 +98,7 @@ class ApiKeyDialog(Dialog):
             yield Static(self.reason, classes="title")
             yield Static(UI["key_where"].format(link="https://aistudio.google.com/apikey"), classes="hint")
             yield Input(placeholder=UI["key_placeholder"], password=True, id="key")
-            yield Checkbox(UI["key_save"].format(path=KEY_PATH), value=True, id="save")
+            yield Checkbox(UI["key_save"].format(path=CONFIG_PATH), value=True, id="save")
             with Horizontal():
                 yield Button(UI["leave"], id="cancel", compact=True)
                 yield Button(UI["ok"], variant="primary", id="ok", compact=True)

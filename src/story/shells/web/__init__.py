@@ -4,8 +4,9 @@
 共用層的每個呼叫變成一則 JSON 訊息，經由 WebSocket 送到瀏覽器，瀏覽器（static/）只負責畫出來。
 流程都在共用層，跟終端機版是同一份。
 
-沒加 --party：每個人各自玩，先輸入名字（每個名字有自己的存檔）與自己的 Gemini API key。
-加上 --party：線上多人，伺服器裡開一個房間（room.py），每個分頁的 Client 都連進這個房間，大家一起玩同一局，呼叫 AI 用伺服器的 API key。
+沒加 --party：每個人各自玩，先輸入名字（每個名字有自己的存檔）。
+加上 --party：線上多人，伺服器裡開一個房間（room.py），每個分頁的 Client 都連進這個房間，大家一起玩同一局。
+兩種都用架站者的 Gemini API key（設定檔或環境變數），玩家不用輸入。
 """
 
 import argparse
@@ -19,7 +20,7 @@ from pathlib import Path
 from aiohttp import WSMsgType, web
 
 from story.core import ui_text
-from story.shells.apikey import get_saved_api_key
+from story import settings
 from story.shells.client import Client
 from story.shells.room import Room
 from story.shells.web.view import WebView
@@ -41,8 +42,8 @@ def render_page() -> str:
 PAGE = render_page()
 
 
-def make_app(room: Room | None = None) -> web.Application:
-    """建立網頁伺服器。給了 room 就是線上多人：伺服器關閉時房間跟著關閉。"""
+def make_app(api_key: str, room: Room | None = None) -> web.Application:
+    """建立網頁伺服器，呼叫 AI 用架站者的 api_key（玩家不用輸入）。給了 room 就是線上多人：伺服器關閉時房間跟著關閉。"""
     app = web.Application()
     sessions = 0  # 目前在線的分頁數
 
@@ -65,7 +66,7 @@ def make_app(room: Room | None = None) -> web.Application:
             return ws
         sessions += 1
         view = WebView(ws)
-        client = Client(view, web=room is None, room=room)
+        client = Client(view, web=room is None, room=room, api_key=api_key)
         view.client = client
         writer = asyncio.create_task(view.write_loop())
         game = asyncio.create_task(client.run())
@@ -103,15 +104,13 @@ def main() -> None:
     parser.add_argument("--party", action="store_true", help=UI["server_party_help"])
     args = parser.parse_args()
 
-    room = None
-    if args.party:
-        key = get_saved_api_key()
-        if not key:
-            sys.exit(UI["server_no_key"])
-        room = Room.for_server(key)
+    key = settings.api_key()
+    if not key:
+        sys.exit(UI["server_no_key"])
+    room = Room.for_server(key) if args.party else None
 
     if args.host != "127.0.0.1":
         print(UI["server_open_warning"], flush=True)
     mode = UI["server_mode_party" if args.party else "server_mode_solo"]
     print(UI["server_started"].format(host=args.host, port=args.port, mode=mode), flush=True)
-    web.run_app(make_app(room), host=args.host, port=args.port, print=None)
+    web.run_app(make_app(key, room), host=args.host, port=args.port, print=None)

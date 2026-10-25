@@ -18,7 +18,7 @@ class JudgingGemini(FakeGemini):
 
 
 def run(monkeypatch, capsys, args, *beats):
-    monkeypatch.setattr(evals, "get_saved_api_key", lambda: "key")
+    monkeypatch.setattr(evals.settings, "api_key", lambda: "key")
     monkeypatch.setattr(evals, "RPM", 60_000)  # 測試不用等
     monkeypatch.setattr(evals, "new_client", lambda key: JudgingGemini(beats))
     evals.main(args)

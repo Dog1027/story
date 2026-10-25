@@ -4,6 +4,8 @@ from textual.color import Color
 from textual.theme import Theme
 
 THEME = "tokyo-night"  # 預設主題；遊戲中可以用 /theme（F2）換，終端機版會記住
+# 第一次啟動時列出來選的主題（Textual 內建的一部分；遊戲中按 F2 可以選全部）
+THEMES = ["tokyo-night", "nord", "gruvbox", "dracula", "catppuccin-mocha", "rose-pine", "solarized-light", "catppuccin-latte"]
 
 CHAR_DELAY = 0.05  # 每個字的間隔秒數，大約一秒 20 個字（跟網頁版一樣）
 FAST_FACTOR = 0.15  # 按一次 Enter 後，間隔縮成原本的幾倍

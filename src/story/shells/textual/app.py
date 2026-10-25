@@ -21,7 +21,7 @@ from story.shells.client import CharacterLine, Client, StatusLine, View
 from story.shells.textual.commands import COMMANDS, help_text
 from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, PremiseDialog
 from story.shells.textual.prose import Marked, Prose
-from story.shells.prefs import get_saved_theme, save_theme
+from story import settings
 from story.shells.textual.style import CHAR_DELAY, FAST_FACTOR, PAUSE_AFTER, SPINNER, THEME, palette
 
 
@@ -154,7 +154,7 @@ class StoryApp(App, View):
         self.client.close()
 
     def on_mount(self) -> None:
-        saved = get_saved_theme()
+        saved = settings.get("theme")
         self.theme = saved if saved in self.available_themes else THEME
         self.theme_ready = True  # 之後的主題變更才是玩家選的，要記住
         self.set_status(None)
@@ -172,7 +172,7 @@ class StoryApp(App, View):
         if not self.theme_ready:
             return
         self.set_status(self.status_shown)
-        save_theme(theme)
+        settings.put("theme", theme)
 
     def action_theme(self) -> None:
         self.action_change_theme()  # Textual 內建的主題選擇器：上下移動就能預覽
@@ -188,7 +188,7 @@ class StoryApp(App, View):
     async def ask_ending(self, title: str, record: str) -> bool:
         return await self.push_screen_wait(EndingDialog(title, record))
 
-    async def ask_api_key(self, reason: str, can_save: bool) -> tuple[str, bool] | None:
+    async def ask_api_key(self, reason: str) -> tuple[str, bool] | None:
         return await self.push_screen_wait(ApiKeyDialog(reason))
 
     def show_info(self, title: str, body: str) -> None:

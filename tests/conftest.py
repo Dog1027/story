@@ -1,8 +1,12 @@
 """測試共用的假物件與設定。所有測試都不會連到 Gemini，也不會動到你真的存檔或 API key。"""
 
+import os
 from types import SimpleNamespace
 
 import pytest
+
+# 語言在 import 時就決定了：測試一律用中文，不管你的設定檔或環境變數選了什麼
+os.environ["STORY_LANG"] = "zh-TW"
 
 from story.core.engine import Engine
 from story.core.models import Condition, GenrePick, PartyBeat, StoryArc, StoryBeat
@@ -14,8 +18,8 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
         monkeypatch.delenv(var, raising=False)
-    monkeypatch.setattr("story.shells.apikey.KEY_PATH", tmp_path / "api_key")
-    monkeypatch.setattr("story.shells.prefs.THEME_PATH", tmp_path / "theme")
+    monkeypatch.setattr("story.settings.CONFIG_DIR", tmp_path)  # 看不到你的設定檔（config.toml）
+    monkeypatch.setattr("story.settings.CONFIG_PATH", tmp_path / "config.toml")
     monkeypatch.setattr("story.core.genres.PERSONAL_DIR", tmp_path / "genres")  # 看不到你個人的題材包
     monkeypatch.setattr("story.shells.players.Player.online", set())  # 每個測試的在線名單各自獨立
     return tmp_path
