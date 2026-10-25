@@ -41,15 +41,18 @@ src/story/
 ├── setup.py             第一次啟動時在終端機裡問語言、API key、配色主題
 ├── core/                核心：完全不知道有任何介面，也不 import shells/
 │   ├── __init__.py      對外只匯出 StoryCore、Reply、Status 等
-│   ├── session.py       StoryCore（單人）
-│   ├── party.py         多人模式：PartyEngine（繼承 Engine）、PartyCore（繼承 StoryCore）
+│   ├── session.py       StoryCore：一局遊戲的對外入口
 │   ├── genres.py        題材包的讀取與檢查
 │   ├── prompts.py       讀取 prompts/ 的提示詞與 ui/ 的介面文字
-│   ├── engine.py        遊戲規則與 AI
+│   ├── engine.py        推進一局遊戲：串起規則、提示詞與 AI 呼叫
+│   ├── rules.py         遊戲規則：傷勢、時間、背包、節奏、記憶的預算
+│   ├── prompting.py     組提示詞
+│   ├── ai.py            呼叫 Gemini、串流、記下用量
 │   ├── models.py        資料結構
 │   └── records.py       存讀檔、回合變化、結局紀錄
 └── shells/              外殼：只透過 story.core 的公開介面跟核心溝通
-    ├── client.py        外殼共用層：跟真人互動的流程（各介面共用）
+    ├── client.py        外殼共用層：跟真人互動的流程（各介面共用）；LocalClient 在這台電腦上玩
+    ├── room_client.py   外殼共用層的網頁版：RoomClient 連進大廳與房間
     ├── textual/         終端機介面：只負責長相，流程交給 client.py
     │   ├── app.py       主畫面 StoryApp
     │   ├── dialogs.py   對話框
@@ -59,11 +62,12 @@ src/story/
     ├── web/             網頁介面：伺服器、WebView、瀏覽器頁面（static/），流程交給 client.py
     ├── lobby.py         網頁版的大廳：名字、房間列表、開房與進出房間
     ├── room.py          網頁版的房間：一個房間一局遊戲
+    ├── connection.py    大廳、房間與分頁之間的連線（在記憶體裡傳訊息）
     ├── plain.py         純文字外殼
     └── players.py       網頁版的玩家
 ```
 
-**相依的方向只有一個**：介面 → 共用層（`client.py`）→ `story.core`。核心不 import 任何外殼；外殼只用 `story.core` 匯出的名稱，不直接 import `engine`、`models` 這些內部模組。介面（`textual/`、網頁的 `web/view.py`）不自己建立核心、不直接連房間，流程一律交給共用層。這兩條規則都有測試把關（`test_shells.py`）。
+**相依的方向只有一個**：介面 → 共用層（`client.py`、`room_client.py`）→ `story.core`。核心不 import 任何外殼；外殼只用 `story.core` 匯出的名稱，不直接 import `engine`、`models` 這些內部模組。介面（`textual/`、網頁的 `web/view.py`）不自己建立核心、不直接連房間，流程一律交給共用層。這兩條規則都有測試把關（`test_shells.py`）。
 
 新功能放哪裡：改變遊戲結果或事實 → 核心；改變真人看到的順序、時機、流程 → 共用層；改變長相 → 各介面。
 
@@ -80,7 +84,7 @@ src/story/
 
 ### `settings.py`：玩家的設定檔
 
-`~/.config/story/config.toml`，可以直接編輯：`language`（`zh-TW`、`en`）、`api_key`、`theme`。環境變數優先：`STORY_LANG` 蓋過 `language`，`GEMINI_API_KEY`（或 `GOOGLE_API_KEY`）蓋過 `api_key`。檔案權限 600（裡面有 API key）。程式改寫時手寫的註解會不見。以前存在 `~/.config/story/api_key`、`~/.config/story/theme` 的設定，讀取時自動搬進來。核心（語言、個人題材包的位置）與外殼都讀它。
+`~/.config/story/config.toml`，可以直接編輯：`language`（`zh-TW`、`en`）、`api_key`、`theme`、`name`（終端機版的角色名字）。環境變數優先：`STORY_LANG` 蓋過 `language`，`GEMINI_API_KEY`（或 `GOOGLE_API_KEY`）蓋過 `api_key`。檔案權限 600（裡面有 API key）。程式改寫時手寫的註解會不見。以前存在 `~/.config/story/api_key`、`~/.config/story/theme` 的設定，讀取時自動搬進來。核心（語言、個人題材包的位置）與外殼都讀它。
 
 | 名稱 | 做什麼 |
 |---|---|
@@ -89,7 +93,7 @@ src/story/
 
 ### `setup.py`：第一次啟動的設定
 
-在終端機裡依序問設定檔還沒有的：語言（用兩種語言問，選項是 `story/ui/` 底下的語言，名稱是各語言 `shells.md` 的 `language_name`）、API key、配色主題（終端機版，從 `style.py` 的 `THEMES` 選）。不是在終端機裡執行時不問。網頁伺服器也會問 API key：兩種網頁版都用架站者的 key，玩家不用輸入。
+在終端機裡依序問設定檔還沒有的：語言（用兩種語言問，選項是 `story/ui/` 底下的語言，名稱是各語言 `shells.md` 的 `language_name`）、API key、配色主題與角色名字（終端機版；主題從 `style.py` 的 `THEMES` 選）。不是在終端機裡執行時不問。網頁伺服器也會問 API key：兩種網頁版都用架站者的 key，玩家不用輸入。
 
 ## 核心 `core/`
 
@@ -97,7 +101,7 @@ src/story/
 
 所有資料的形狀都定義在這裡，用 Pydantic 寫成。
 
-**遊戲詞彙**：狀態的程度（`Severity`：`light`／`moderate`／`severe`）、類別（`ConditionKind`：`body`／`mind`）、經過的時間（`TimeSpan`）、時段（`TimeOfDay`）、身體的整體狀態（`Level`：`healthy`……`dead`）在程式與存檔裡都是語言無關的代號。給 AI 看、讓 AI 回傳、顯示給玩家時，換成 `prompts/語言/vocab.md` 裡這個語言的詞：`word(類別, 代號)` 換成詞，`code(類別, 詞)` 換回代號；AI 回傳格式裡的選項用 `words(類別)` 產生，所以 AI 看到、回傳的都是它的語言。讀取舊存檔時，中文的詞會換成代號（`OLD_WORDS`）。
+**遊戲詞彙**：狀態的程度（`Severity`：`light`／`moderate`／`severe`）、類別（`ConditionKind`：`body`／`mind`）、經過的時間（`TimeSpan`）、時段（`TimeOfDay`）、身體的整體狀態（`Level`：`healthy`……`dead`）在程式與存檔裡都是語言無關的代號。給 AI 看、讓 AI 回傳、顯示給玩家時，換成 `prompts/語言/vocab.md` 裡這個語言的詞：`word(類別, 代號)` 換成詞，`code(類別, 詞)` 換回代號；AI 回傳格式裡的選項用 `words(類別)` 產生，所以 AI 看到、回傳的都是它的語言。
 
 資料分成兩類：
 
@@ -105,94 +109,106 @@ src/story/
 
 | 類別 | 用途 |
 |---|---|
-| `StoryBeat` | 每回合的回傳：劇情、選項、狀態增減、物品增減、經過時間、限時秒數、里程碑是否達成、是否結束 |
+| `StoryBeat` | 每回合的回傳：一段包含所有角色的劇情、每位角色的變化（`character_updates`）、經過時間、限時秒數、里程碑是否達成、是否結束 |
+| `CharacterUpdate` | 一位角色這回合的變化：名字、選項、狀態增減、物品增減 |
 | `ConditionChange` | AI 回報的一個狀態：名稱、類別、程度（這個語言的詞，例如身體／精神、輕／中／重；套用時由程式換成代號） |
-| `StoryArc`、`Act` | 開場前規劃的隱藏大綱：目標、隱藏的真相（`twist`，第三幕揭露）與伏筆（`clues`）、四幕與各自的里程碑、可能的結局。舊存檔沒有真相與伏筆時補空值 |
+| `StoryArc`、`Act` | 開場前規劃的隱藏大綱：目標、隱藏的真相（`twist`，第三幕揭露）與伏筆（`clues`）、四幕與各自的里程碑、可能的結局 |
 | `GenrePick` | 玩家選「自動」題材時，AI 挑的題材名稱 |
 | `Epilogue` | 故事結束後的尾聲與結局名稱 |
-| `PartyBeat`、`CharacterUpdate` | 多人模式每回合的回傳：一段包含所有角色的劇情，加上每位角色各自的狀態、物品變化與選項 |
-
-單人模式和多人模式用不同的回傳格式，單人模式送給 AI 的內容因此不受多人模式影響。
 
 **程式保存的狀態**
 
 | 類別 | 用途 |
 |---|---|
-| `GameState` | 整個遊戲的狀態，存檔就是把它轉成 JSON。包含回合、身體與精神狀況、背包、事實、遊戲內時鐘、大綱進度、分層記憶、目前畫面。`party` 是多人模式的隊伍，空的代表單人模式 |
-| `Character` | 多人模式的一位角色：名字、狀態、背包、目前的選項、是否還活著 |
-| `Condition` | 玩家身上的一個狀態，另外記錄在目前程度下經過了多久，用來計算痊癒 |
-| `Turn` | 一回合的原文紀錄（劇情 + 玩家行動），存在劇情紀錄裡 |
+| `GameState` | 整個遊戲的狀態，存檔就是把它轉成 JSON。包含隊伍（`characters`）、回合、事實、遊戲內時鐘、大綱進度、分層記憶、目前畫面。`solo` 是隊伍是不是只有一位角色（提示詞與文字用第二人稱、不寫名字） |
+| `Character` | 一位角色：名字、狀態、背包、目前的選項、是否還活著 |
+| `Condition` | 角色身上的一個狀態，另外記錄在目前程度下經過了多久，用來計算痊癒 |
+| `Turn` | 一回合的原文紀錄（劇情 + 每位角色的行動），存在劇情紀錄裡 |
 
-`GameState` 裡的 `_upgrade_old_conditions` 負責相容舊存檔。
+### `core/rules.py`：遊戲規則
 
-### `core/engine.py`：遊戲規則與 AI
+AI 只「提議」變化，套不套用、套用多少由這裡決定。都是純粹的函式，只讀寫 `GameState` 與 `Character`，不呼叫 AI、不組提示詞，所以規則可以單獨測試。
 
-負責所有和 AI 的互動，以及遊戲規則。由 `session.py` 呼叫，外殼不會直接用到。
+| 名稱 | 做什麼 |
+|---|---|
+| `advance_clock()` | 推進回合數與遊戲內時鐘：開場由 AI 挑時段，之後由 AI 選的時間類別換算成分鐘 |
+| `apply_condition_changes()` | 狀態規則：依時間自然痊癒、好轉一回合最多一級、身體的中重傷不能直接移除、狀態名稱太長就截短 |
+| `apply_items()` | 背包：不能失去沒有的東西 |
+| `apply_story_progress()` | 事實、重大事件；這一幕演夠了 `MIN_ACT_TURNS` 回合、AI 說里程碑達成才推進下一幕 |
+| `ending_allowed()` | 這回合能不能接受 AI 宣告的結局 |
+| `clamp_time_limit()` | 限時秒數：非限時模式一律 0，限時模式夾在範圍裡 |
+| `body_score()`、`body_level()`、`warning_level()` | 傷勢分數與整體狀態（只算身體狀態）；整體狀態是 `WARNING_LEVELS`（重傷、瀕死）時要警告玩家 |
+| `needs_compaction()`、`to_compact()` | 劇情紀錄、重大事件、事實超過預算時，這次要併入摘要的部分 |
 
-**對外的方法**
+### `core/prompting.py`：組提示詞
+
+把 `GameState` 組成送給 AI 的文字，文字本身在 `prompts/語言/`（見下面的 `core/prompts.py`）。不呼叫 AI。
+
+`PromptBuilder` 每一種 AI 呼叫一個方法：`turn()`（開場與一般回合）、`death()`（傷重倒下）、`epilogue()`、`pick_genre()`、`arc()`、`premise()`、`compaction()`。每回合的提示詞是故事內容（`context()`）加上這回合的指示（`instructions()`）。Gemini 的自動快取只認開頭完全相同的部分，所以順序是：前提、模式、題材指引 → 摘要（很少變）→ 劇情紀錄（只往後追加）→ 重大事件、故事進度（`progress()`）、遊戲狀態（隨劇情改變）→ 指示。
+
+- `progress()`：隱藏的故事進度與節奏提醒（拖太久、進入最後一幕、超過預定長度）；`twist_lines()`：前兩幕列出真相與伏筆、叫 AI 不要說破，第三幕要揭露，最後一幕當作已知
+- 有好幾位角色還活著時，程式輪流指定一位「焦點」角色，讓每個人都有戲份
+- 只有一位角色時，系統提示詞要 AI 用第二人稱寫（`system.md`）
+
+`story/preview.py`（`just prompts`）用範例情境呼叫這些方法，把完整的提示詞印出來；`--players 2` 是兩位角色的隊伍。範例故事（燈塔、主角的傷勢、行動、評估用的劇情）在 `story/samples/語言.md`，每種語言一份、段落相同，所以預覽與評估都能用英文跑。
+
+### `core/ai.py`：呼叫 Gemini
+
+| 名稱 | 做什麼 |
+|---|---|
+| `AICaller` | 所有 AI 呼叫都經過它的 `generate()`（一次拿完整結果）與 `stream()`（串流）：記下種類、秒數與 token 用量（送出、命中快取、輸出、思考），由 `write_log()` 寫進紀錄；串流因為太早結局而中斷的呼叫標成 `stopped` |
+| `stream_beat()` | 串流取得結構化的 `StoryBeat`：收到劇情的同時更新 `draft`（外殼可以邊收邊顯示）。`game_over` 是 AI 第一個輸出的欄位，太早宣告結局時在劇情出現之前就中斷（`EndingTooEarly`） |
+| `partial_string()`、`partial_bool()` | 從還沒生成完的 JSON 取出目前收到的欄位內容 |
+| `new_client()` | 建立 Gemini client：每次請求有逾時，逾時或伺服器忙時自動重送 |
+| `is_key_error()` | 判斷 Gemini 的錯誤是不是 key 無效 |
+
+### `core/engine.py`：推進一局遊戲
+
+`Engine` 繼承 `AICaller`，把規則、提示詞、AI 呼叫串起來。由 `session.py` 呼叫，外殼不會直接用到。
 
 | 方法 | 做什麼 |
 |---|---|
-| `start()` | 開新遊戲：題材選「自動」時先 `pick_genre()`，再 `plan_arc()` 規劃大綱，最後寫開場 |
-| `act()` | 玩家行動後推進一回合 |
+| `start()` | 開新遊戲：題材選「自動」時先 `pick_genre()`，再 `plan_arc()` 規劃大綱，最後寫開場。進度記在 `stage` |
+| `act(state, {名字: 行動})` | 每位角色都行動後推進一回合 |
 | `pick_genre()` | 題材選「自動」：給 AI 題材目錄，依故事前提挑一個；不在目錄裡就不套用 |
-| `plan_arc()` | 請 AI 規劃隱藏大綱，附上題材的指引、命名素材與隨機抽的轉折靈感；舊存檔沒有大綱時依摘要補一份 |
+| `plan_arc()` | 請 AI 規劃隱藏大綱，附上題材的指引、命名素材與隨機抽的轉折靈感；開場前規劃失敗時，之後的回合依目前的劇情補一份 |
 | `suggest_premise()` | 「幫我想」按鈕：程式隨機挑題材與情境，請 AI 想一個故事前提 |
 | `write_epilogue()` | 故事結束後請 AI 寫尾聲 |
 | `needs_compaction()`、`compact_memory()` | 劇情紀錄超過 `HISTORY_BUDGET` 時，把最舊的回合壓縮進長期摘要；舊事件與事實太多時也一併併入（由核心在背景執行緒呼叫）。30 回合的故事大約只有七、八千字，通常不會觸發 |
 
-**內部流程**
+一回合的流程（`_advance()`）：`_next_beat()` 請 AI 寫（太早寫出結局就請它重寫一次，還是結局就忽略）→ `_apply()` 對每位角色各自套用 `rules.py` 的規則，傷重的角色倒下，全員倒下就結束（AI 漏掉的角色時間照樣經過、選項留空；只有一位角色時，AI 寫錯名字也算他的）→ `_log_turn()` 把 AI 提議的變化和套用後的結果寫進紀錄 → 有人倒下時 `_write_deaths()` 請 AI 接著寫倒下的場景。
 
-| 方法 | 做什麼 |
-|---|---|
-| `_build_prompt()`、`_context()` | 把 `GameState` 組成每回合的提示詞：故事內容（`_context()`）加上這回合的指示。尾聲與傷重死亡的場景也是故事內容加上各自的指示。Gemini 的自動快取只認開頭完全相同的部分，所以順序是：前提、模式 → 摘要（很少變）→ 劇情紀錄（只往後追加）→ 重大事件、故事進度、狀態（隨劇情改變）→ 指示 |
-| `_progress_section()` | 隱藏的故事進度與節奏提醒（拖太久、進入最後一幕、超過預定長度） |
-| `_twist_lines()` | 隱藏的真相：前兩幕列出真相與伏筆、叫 AI 不要說破；第三幕要揭露；最後一幕當作已知 |
-| `_call()` | 串流呼叫 Gemini 取得結構化的 `StoryBeat`：收到劇情的同時更新 `draft`（外殼可以邊收邊顯示）。`game_over` 是 AI 第一個輸出的欄位，太早宣告結局時在劇情出現之前就中斷（`EndingTooEarly`），請 AI 重寫 |
-| `partial_string()`、`partial_bool()` | 從還沒生成完的 JSON 取出目前收到的欄位內容（串流用） |
-| `_apply()` | **驗證並套用** AI 提議的變化：推進時鐘、處理狀態與背包、推進幕次、限制限時秒數 |
-| `_apply_conditions()` | 狀態規則：依時間自然痊癒、好轉一回合最多一級、身體的中重傷不能直接移除 |
-| `_write_death()` | 程式判定傷重死亡、但 AI 寫的劇情裡主角還活著時，請 AI 補寫死亡結局 |
-| `_log_turn()` | 把每回合的變化寫進 `story_log.jsonl`，並附上這段期間的 AI 呼叫（`calls`） |
-| `_generate()`、`_stream()` | 所有 AI 呼叫都經過這兩個（一次拿完整結果／串流）：記下種類、秒數與 token 用量（送出、命中快取、輸出、思考），由 `_write_log()` 寫進紀錄；串流因為太早結局而中斷的呼叫標成 `stopped` |
+**可以調整的常數**（在各檔案開頭）
 
-**給多人模式覆寫的掛勾**（這裡是單人的版本）：類別屬性 `system_prompt`、`beat_schema`、`turn_label`、`epilogue_look_back`，以及 `_cast_section()`（規劃大綱時的主角名單）、`_action_text()`（記在劇情紀錄裡的行動）、`_status_section()`（提示詞裡的狀態區塊）、`_instruction_sections()`（提示詞最後的行動與指示）。提示詞的其他部分、呼叫 AI（`_call()`）、尾聲、大綱、記憶壓縮都由單人與多人共用。
-
-**套用規則的函式**（單人、多人共用，單人傳 `GameState`、多人傳 `Character`）：`advance_clock()`、`apply_condition_changes()`、`apply_items()`、`apply_story_progress()`、`clamp_time_limit()`。
-
-**計算規則的函式**：`clock_text()`（遊戲內時間的文字）、`body_score()`、`body_level()`（傷勢分數與整體狀態，只算身體狀態）、`warning_level()`（整體狀態是 `WARNING_LEVELS`（重傷、瀕死）時要警告玩家：再受傷就有生命危險）、`body_conditions()`、`mind_conditions()`、`is_key_error()`（判斷 Gemini 錯誤是不是 key 無效）、`new_client()`（建立 Gemini client：每次請求有逾時，逾時或伺服器忙時自動重送）。
-
-**可以調整的常數**（都在檔案開頭）
-
-| 常數 | 意義 | 目前值 |
-|---|---|---|
-| `MODEL` | 使用的 Gemini 模型 | `gemini-3.5-flash-lite` |
-| `TARGET_TURNS` | 故事預定長度，超過只提醒收尾 | 30 回合 |
-| `MIN_ACT_TURNS` | 每一幕至少幾回合；還沒到時 AI 說里程碑達成也不推進 | 5 回合 |
-| `TWIST_IDEAS` | 規劃大綱時從題材包的 `twists.md` 隨機抽幾則轉折靈感 | 3 則 |
-| `MIN_ENDING_TURN` | 最早第幾回合才接受 AI 宣告的結局（還要進到最後一幕；超過 `TARGET_TURNS` 一律接受）。太早寫出結局時請 AI 重寫一次，還是結局就忽略。因傷死亡不受限制 | 20 回合 |
-| `HISTORY_BUDGET` | 劇情紀錄保留原文的字數上限，超過才把最舊的部分壓縮進摘要（一次壓到剩一半） | 20,000 字 |
-| `KEEP_EVENTS`、`KEEP_FLAGS` | 重大事件、事實各保留幾條原文 | 6、12 |
-| `SEVERITY_POINTS` | 輕／中／重（`light`／`moderate`／`severe`）各幾分 | 1／2／4 |
-| `DEATH_SCORE`、`DYING_SCORE`、`HEAVY_SCORE` | 死亡、瀕死、重傷的分數門檻 | 8、6、4 |
-| `HEAL_TIME` | 身體與精神狀態各程度的痊癒時間 | 見程式 |
-| `TIME_SPANS` | AI 選的時間類別換算成幾分鐘 | 見程式 |
-| `MIN_TIME_LIMIT`、`MAX_TIME_LIMIT` | 限時模式的秒數範圍 | 8–60 秒 |
-| `REQUEST_TIMEOUT`、`REQUEST_ATTEMPTS` | 一次 AI 請求最多等幾秒；逾時或伺服器忙（429、5xx）時最多送幾次 | 40 秒、3 次 |
-| `PREMISE_GENRES`、`PREMISE_SETTINGS` | 「幫我想」隨機挑選的題材與情境（`prompts/語言/premise.md`） | 14 種、8 種 |
-| `SYSTEM_PROMPT` | 給 AI 的寫作與遊戲規則（`prompts/語言/system.md`） | — |
-| `CONTEXT`、`TURN`、`PROGRESS`、`PLAN`、`PREMISE`、`MEMORY` | 故事內容、每回合的指示、故事進度的提醒、規劃大綱、幫我想、記憶壓縮的提示詞（`prompts/語言/` 裡同名的檔案） | — |
+| 常數 | 檔案 | 意義 | 目前值 |
+|---|---|---|---|
+| `MODEL` | `ai.py` | 使用的 Gemini 模型 | `gemini-3.5-flash-lite` |
+| `REQUEST_TIMEOUT`、`REQUEST_ATTEMPTS` | `ai.py` | 一次 AI 請求最多等幾秒；逾時或伺服器忙（429、5xx）時最多送幾次 | 40 秒、3 次 |
+| `TARGET_TURNS` | `rules.py` | 故事預定長度，超過只提醒收尾 | 30 回合 |
+| `MIN_ACT_TURNS` | `rules.py` | 每一幕至少幾回合；還沒到時 AI 說里程碑達成也不推進 | 5 回合 |
+| `MIN_ENDING_TURN` | `rules.py` | 最早第幾回合才接受 AI 宣告的結局（還要進到最後一幕；超過 `TARGET_TURNS` 一律接受）。因傷死亡不受限制 | 20 回合 |
+| `HISTORY_BUDGET` | `rules.py` | 劇情紀錄保留原文的字數上限，超過才把最舊的部分壓縮進摘要（一次壓到剩一半） | 20,000 字 |
+| `KEEP_EVENTS`、`KEEP_FLAGS` | `rules.py` | 重大事件、事實各保留幾條原文 | 6、12 |
+| `SEVERITY_POINTS` | `rules.py` | 輕／中／重（`light`／`moderate`／`severe`）各幾分 | 1／2／4 |
+| `DEATH_SCORE`、`DYING_SCORE`、`HEAVY_SCORE` | `rules.py` | 死亡、瀕死、重傷的分數門檻 | 8、6、4 |
+| `HEAL_TIME`、`TIME_SPANS` | `rules.py` | 身體與精神狀態各程度的痊癒時間；AI 選的時間類別換算成幾分鐘 | 見程式 |
+| `MIN_TIME_LIMIT`、`MAX_TIME_LIMIT` | `rules.py` | 限時模式的秒數範圍 | 8–60 秒 |
+| `TWIST_IDEAS` | `prompting.py` | 規劃大綱時從題材包的 `twists.md` 隨機抽幾則轉折靈感 | 3 則 |
+| `MAX_PLAYERS` | `session.py` | 一隊最多幾位角色 | 4 |
 
 ### `core/session.py`：最小核心
 
-整個遊戲對外只有一個入口：`StoryCore.send(text) → Reply`。輸入一律是文字，回覆和 LLM 的 API 一樣是「文字＋附帶資料」。
+整個遊戲對外只有一個入口：`StoryCore`。輸入一律是文字，回覆和 LLM 的 API 一樣是「文字＋附帶資料」（`Reply`）。
+
+一局遊戲是一支一到四位角色的隊伍，每位由一位玩家扮演；一個人玩就是只有一位角色的隊伍（終端機版的角色名字是設定檔的 `name`）。
 
 **建立與使用**
 
 ```python
-core = StoryCore(api_key="…")            # 網頁版另外傳 save_path、log_path
+core = StoryCore(api_key="…", players=["阿明"])  # 網頁版另外傳 save_path、log_path、共用的 client
 reply = core.start()                     # 第一個回覆：有存檔就問要不要繼續，否則請你輸入前提
-reply = core.send("往上爬")               # 之後每一句輸入
+reply = core.send("往上爬")               # 只有一位角色時，send() 就是他的行動
+reply = core.send_as("阿明", "往上爬")     # 好幾位角色時，遊戲中的行動要說是誰的
 print(reply.text)                        # 只會印文字的外殼，這樣就能完整地玩
 
 core.action_for("2")                     # → "躲起來"：這句輸入代表的行動，讓外殼送出前先顯示
@@ -202,11 +218,22 @@ core.draft                               # send() 執行中 AI 正在寫的劇�
 core.phase                               # 目前的遊戲階段（唯讀），和最近一次回覆的 reply.phase 相同
 ```
 
-開新故事要呼叫兩次 AI（先規劃大綱、再寫開場），比一般回合久，所以 engine 會把目前的階段記在 `stage`，外殼讀 `core.progress` 顯示在「故事生成中」那一行；網頁版由房間把進度推給房間裡的每個人。
+開新故事要呼叫好幾次 AI（挑題材、規劃大綱、寫開場），比一般回合久，所以 engine 會把目前的階段記在 `stage`，外殼讀 `core.progress` 顯示在「故事生成中」那一行；網頁版由房間把進度推給房間裡的每個人。
 
-劇情是串流產生的：AI 寫的同時，engine 把目前收到的劇情記在 `draft`，外殼讀 `core.draft` 邊收邊顯示，第一個字通常一秒左右就出現。`send()` 的回傳跟以前一樣，`Reply.narration` 才是最後的完整內容（可能比串流的長，例如程式判定傷重死亡時接著補寫的場景）。
+劇情是串流產生的：AI 寫的同時，engine 把目前收到的劇情記在 `draft`，外殼讀 `core.draft` 邊收邊顯示，第一個字通常一秒左右就出現。`Reply.narration` 才是最後的完整內容（可能比串流的長，例如有角色傷重倒下時接著補寫的場景）。
 
-外殼只能用這幾個方法與屬性（多人模式另外有 `send_as()`、`view()`、`waiting()` 與唯讀的 `players`，見 `core/party.py`），以及讀 `Reply` 的欄位，不直接讀核心的其他屬性（例如 `core.state`），也不 import engine。這樣核心內部怎麼改都不會影響外殼。`test_shells.py` 的 `test_shells_only_use_the_public_core_interface` 會掃描所有外殼的原始碼，確認這條規則沒有被打破。
+不屬於某位玩家的輸入（時間到、對話框的回答、寫尾聲、`/state`）用 `send()`。有好幾位角色時，遊戲中的行動不能用 `send()` 送（不知道是誰的，會丟出 `ValueError`）。每位角色的行動先記下來，所有人都行動後才推進一回合；`/timeout` 時還沒行動的人都算遲疑。這回合失敗時撤回所有人的行動，大家重新選擇。
+
+| 方法 | 做什麼 |
+|---|---|
+| `send_as(名字, 文字)` | 以某位角色的身分送出輸入，誰先送誰先記；已經行動或倒下的人會收到提示 |
+| `players` | 隊伍裡的玩家名字（唯讀） |
+| `view(名字, reply=None)` | 某位玩家眼中的畫面：`actor`、`choices` 換成這位角色的。沒給 reply 時是目前這回合的畫面（重新連線用） |
+| `waiting()` | 這回合還沒行動的角色名字 |
+
+外殼只能用這幾個方法與屬性，以及讀 `Reply` 的欄位，不直接讀核心的其他屬性（例如 `core.state`），也不 import engine。這樣核心內部怎麼改都不會影響外殼。`test_shells.py` 的 `test_shells_only_use_the_public_core_interface` 會掃描所有外殼的原始碼，確認這條規則沒有被打破。
+
+接續存檔要玩家名字相同（不看順序）。`Reply` 可以用 `to_dict()`／`Reply.from_dict()` 轉成 JSON。
 
 **`Reply` 的欄位**
 
@@ -217,14 +244,15 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 | `text` | 完整的純文字 |
 | `narration` | 這次產生（或讀檔重新顯示）的劇情；沒有新劇情時是空字串 |
 | `choices` | 選項 |
+| `actor` | 送出輸入的那位玩家（`send_as()`、`view()` 的對象），這回合還沒行動時才有；`choices` 是他的選項 |
 | `turn` | 目前是第幾回合（還沒開始故事時是 0） |
-| `characters` | 每位角色的狀態列資料（`Status`）。單人模式只有主角一位、`name` 是空的，所以外殼單人多人用同一套顯示。`Status` 有：目前的狀態 `conditions`（名稱, 程度），身體在前、精神在後；要不要警告 `warning`（重傷、瀕死，由核心判斷）；多人模式的 `name`、`alive`。背包不在這裡：變化在 `changes`，完整內容用 `/state` 看 |
-| `changes` | 這回合有變化的角色：(名字, 變化)，變化是新增、惡化、好轉、痊癒、獲得、失去。單人模式名字是空的 |
+| `characters` | 每位角色的狀態列資料（`Status`）：名字 `name`、是否還活著 `alive`、目前的狀態 `conditions`（名稱, 程度），身體在前、精神在後；要不要警告 `warning`（重傷、瀕死，由核心判斷）。只有一位角色時外殼不顯示名字。背包不在這裡：變化在 `changes`，完整內容用 `/state` 看 |
+| `changes` | 這回合有變化的角色：(名字, 變化)，變化是新增、惡化、好轉、痊癒、獲得、失去 |
 | `time_limit` | 限時秒數，0 代表不限時 |
 | `notice` | 簡短的系統訊息 |
 | `resumed` | 這次是讀取存檔、重新顯示上次的劇情 |
 | `info` | 要另外顯示的內容（標題, 內容），例如 `/state`、`/help` |
-| `premise_default`、`suggestion` | 等前提時：留白會用的前提、`/suggest` 想出來的前提 |
+| `premise_default`、`suggestion`、`genres` | 等前提時：留白會用的前提、`/suggest` 想出來的前提、可選的題材 |
 | `ending` | 結束時：結局名稱、尾聲、旅程紀錄 |
 | `error` | `api_key`：key 無效，外殼換 key（`core.set_api_key()`）後可以重送同一句；`api`：其他錯誤 |
 
@@ -237,43 +265,11 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 | 任意文字、空白 | 等前提時 | 故事前提；空白使用預設（或剛才 `/suggest` 想出來的） |
 | `/suggest`、`/timed on`、`/timed off` | 等前提時 | 讓 AI 想開頭、切換限時模式 |
 | `/timeout` | 遊戲中 | 外殼的倒數時間到了 |
-| `/away` | 遊戲中（多人） | 這位角色暫時離開、這回合不行動（網頁版的房間替斷線的人送出）。給 AI 的文字是 `AWAY_ACTION`，跟 `/timeout` 的 `TIMEOUT_ACTION` 一樣由核心決定 |
+| `/away` | 遊戲中 | 這位角色暫時離開、這回合不行動（網頁版的房間替斷線的人送出）。給 AI 的文字是 `AWAY_ACTION`，跟 `/timeout` 的 `TIMEOUT_ACTION` 一樣由核心決定 |
 | `/restart` | 遊戲中、結束後 | 重新開始（遊戲中會先確認） |
 | `/state`、`/help` | 任何時候 | 記憶、說明 |
 
-**給多人模式覆寫的掛勾**：`_resumable()`、`_new_state()`、`_current_choices()`、`_take_action()`、`_snapshot()`、`_turn_failed()`，見下面的 `core/party.py`。
-
 **內部**：每個階段一個處理函式（`_on_playing()` 等）；LLM 失敗時從存檔還原、留在原階段；回合結束後在背景執行緒壓縮記憶，下一次呼叫 LLM 前會先等它完成；`render_text()` 負責組出純文字。
-
-### `core/party.py`：多人模式
-
-多人模式疊在單人模式上：`PartyEngine` 繼承 `Engine`、`PartyCore` 繼承 `StoryCore`，只覆寫「主角變成一支隊伍」不一樣的地方。規則（傷勢、痊癒、時間、背包、限時）、記憶、大綱與節奏、存檔、文字指令、錯誤處理都直接沿用單人模式。
-
-**`PartyEngine`**：系統提示詞換成 `PARTY_SYSTEM_PROMPT`（`prompts/party_system.md`）、每回合的指示換成 `prompts/party_turn.md`、回傳格式換成 `PartyBeat`；提示詞的狀態區塊改成「隊伍」，並由程式輪流指定「焦點」角色；`_apply()` 對每位角色各自套用單人的規則，傷重的角色倒下（`_write_deaths()` 請 AI 補寫倒下的場景），全員倒下就結束。
-
-**`PartyCore(api_key, players, save_path=…, log_path=…, client=None)`**：網頁版的房間（`shells/room.py`）用它，一個人玩也是一個只有一位角色的隊伍。存檔與紀錄的位置由大廳決定（每一隊一份）；`client` 是所有房間共用、受 `RateLimit` 限制的 Gemini client。介面一樣是 `send(文字) → Reply`。覆寫 `StoryCore` 的掛勾：
-
-| 掛勾 | 單人模式 | 多人模式 |
-|---|---|---|
-| `_resumable()` | 沒結束的存檔就能接續 | 還要玩家名單相同 |
-| `_new_state()` | 一位主角 | 建立隊伍 |
-| `_current_choices()` | 主角的選項 | 送出輸入的那位角色的選項 |
-| `_take_action()` | 直接推進一回合 | 先記下這位角色的行動，所有人都行動後才推進；`/timeout` 時還沒行動的人都算遲疑 |
-| `_snapshot()`、`_turn_reply()` | 主角的變化 | 每位角色各自的變化 |
-| `_turn_failed()` | 不用做事 | 撤回這回合所有人的行動，大家重新選擇（時間到或替離線的人填入的行動失敗時，才不會每個人都「已行動」卻沒人能重送而卡住）。網頁版的房間把錯誤送給每個人，限時模式重新倒數 |
-
-回覆的差別：`reply.actor` 是 `send_as()`、`view()` 的那位玩家，這回合還沒行動時才有（`choices` 是他的選項）；`reply.characters`、`reply.changes` 有每位角色（名字不是空的）。
-
-每位玩家的輸入用 `send_as()` 送；不屬於某位玩家的輸入（時間到、房主的回答、寫尾聲、`/state`）用 `send()`。遊戲中的行動不能用 `send()` 送（不知道是誰的，會丟出 `ValueError`）。另外幾個給房間用的方法：
-
-| 方法 | 做什麼 |
-|---|---|
-| `send_as(名字, 文字)` | 以某位角色的身分送出輸入，誰先送誰先記；已經行動或倒下的人會收到提示 |
-| `players` | 隊伍裡的玩家名字（唯讀） |
-| `view(名字, reply=None)` | 某位玩家眼中的畫面：`actor`、`choices` 換成這位角色的。沒給 reply 時是目前這回合的畫面（重新連線用） |
-| `waiting()` | 這回合還沒行動的角色名字 |
-
-接續存檔只看玩家名字是否相同，不看順序。`Reply` 可以用 `to_dict()`／`Reply.from_dict()` 轉成 JSON，在程序之間傳送。
 
 ### `core/prompts.py`：提示詞與介面文字
 
@@ -281,10 +277,10 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 
 | 檔案 | 內容 |
 |---|---|
-| `system.md`、`party_system.md` | 單人、多人的寫作與遊戲規則（system prompt），兩邊的規則通常要一起改 |
+| `system.md` | 寫作與遊戲規則（system prompt） |
 | `schema.md` | 回傳格式的欄位說明（劇情字數、選項個數……），段落名稱是「格式.欄位」，`models.py` 用 `SCHEMA` 讀 |
 | `context.md` | 每回合送給 AI 的故事內容：前提、模式、題材指引、摘要、劇情紀錄、重大事件、遊戲狀態的區塊標題與格式，遊戲狀態 JSON 的欄位名稱與空值、時間的寫法 |
-| `turn.md`、`party_turn.md` | 每回合的指示：模式、開場、一般回合、太早結局時重寫、傷重死亡、尾聲，以及時間到（`timeout_action`）、暫時離開（`away_action`）時代替玩家行動的那句話；多人另外有主角名單、焦點與「隊伍」狀態 |
+| `turn.md` | 每回合的指示：模式、主角名單、焦點、開場、一般回合、太早結局時重寫、傷重倒下、尾聲，以及時間到（`timeout_action`）、暫時離開（`away_action`）時代替玩家行動的那句話 |
 | `progress.md` | 「故事進度」裡的提醒：節奏、結局限制、收尾、隱藏的真相與伏筆 |
 | `plan.md` | 開新故事：挑題材、規劃大綱、補大綱（舊存檔）、命名素材、轉折靈感 |
 | `premise.md` | 預設的故事開頭、「幫我想」的規則與隨機挑的題材、情境 |
@@ -303,7 +299,7 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 
 格式：開頭與每段上面的 `<!-- -->` 註解是給寫提示詞的人看的說明，不會送給 AI。`{名稱}` 是程式填入的變數，每段可用的變數寫在註解裡。
 
-每一種 AI 呼叫的提示詞都由 `Engine` 的一個方法組出來，不會呼叫 AI：`turn_prompt()`（一般回合與開場：故事內容 `_context()` 加上這回合的指示）、`death_prompt()`、`epilogue_prompt()`、`genre_prompt()`、`arc_prompt()`、`premise_prompt()`、`compaction_prompt()`，多人另外有 `deaths_prompt()`。`story/preview.py`（`just prompts`）用範例情境呼叫這些方法，把完整的提示詞印出來。範例故事（燈塔、主角的傷勢、行動、評估用的劇情）在 `story/samples/語言.md`，每種語言一份、段落相同，所以預覽與評估都能用英文跑。
+每一種 AI 呼叫的提示詞怎麼組出來，見上面的 `core/prompting.py`。
 
 `story/evals.py`（`just eval`）用同一組範例情境讓 AI 真的寫一回合，再由程式（字數、選項個數、有沒有結束、傷勢總分）與評審（另一次 AI 呼叫，標準在 `eval.md`）檢查：開場不說破真相、第二幕不會太早寫出結局、第三幕揭露真相、不替玩家做決定、魯莽的行動要付出代價、瀕死還冒險會死、各題材包的文風。`judge` 情境只檢查評審本身：給它故意寫壞的劇情（替玩家說話、寫成結局、說破真相、只暗示不揭露、武俠出現手機），它要判不通過，沒問題的要判通過，其他情境的「通過」才可信。每個情境跑幾次（預設 3 次）統計通過的比例，每次的劇情與評審理由存到 `eval_results/`。免費方案每分鐘只能呼叫 15 次，所以呼叫會排隊，全部跑完約六、七分鐘；付費方案可以用 `--rpm` 調快。
 
@@ -340,7 +336,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 | `save()`、`load()` | 存讀存檔（終端機版 `save.json`，網頁版由 `players.py` 指定路徑）。存檔是**原子性寫入**：先寫暫存檔再一次換上去，背景壓縮記憶時同時存檔、或寫到一半被關掉，都不會讀到壞掉的存檔 |
 | `snapshot()`、`change_groups()` | 比較回合前後，列出「新增／惡化／好轉／痊癒／獲得／失去」（放進 `Reply.changes`）。每個項目帶的是**語氣**（`輕`／`中`／`重`／`good`／`bad`／`plain`／`muted`），不是顏色，由外殼決定怎麼呈現 |
 | `ending_record()` | 結局的旅程紀錄（回合數、天數、重大事件） |
-| `memory_text()` | 「程式記住的東西」（`/state`）顯示的內容：背包（多人時每個人的）、事實、重大事件、摘要 |
+| `memory_text()` | 「程式記住的東西」（`/state`）顯示的內容：背包（有好幾位角色時每個人的）、事實、重大事件、摘要 |
 | `DEFAULT_PREMISE` | 預設的故事前提 |
 
 ---
@@ -354,16 +350,18 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 | 名稱 | 做什麼 |
 |---|---|
 | `View` | 介面要實作的方法：故事區（`start_narration()`、`extend_narration()`、`finish_narration()`、`discard_narration()`：劇情邊收邊顯示；`show_action()`、`show_changes()`、`wait_enter()`…）、選項與提示（`prepare_choices()`、`show_choices()`、`set_hint()`）、狀態列（`set_status()`、`show_lobby()`）、等待與倒數（`set_busy()`、`show_busy()`、`start_timer()`）、通知與對話框（`ask_premise()`、`ask_confirm()`、`ask_ending()`、`ask_name()`、`ask_api_key()`…） |
-| `Client.run()` | 終端機版：取得 API key（設定檔或問玩家），建立 `StoryCore`。網頁版：連進大廳、問名字、收大廳與房間推來的訊息 |
-| `Client.act()`、`command()`、`timeout()` | 介面把玩家的輸入交給這裡：行動（先顯示在故事區）、指令、倒數到了 |
-| `send()`、`ask_core()` | 把一句文字送給核心（在背景執行緒，超過 `BUSY_DELAY` 才顯示「故事生成中…」）；等待時每 `DRAFT_POLL` 秒讀一次 `core.draft`；key 無效時請玩家換 key 後重送 |
+| `Client` | 兩種玩法共用的流程。子類別決定核心在哪裡：`run()`（開始）、`deliver()`（把一句輸入交給核心）、`echo_for()`（送出前先顯示的行動）、`progress()`、`timeout()` 等掛勾 |
+| `LocalClient` | 在這台電腦上玩（終端機版）：取得 API key（設定檔或問玩家），建立只有一位角色的 `StoryCore`（名字是設定檔的 `name`），在背景執行緒呼叫它 |
+| `RoomClient`（`room_client.py`） | 網頁版：連進大廳、問名字、收大廳與房間推來的訊息；輸入送給房間，由房間呼叫核心 |
+| `act()`、`command()`、`timeout()` | 介面把玩家的輸入交給這裡：行動（先顯示在故事區）、指令、倒數到了 |
+| `send()`、`LocalClient.ask_core()` | 把一句文字送給核心（超過 `BUSY_DELAY` 才顯示「故事生成中…」）；等待時每 `DRAFT_POLL` 秒讀一次 `core.draft`；key 無效時請玩家換 key 後重送 |
 | `follow_draft()`、`narrate()` | 串流：AI 寫的劇情有新的字就交給介面（網頁版是房間轉來的 `draft` 訊息）；回覆到了再接著顯示完。這回合失敗時收回寫到一半的劇情 |
 | `handle()` | 依 `reply.phase` 決定要跳出哪個對話框、顯示劇情或結局 |
 | `show_turn()` | 先放好選項（看不見）→ 劇情 → 變化 → 選項出現 → 更新狀態列 → 開始倒數（網頁版改成告訴房間看完了） |
 | `show_ending()` | 按 Enter → 尾聲 → 按 Enter → 結局對話框（一段一段來，先讀完最後的劇情） |
-| `refresh_hint()`、`update_waiting()` | 輸入框的提示：網頁版行動完之後提示還在等誰，有人行動時通知 |
-| `show_lobby()` | 大廳或房間的等人畫面：標題、在這裡的人、選項、輸入框提示都由大廳與房間決定，剛進來或剛離開房間時先清空畫面 |
-| `status_line()` | 把 `Status` 轉成狀態列要顯示的內容（`StatusLine`）：直接列出每個狀態與程度、核心判斷的警告（`Status.warning`）、沒有狀態時是「良好」，只說程度不說顏色。背包不放在狀態列（完整內容用 `/state` 看） |
+| `refresh_hint()`、`RoomClient.update_waiting()` | 輸入框的提示：網頁版行動完之後提示還在等誰，有人行動時通知 |
+| `RoomClient.show_lobby()` | 大廳或房間的等人畫面：標題、在這裡的人、選項、輸入框提示都由大廳與房間決定，剛進來或剛離開房間時先清空畫面 |
+| `status_line()` | 把 `Status` 轉成狀態列要顯示的內容（`StatusLine`）：直接列出每個狀態與程度、核心判斷的警告（`Status.warning`）、沒有狀態時是「良好」，只說程度不說顏色；`named` 是要不要顯示名字（有好幾位角色時）。背包不放在狀態列（完整內容用 `/state` 看） |
 
 介面的對話框也會用到的規則（名字的檢查 `check_name()`、設定檔的位置 `CONFIG_PATH`）也從這裡取用。
 
@@ -421,7 +419,7 @@ Textual 底層的 Rich 只會在空格處換行，是為英文設計的。AI 常
 
 ### `shells/web/`：網頁版
 
-瀏覽器打開就能玩，手機和電腦用同一個頁面（`uv run story-web`）。伺服器用 aiohttp，對每個瀏覽器分頁建立一個共用層的 `Client`，介面是 `WebView`：共用層的每個呼叫變成一則 JSON 訊息，經由 WebSocket 送到瀏覽器，瀏覽器只負責畫出來。流程跟終端機版是同一份（`client.py`），所以改流程時不用改網頁。
+瀏覽器打開就能玩，手機和電腦用同一個頁面（`uv run story-web`）。伺服器用 aiohttp，對每個瀏覽器分頁建立一個共用層的 `RoomClient`，介面是 `WebView`：共用層的每個呼叫變成一則 JSON 訊息，經由 WebSocket 送到瀏覽器，瀏覽器只負責畫出來。流程跟終端機版是同一份（`client.py`），所以改流程時不用改網頁。
 
 | 檔案／名稱 | 做什麼 |
 |---|---|
@@ -429,17 +427,17 @@ Textual 底層的 Rich 只會在空格處換行，是為英文設計的。AI 常
 | `__init__.py`：`main()` | `uv run story-web` 的進入點；參數 `--host`、`--port`。用設定檔的 API key 建立大廳（`Lobby.for_server()`） |
 | `view.py`：`WebView` | 實作共用層的 `View`。要等玩家的（劇情顯示完、按 Enter、對話框）帶一個 `id`，等瀏覽器回覆；前提對話框開著時，瀏覽器可以送指令給核心（換題材、換一個、幫我想）。訊息格式寫在檔案開頭 |
 | `static/index.html`、`style.css` | 頁面與外觀：上方狀態列（第幾回、限時模式、每位角色的狀態）、中間故事、下方選項按鈕與輸入框；手機上對話框從下方滑出，要打字的（名字、故事前提）改從上方出現，鍵盤才不會蓋住。跟著系統的淺色／深色，也可以在選單裡切換（存在這個瀏覽器） |
-| `static/app.js` | 把訊息畫出來：打字效果（劇情邊收邊打；點故事區或按 Enter 加速、再按一次全部顯示）、往上捲時不自動跟隨、選項（點擊，或在輸入框用 ↑↓ 選擇）、倒數條（單人開著對話框時暫停）、對話框排隊、通知。手機上不會自動把焦點移到輸入框，不然鍵盤會一直跳出來 |
+| `static/app.js` | 把訊息畫出來：打字效果（劇情邊收邊打；點故事區或按 Enter 加速、再按一次全部顯示）、往上捲時不自動跟隨、選項（點擊，或在輸入框用 ↑↓ 選擇）、倒數條（只負責顯示，時間到由房間處理）、對話框排隊、通知。手機上不會自動把焦點移到輸入框，不然鍵盤會一直跳出來 |
 
 **手機**：用一般的網頁輸入框打字（中文選字正常）、原生的捲動、字級 16px 以上（手機不會自動放大畫面）。
 
-**大廳與房間**：每個分頁的 `Client` 都連進同一個大廳（`lobby.py`），輸入名字後開房間或加入別人的房間，每個房間各自玩一局（`room.py`）。呼叫 AI 用架站者的 API key，玩家不用輸入。同時在線的人數上限（`MAX_SESSIONS`）是每個房間都坐滿的人數。
+**大廳與房間**：每個分頁的 `RoomClient` 都連進同一個大廳（`lobby.py`），輸入名字後開房間或加入別人的房間，每個房間各自玩一局（`room.py`）。呼叫 AI 用架站者的 API key，玩家不用輸入。同時在線的人數上限（`MAX_SESSIONS`）是每個房間都坐滿的人數。
 
 預設只監聽 `127.0.0.1`。`--host 0.0.0.0`（`just serve`、`just start`）會開放其他電腦連線，但目前沒有 HTTPS，連線內容以明文傳送。
 
 ### `shells/lobby.py`：網頁版的大廳
 
-整台伺服器一個大廳。玩家用 `Lobby.connect()` 連進來，拿到一端 `Connection`（見 `room.py`）。訊息格式寫在檔案開頭的說明裡。
+整台伺服器一個大廳。玩家用 `Lobby.connect()` 連進來，拿到一端 `Connection`（見 `connection.py`）。訊息格式寫在檔案開頭的說明裡。
 
 | 名稱 | 做什麼 |
 |---|---|
@@ -454,17 +452,20 @@ Textual 底層的 Rich 只會在空格處換行，是為英文設計的。AI 常
 
 ### `shells/room.py`：網頁版的房間
 
-一個房間就是一局遊戲。玩家的連線與名字由大廳管理，大廳把進來的人交給 `add()`、離開或斷線時呼叫 `remove()`、房間裡的訊息交給 `handle()`。房間持有一份 `PartyCore`。房間、大廳和所有分頁都在同一個程式裡，訊息直接在記憶體裡傳（為了兩端不共用物件，每則訊息都轉成 JSON 再轉回來）。訊息格式寫在檔案開頭的說明裡。
+一個房間就是一局遊戲。玩家的連線與名字由大廳管理，大廳把進來的人交給 `add()`、離開或斷線時呼叫 `remove()`、房間裡的訊息交給 `handle()`。房間持有一份 `StoryCore`，一個人玩也是一個房間（只有一位角色的隊伍）。訊息格式寫在檔案開頭的說明裡。
 
 | 名稱 | 做什麼 |
 |---|---|
 | `Room` | 等人（房主開始）→ 房主回答對話框 → 遊戲中（每個人用 `send_as()` 各自行動，推進後用 `view()` 送給每個人自己的選項）→ 結局 → 回到等人的畫面 |
-| `Connection` | 連線的一端：`send()` 的訊息由另一端的 `receive()` 收到；一端 `close()` 之後，另一端收到 `None` |
 
 - **房主**：開房間的人。只有房主能開始遊戲、回答「接續存檔、故事前提、確認重新開始」；房主離開時交給下一位在線的人，並重送正在等的對話框
 - **斷線**：遊戲中斷線的人保留角色，用同一個名字回來會看到目前這回合。在線的人都行動了、只剩離線的人時，替他們送出 `/away`（給 AI 的「暫時離開」文字由核心決定）
 - **限時**：倒數由房間負責。新劇情送出後，等每個人回報看完（`ready`）才開始倒數，最多等 `READY_WAIT` 秒；時間到由房間送出 `/timeout`，玩家不能自己送
 - 一次只處理一則輸入（`lock`），核心不會被同時呼叫；會呼叫 AI 的輸入在背景執行緒執行，並讓大家看到「故事生成中」（排隊時是「排隊中」）
+
+### `shells/connection.py`：連線
+
+房間、大廳和所有分頁都在同一個程式裡，訊息直接在記憶體裡傳。`Connection.pair()` 建立一對連線的兩端：一端 `send()` 的訊息由另一端的 `receive()` 收到（為了兩端不共用物件，每則訊息都轉成 JSON 再轉回來）；一端 `close()` 之後，另一端收到 `None`。
 
 ### `shells/players.py`：網頁版的玩家名字
 
@@ -486,14 +487,14 @@ uv run pytest                  # 全部（約 30 秒）
 
 | 檔案 | 驗證什麼 |
 |---|---|
-| `conftest.py` | 共用的假物件：`FakeGemini`（假的 Gemini，讓真的 `Engine`／`PartyEngine` 跑規則）、`FakeEngine`／`FakePartyEngine`（假的 engine，讓核心與外殼的測試能精準控制每回合）、`beat()`、`pbeat()`、`upd()`、`cond()` |
+| `conftest.py` | 共用的假物件：`FakeGemini`（假的 Gemini，讓真的 `Engine` 跑規則）、`FakeEngine`／`FakeGroupEngine`（假的 engine，讓核心與外殼的測試能精準控制每回合）、`solo()`（只有一位角色 `HERO` 的遊戲狀態）、`beat()`（`HERO` 這回合的回傳）、`pbeat()`、`upd()`（好幾位角色的回傳）、`cond()` |
 | `test_engine.py` | 遊戲規則：狀態增減與好轉限制、身體／精神、整體狀態與死亡、時間與痊癒、限時秒數、背包與事實、大綱與節奏提醒、轉折的伏筆與揭露、提示詞內容、記憶壓縮；串流：從還沒生成完的 JSON 取出劇情、`draft` 跟著劇情變長、太早的結局在劇情出現之前就中斷重寫 |
-| `test_records.py` | 存讀檔、舊存檔相容、回合變化的語氣、結局紀錄 |
+| `test_records.py` | 存讀檔、回合變化的語氣、結局紀錄 |
 | `test_core.py` | 核心的文字協定：開新局、幫我想、限時切換、`action_for()`、各種指令、key 失效與重送、重新開始、結局、讀檔接續 |
-| `test_prompts.py` | 提示詞檔案：每個檔案都讀得到、說明註解不會送給 AI、各種情境組出來的提示詞沒有留下沒填的變數、尾聲不會帶到一般回合的指示、`just prompts` 的每個情境（單人、多人、套用題材包）都組得出來 |
+| `test_prompts.py` | 提示詞檔案：每個檔案都讀得到、說明註解不會送給 AI、各種情境組出來的提示詞沒有留下沒填的變數、尾聲不會帶到一般回合的指示、`just prompts` 的每個情境（一位角色、兩位角色、套用題材包）都組得出來 |
 | `test_evals.py` | `just eval`：用假的 Gemini 跑情境，確認檢查、報告與結果檔正常、評審的校準範例要判不通過，不會寫到存檔或遊戲紀錄；超過呼叫上限時等一下再送 |
 | `test_genres.py` | 題材包：每種語言的內建題材都通過檢查、資料夾解析、格式錯誤會略過並說明原因、個人覆蓋內建、指引在提示詞的位置、AI 先挑題材再規劃大綱、轉折靈感、「幫我想」、`/genre` 指令、隨機開頭與 `/random`、再玩一次延續前提 |
-| `test_party.py` | 多人模式：每位角色各自的規則、未知角色與漏掉的角色、單人倒下與全員倒下、焦點輪替、行動一定要用 send_as 說是誰的、時間到、失敗重試、讀檔；網頁版房間用的 `send_as()`、`view()`、回覆轉 JSON；以及接上真的 engine 的整合測試 |
+| `test_characters.py` | 好幾位角色：每位角色各自的規則、未知角色與漏掉的角色、只有一位角色時沒有焦點、AI 寫錯名字也算他的、一人倒下與全員倒下、焦點輪替、行動一定要用 send_as 說是誰的、時間到、失敗重試、讀檔；網頁版房間用的 `send_as()`、`view()`、回覆轉 JSON；以及接上真的 engine 的整合測試 |
 | `test_room.py` | 網頁版的大廳與房間（用 `connect()` 連進大廳的好幾位玩家）：兩個房間同時玩、離開房間回大廳與空房間關閉、房間數上限、名字整台伺服器不重複與每間人數上限、不照順序行動、遊戲中只有隊員能回來、只有房主能回答與重來、斷線後直接回到原本的房間、換房主、大家看完才倒數、結局回到等人的畫面、一個人也能開始、AI 寫劇情時大家都收到串流的劇情、AI 呼叫的次數限制 |
 | `test_players.py` | 名字檢查 |
 | `test_settings.py` | 設定檔：讀寫與權限、環境變數優先、舊的 api_key／theme 檔搬進來、第一次啟動只問還沒設定的、不在終端機裡時不問 |
@@ -523,7 +524,7 @@ uv run pytest                  # 全部（約 30 秒）
 | 檔案 | 用途 |
 |---|---|
 | `save.json` | 終端機版的存檔，每回合自動更新。內容就是 `GameState` |
-| `saves/team-名字.json`、`saves/team-名字.log.jsonl` | 網頁版每一隊的存檔與每回合紀錄（多人時名字用 `+` 串起來） |
+| `saves/team-名字.json`、`saves/team-名字.log.jsonl` | 網頁版每一隊的存檔與每回合紀錄（好幾個人時名字用 `+` 串起來） |
 | `story_log.jsonl` | 終端機版每回合一行的紀錄：玩家行動、AI 提議的變化、套用前後的狀態、遊戲內時間。用來查「為什麼會這樣」 |
 | `~/.config/story/config.toml` | 玩家的設定：語言、API key、配色主題（在家目錄，不在專案裡） |
 

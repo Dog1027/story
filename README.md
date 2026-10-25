@@ -15,7 +15,7 @@ The design principle is **the AI tells the story, the program keeps the memory a
 - **Long-term memory**: the full text of every turn is kept, so the AI sees the whole story; only when it grows past a limit is the oldest part compacted into a summary
 - **Genre packs**: Wuxia, Cthulhu, Ghost Story, Monsters & Aliens, and Cyberpunk, each with its own writing guide, opening ideas, and twist ideas. One is picked automatically to fit your premise, or you choose. You can write your own genre pack without touching code; see [docs/genres.md](docs/genres.md) (in Chinese)
 - **Random openings**: a new story starts from an opening drawn from the genre packs; press "Another one" to draw again, or "Inspire me" to have the AI invent a new one
-- **Multiplayer**: 1 to 4 players, each playing one character with their own conditions, inventory, and choices. The turn advances once everyone has acted. Everyone joins the web page from their own phone or computer, opening rooms or joining friends' rooms in the lobby; several rooms can play at once
+- **Play alone or together**: every game is a team of 1 to 4 characters, each played by one person with their own conditions, inventory, and choices. Alone, the story speaks to you as "you"; with friends, the turn advances once everyone has acted. On the web, everyone joins the web page from their own phone or computer, opening rooms or joining friends' rooms in the lobby; several rooms can play at once
 
 ## Getting started
 
@@ -29,12 +29,13 @@ You need:
 just play
 ```
 
-The first time it runs, it asks you three things: the language, your Gemini API key, and a color theme for the terminal version. The answers are saved in `~/.config/story/config.toml`, so you won't be asked again. You can edit that file directly:
+The first time it runs, it asks you four things: the language, your Gemini API key, and, for the terminal version, a color theme and your character's name. The answers are saved in `~/.config/story/config.toml`, so you won't be asked again. You can edit that file directly:
 
 ```toml
 language = "en"         # or "zh-TW"
 api_key = "your key"
 theme = "tokyo-night"
+name = "Alex"            # your character in the terminal version
 ```
 
 Environment variables take precedence over the file: `STORY_LANG`, `GEMINI_API_KEY`.
@@ -102,18 +103,20 @@ src/story/
 ├── ui/         What players see (markdown), one folder per language
 ├── genres/     Genre packs, one folder per language
 └── shells/     Shells
-    ├── client.py   The flow shared by interfaces for human players
+    ├── client.py   The flow shared by interfaces for human players; LocalClient plays on this computer
+    ├── room_client.py  The same flow for the web: RoomClient joins the lobby and rooms
     ├── textual/    The terminal interface
     ├── web/        The web server and page
     ├── lobby.py    The web lobby: names and the room list
     ├── room.py     A web room: one game per room
+    ├── connection.py  In-memory connections between the lobby, rooms, and browser tabs
     └── plain.py    The plain-text version
 ```
 
 Three layers, each with one job:
 
 - **Core** (`core/`): works like calling an LLM. Send in a line of text, get a reply back (narration, choices, conditions…). It knows nothing about screens, so a new shell such as a Discord bot only has to handle display and input. The plain-text version is the simplest example
-- **Shared layer** (`shells/client.py`): when to show what. What to ask when starting, choices appearing only after the text finishes typing, the ending arriving in steps, how the web version connects to the lobby and rooms. Both the terminal and web versions use it
+- **Shared layer** (`shells/client.py`, `shells/room_client.py`): when to show what. What to ask when starting, choices appearing only after the text finishes typing, the ending arriving in steps, how the web version connects to the lobby and rooms. Both the terminal and web versions use it
 - **Interfaces** (`textual/`, `web/`): only decide how things look
 
 Where a new feature goes: changes the game's outcome or facts → core; changes the order, timing, or flow of what a person sees → shared layer; changes the look → interface.
@@ -124,7 +127,7 @@ Every file is described in [docs/files.md](docs/files.md), and plans are in [doc
 
 Common settings are constants at the top of each file, or separate text files:
 
-- **Story length, the model, wound and healing rules**: `src/story/core/engine.py`
+- **Story length, wound and healing rules**: `src/story/core/rules.py`; **the model**: `src/story/core/ai.py`
 - **How the AI writes** (writing rules, narration length, pacing reminders, the epilogue…): the markdown files in `src/story/prompts/en/`. Start with [src/story/prompts/README.md](src/story/prompts/README.md) (in Chinese), which maps "what you want to change → where"
 - **Interface text**: the markdown files in `src/story/ui/en/`
 - **Genre packs**: `src/story/genres/en/`; see [docs/genres.md](docs/genres.md) for how to write one
@@ -138,7 +141,7 @@ Common settings are constants at the top of each file, or separate text files:
 | Command | What it does |
 |---|---|
 | `just test` | All tests (about 30 seconds). They never contact Gemini and never touch your saves or API key. Run them after a change to make sure nothing broke |
-| `just prompts` | Preview the full prompts sent to the AI, without calling it. E.g. `just prompts turn`, `just prompts --party` |
+| `just prompts` | Preview the full prompts sent to the AI, without calling it. E.g. `just prompts turn`, `just prompts --players 2` |
 | `just eval` | Have the AI actually write turns from fixed scenarios, then check them with code and an AI judge: does it end too early, does the third act reveal the truth, does it make decisions for the player, do reckless choices cost something, does the style fit the genre. Calls the real AI; a full run takes six or seven minutes on the free tier. Results are saved in `eval_results/` so you can compare before and after a prompt change |
 
 What each test file checks is in [docs/files.md](docs/files.md#測試-tests).
