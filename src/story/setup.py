@@ -24,8 +24,9 @@ def language_names() -> dict[str, str]:
     return names
 
 
-def run(key: bool = True, theme: bool = False) -> None:
-    """key：要不要問 API key（網頁伺服器用架站者的 key、終端機版與純文字版用自己的）；theme：要不要問配色主題（終端機版）。"""
+def run(key: bool = True, theme: bool = False, name: bool = False) -> None:
+    """key：要不要問 API key（網頁伺服器用架站者的 key、終端機版與純文字版用自己的）；
+    theme：要不要問配色主題（終端機版）；name：要不要問角色名字（終端機版與純文字版：一個人玩，名字就是你的角色）。"""
     if not sys.stdin.isatty():
         return
     if not (settings.get("language") or "STORY_LANG" in os.environ):
@@ -37,6 +38,16 @@ def run(key: bool = True, theme: bool = False) -> None:
         print(ui["setup_key"])
         if value := getpass(ui["setup_key_prompt"]).strip():
             settings.put("api_key", value)
+    if name and not settings.get("name"):
+        from story.shells.players import InvalidName, check_name
+
+        print(ui["setup_name"])
+        while True:
+            try:
+                settings.put("name", check_name(input(ui["setup_name_prompt"]) or ui["default_name"]))
+                break
+            except InvalidName as e:
+                print(e)
     if theme and not settings.get("theme"):
         from story.shells.textual.style import THEME, THEMES
 

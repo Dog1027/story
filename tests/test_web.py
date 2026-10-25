@@ -1,14 +1,14 @@
-"""網頁版：用 aiohttp 的測試工具連上 WebSocket，扮演瀏覽器走完流程。大廳與房間是真的，核心用真的 PartyCore，engine 用假的。"""
+"""網頁版：用 aiohttp 的測試工具連上 WebSocket，扮演瀏覽器走完流程。大廳與房間是真的，核心用真的 StoryCore，engine 用假的。"""
 
 from pathlib import Path
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
-from conftest import FakePartyEngine
+from conftest import FakeGroupEngine
 
 import story.shells.lobby as lobby_module
 import story.shells.web as web
-from story.core import PartyCore
+from story.core import StoryCore
 from story.shells.lobby import Lobby
 
 
@@ -19,9 +19,9 @@ def fake_core(monkeypatch) -> list[str]:
 
     def make(api_key, players, *, save_path, log_path, client=None):
         keys.append(api_key)
-        return PartyCore(api_key, players, save_path=save_path, log_path=log_path, engine=FakePartyEngine())
+        return StoryCore(api_key, players, save_path=save_path, log_path=log_path, engine=FakeGroupEngine())
 
-    monkeypatch.setattr(lobby_module, "PartyCore", make)
+    monkeypatch.setattr(lobby_module, "StoryCore", make)
     return keys
 
 
@@ -58,7 +58,7 @@ async def enter_name(client, name: str) -> Browser:
     return browser
 
 
-async def enter_single_game(client) -> Browser:
+async def enter_own_room(client) -> Browser:
     """一個人玩：在大廳開一個自己的房間、按開始、輸入前提。"""
     browser = await enter_name(client, "阿明")
     await browser.expect("lobby", lambda m: m["title"] == "大廳")
@@ -81,14 +81,14 @@ async def test_page_is_served_with_phone_support():
         assert script.status == 200 and script.headers["Cache-Control"] == "no-cache"  # 更新後不會用到快取的舊檔
 
 
-async def test_single_player_plays_a_turn(isolated, fake_core):
+async def test_playing_alone_in_own_room(isolated, fake_core):
     async with TestClient(TestServer(app())) as client:
-        browser = await enter_single_game(client)
+        browser = await enter_own_room(client)
         assert fake_core == ["server-key"]  # 用架站者的 key，玩家不用輸入
         assert any(m["t"] == "clear" and m["premise"] == "燈塔" for m in browser.seen)  # 先顯示前提，再寫開場
         await browser.send("act", text="1")
         assert (await browser.expect("action"))["text"] == "阿明往上爬"
-        await browser.expect("changes", lambda m: m["name"] == "阿明" and m["groups"][0][0] == "獲得")
+        await browser.expect("changes", lambda m: m["name"] == "" and m["groups"][0][0] == "獲得")  # 一個人玩不寫名字
         status = (await browser.expect("status", lambda m: m["status"] and m["status"]["turn"] == 2))["status"]
         assert [c["name"] for c in status["characters"]] == ["阿明"]
         assert (Path("saves") / "team-阿明.json").exists()  # 存檔跟著隊伍（一個人也是一隊）
@@ -96,7 +96,7 @@ async def test_single_player_plays_a_turn(isolated, fake_core):
 
 async def test_name_problems_are_shown_and_asked_again(isolated):
     async with TestClient(TestServer(app())) as client:
-        first = await enter_single_game(client)
+        first = await enter_own_room(client)
         second = Browser(await client.ws_connect("/ws"))
         name = await second.expect("name")
         await second.answer(name["id"], "../x")
@@ -154,4 +154,4 @@ async def test_friends_join_the_same_room(isolated):
         await guest.expect("clear", lambda m: m["premise"] == "燈塔")
         await guest.expect("choices", lambda m: m["choices"] == ["小華往上爬", "小華躲起來"])
         status = (await guest.expect("status", lambda m: m["status"]))["status"]
-        assert status["party"] and [c["name"] for c in status["characters"]] == ["阿明", "小華"]
+        assert status["named"] and [c["name"] for c in status["characters"]] == ["阿明", "小華"]

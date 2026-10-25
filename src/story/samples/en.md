@@ -52,7 +52,7 @@ The earlier summary
 Event
 
 ## wounds
-<!-- The protagonist's conditions (the first character's in multiplayer): name | kind | severity (codes from vocab.md) -->
+<!-- The first character's conditions: name | kind | severity (codes from vocab.md) -->
 - torn right arm | body | moderate
 - fear | mind | light
 
@@ -61,24 +61,22 @@ Event
 - oil lamp
 
 ## players
-<!-- The multiplayer party: name | inventory -->
+<!-- The team: name | inventory (playing alone uses the first character, with the inventory above) -->
 - Alex | oil lamp
 - Sam | key
 
-## action
-Answer with the light signal from the journal
 
-## party_actions
-<!-- Multiplayer actions this turn: name | action -->
+## actions
+<!-- Each character's action this turn: name | action (playing alone uses the first line) -->
 - Alex | Answer with the light signal from the journal
 - Sam | Hide by the stairs and watch
 
 ## fall
-<!-- Previewing death from wounds: the narration just written -->
+<!-- Previewing a fall when playing alone: the narration just written -->
 You tumble down the stairs and slam hard into the stone wall.
 
-## party_fall
-<!-- Previewing a multiplayer character falling: the first character falls -->
+## fall_named
+<!-- Previewing a fall with several characters: the first character falls -->
 Alex tumbles down the stairs and slams hard into the stone wall.
 
 <!-- ---------- Eval (just eval) scenarios ---------- -->

@@ -15,48 +15,7 @@ AI 回傳格式的欄位說明：跟著回傳格式一起送給 AI，告訴它�
 ## ConditionChange.severity
 輕＝不影響行動；中＝明顯妨礙行動；重＝危及性命
 
-<!-- ---------- StoryBeat：單人模式每回合的回傳 ---------- -->
-
-## StoryBeat.game_over
-寫劇情之前先決定：故事是否在本回合結束（死亡、達成結局等）
-
-## StoryBeat.narration
-本回合的劇情敘述，第二人稱，150-300 字
-
-## StoryBeat.choices
-給玩家的 2-4 個行動選項，每個一句話
-
-## StoryBeat.conditions_changed
-新出現的狀態，或程度改變的既有狀態
-
-## StoryBeat.conditions_removed
-痊癒或消失的既有狀態名稱
-
-## StoryBeat.time_passed
-本回合經過的時間：瞬間＝打鬥閃避；片刻＝對話、搜索；一陣子＝趕路，約一小時；一夜＝睡覺
-
-## StoryBeat.start_time_of_day
-現在的時段；只在開場或時間「尚未確定」時採用
-
-## StoryBeat.time_limit
-限時模式下緊迫時的反應秒數，否則為 0
-
-## StoryBeat.milestone_reached
-本回合是否達成了「故事進度」中目前這一幕的里程碑
-
-## StoryBeat.items_gained
-玩家本回合獲得的物品名稱
-
-## StoryBeat.items_lost
-玩家本回合失去或用掉的物品名稱
-
-## StoryBeat.flags_set
-新確立的長期事實，例如「與守門人結仇」；通常為空
-
-## StoryBeat.key_event
-改變故事走向的大事，一句話；大多數回合為空字串
-
-<!-- ---------- CharacterUpdate：多人模式：一位角色這回合的變化 ---------- -->
+<!-- ---------- CharacterUpdate：一位角色這回合的變化 ---------- -->
 
 ## CharacterUpdate.name
 角色名字，必須是「隊伍」裡的名字
@@ -76,33 +35,33 @@ AI 回傳格式的欄位說明：跟著回傳格式一起送給 AI，告訴它�
 ## CharacterUpdate.items_lost
 這位角色本回合失去或用掉的物品名稱
 
-<!-- ---------- PartyBeat：多人模式每回合的回傳 ---------- -->
+<!-- ---------- StoryBeat：每回合的回傳 ---------- -->
 
-## PartyBeat.game_over
+## StoryBeat.game_over
 寫劇情之前先決定：故事是否在本回合自然走到結局
 
-## PartyBeat.narration
-本回合的劇情敘述，包含每位角色行動的結果，200-400 字；提到角色時用名字
+## StoryBeat.narration
+本回合的劇情敘述，包含每位角色行動的結果，150-300 字（角色多時可以到 400 字）；只有一位角色時用第二人稱「你」，好幾位時用名字
 
-## PartyBeat.character_updates
+## StoryBeat.character_updates
 隊伍中每位角色各一筆，順序和「隊伍」相同
 
-## PartyBeat.time_passed
+## StoryBeat.time_passed
 本回合經過的時間：瞬間＝打鬥閃避；片刻＝對話、搜索；一陣子＝趕路，約一小時；一夜＝睡覺
 
-## PartyBeat.start_time_of_day
+## StoryBeat.start_time_of_day
 現在的時段；只在開場或時間「尚未確定」時採用
 
-## PartyBeat.time_limit
+## StoryBeat.time_limit
 限時模式下緊迫時的反應秒數，否則為 0
 
-## PartyBeat.milestone_reached
+## StoryBeat.milestone_reached
 本回合是否達成了「故事進度」中目前這一幕的里程碑
 
-## PartyBeat.flags_set
+## StoryBeat.flags_set
 新確立的長期事實，例如「與守門人結仇」；通常為空
 
-## PartyBeat.key_event
+## StoryBeat.key_event
 改變故事走向的大事，一句話；大多數回合為空字串
 
 <!-- ---------- Act：大綱的一幕 ---------- -->

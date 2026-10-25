@@ -23,9 +23,10 @@
 import asyncio
 from collections.abc import Callable
 
-from story.core import MAX_PLAYERS, PartyCore, RateLimit, new_client, pick_choice, ui_text
+from story.core import MAX_PLAYERS, StoryCore, RateLimit, new_client, pick_choice, ui_text
 from story.shells.players import SAVES_DIR, InvalidName, check_name
-from story.shells.room import Connection, Room
+from story.shells.connection import Connection
+from story.shells.room import Room
 
 UI = ui_text("shells")  # story/ui/語言/shells.md
 MAX_ROOMS = 10  # 同時最多幾個房間：大家共用一把 key，房間太多就會一直排隊
@@ -39,7 +40,7 @@ def team_save(players: list[str]):
 
 
 class Lobby:
-    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None]], PartyCore]):
+    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None]], StoryCore]):
         """make_core(玩家, on_queue) 建立一局的核心，見 Room。"""
         self.make_core = make_core
         self.people: dict[str, Connection] = {}  # 在線的人（大廳這一端的連線）
@@ -56,9 +57,9 @@ class Lobby:
         SAVES_DIR.mkdir(exist_ok=True)
         limit, client = RateLimit(AI_PER_MINUTE), new_client(api_key)
 
-        def make_core(players: list[str], on_queue: Callable[[bool], None]) -> PartyCore:
+        def make_core(players: list[str], on_queue: Callable[[bool], None]) -> StoryCore:
             save_path, log_path = team_save(players)
-            return PartyCore(api_key, players, save_path=save_path, log_path=log_path, client=limit.wrap(client, on_queue))
+            return StoryCore(api_key, players, save_path=save_path, log_path=log_path, client=limit.wrap(client, on_queue))
 
         return Lobby(make_core)
 

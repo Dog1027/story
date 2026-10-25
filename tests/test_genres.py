@@ -1,10 +1,10 @@
 """題材包：讀取與檢查格式、個人的覆蓋內建的、AI 依前提挑選、提示詞裡的位置、「幫我想」與 /genre 指令。"""
 
-from conftest import ARC, FakeEngine, beat, make_engine
+from conftest import ARC, HERO, FakeEngine, beat, make_engine, solo
 
 from story.core import GENRE_AUTO, GENRE_NONE, StoryCore
 from story.core.genres import BUILTIN_DIR, MAX_GUIDE, load_genres
-from story.core.models import GameState, Turn
+from story.core.models import Turn
 from story.core.records import DEFAULT_PREMISE
 
 
@@ -73,13 +73,13 @@ def test_personal_genre_overrides_builtin_with_same_name(tmp_path):
 def test_chosen_genre_guide_sits_in_the_stable_part_of_the_prompt():
     """指引整局固定，放在劇情紀錄前面不影響快取；命名素材只在開場給。"""
     engine, gemini = make_engine(beat(), beat(), genres=pack())
-    state = GameState(premise="鏢局", genre="武俠")
+    state = solo(premise="鏢局", genre="武俠")
     engine.start(state)
     arc_prompt, opening = gemini.prompts[0], gemini.prompts[1]
     assert "用古白話" in arc_prompt and "題材目錄" not in arc_prompt  # 已經指定題材：大綱照題材規劃，不用再挑
     assert "# 轉折靈感" in arc_prompt and "師父才是元兇" in arc_prompt
     assert "命名素材" in opening and "沈青衣" in opening
-    engine.act(state, "上路")
+    engine.act(state, {HERO: "上路"})
     prompt = gemini.prompts[-1]
     assert prompt.index("# 題材：武俠") < prompt.index("# 劇情紀錄")
     assert "命名素材" not in prompt
@@ -87,7 +87,7 @@ def test_chosen_genre_guide_sits_in_the_stable_part_of_the_prompt():
 
 def test_auto_genre_is_picked_before_planning_the_arc():
     engine, gemini = make_engine(beat(), genre="武俠", genres=pack())
-    state = GameState(premise="鏢局", genre_pending=True)
+    state = solo(premise="鏢局", genre_pending=True)
     engine.start(state)
     pick, arc_prompt, opening = gemini.prompts
     assert "# 題材目錄\n- 武俠：江湖恩怨" in pick
@@ -98,7 +98,7 @@ def test_auto_genre_is_picked_before_planning_the_arc():
 
 def test_auto_genre_not_in_catalog_means_no_genre():
     engine, gemini = make_engine(beat(), genre="太空歌劇", genres=pack())
-    state = GameState(premise="太空站", genre_pending=True)
+    state = solo(premise="太空站", genre_pending=True)
     engine.start(state)
     assert state.genre == "" and not state.genre_pending
     assert "# 題材：" not in gemini.prompts[1] and "# 轉折靈感" not in gemini.prompts[1]
@@ -119,7 +119,7 @@ class GenreEngine(FakeEngine):
 
 
 def test_genre_command_and_new_story_fields(isolated):
-    core = StoryCore("test", engine=GenreEngine(), save_path=isolated / "save.json")
+    core = StoryCore("test", [HERO], engine=GenreEngine(), save_path=isolated / "save.json")
     reply = core.start()
     assert reply.genre == GENRE_AUTO and reply.genres == [("武俠", "江湖恩怨")]
     assert "沒有「太空」這個題材" in core.send("/genre 太空").notice
@@ -157,7 +157,7 @@ class PackEngine(FakeEngine):
 
 
 def test_first_new_story_draws_a_premise_from_the_packs(isolated):
-    core = StoryCore("test", engine=PackEngine(), save_path=isolated / "save.json")
+    core = StoryCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     reply = core.start()
     assert reply.premise_default in ("你是鏢師。", "你是捕快。", "你收到舅舅的包裹。", DEFAULT_PREMISE)
     core.send("")  # 留白：用抽到的那個開始
@@ -165,7 +165,7 @@ def test_first_new_story_draws_a_premise_from_the_packs(isolated):
 
 
 def test_random_draws_a_different_premise_and_genre_change_redraws(isolated):
-    core = StoryCore("test", engine=PackEngine(), save_path=isolated / "save.json")
+    core = StoryCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     core.start()
     reply = core.send("/genre 武俠")
     assert reply.premise_default in ("你是鏢師。", "你是捕快。")  # 換題材：抽到的開頭跟著換
@@ -175,7 +175,7 @@ def test_random_draws_a_different_premise_and_genre_change_redraws(isolated):
 
 
 def test_play_again_keeps_the_last_premise_unless_rerolled(isolated):
-    core = StoryCore("test", engine=PackEngine(), save_path=isolated / "save.json")
+    core = StoryCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     core.start()
     core.send("自己寫的前提")
     core.send("/restart")
@@ -186,7 +186,7 @@ def test_play_again_keeps_the_last_premise_unless_rerolled(isolated):
 
 
 def test_ai_suggestion_wins_over_drawn_premise(isolated):
-    core = StoryCore("test", engine=PackEngine(), save_path=isolated / "save.json")
+    core = StoryCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     core.start()
     assert core.send("/suggest").premise_default == "你是月球礦坑的夜班工程師。"
 

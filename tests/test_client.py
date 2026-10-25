@@ -1,12 +1,12 @@
 """外殼共用層：用一個只記錄呼叫的假介面，確認「什麼時候顯示什麼」的流程。不需要 Textual，任何介面都適用。"""
 
 import pytest
-from conftest import FakeEngine, FakePartyEngine, InvalidKeyError
+from conftest import FakeEngine, FakeGroupEngine, InvalidKeyError
 
 import story.shells.client as client_module
-from story.core import GENRE_AUTO, PartyCore, StoryCore
+from story.core import GENRE_AUTO, StoryCore
 from story.core.session import Status
-from story.shells.client import Client, View, status_line
+from story.shells.client import LocalClient, View, status_line
 
 
 class RecordingView(View):
@@ -112,7 +112,7 @@ class RecordingView(View):
 @pytest.fixture
 def engine(monkeypatch):
     engine = FakeEngine()
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=engine, **kw))
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=engine, **kw))
     monkeypatch.setenv("GEMINI_API_KEY", "test")
     return engine
 
@@ -125,7 +125,7 @@ def after(view: RecordingView, name: str) -> list[str]:
 
 async def test_new_story_shows_premise_then_the_opening(engine):
     view = RecordingView()
-    client = Client(view)
+    client = LocalClient(view)
     await client.run()
     assert "ask_premise" in view.names()
     assert ("clear_story", "燈塔") in view.calls  # 先顯示前提，再等 AI 寫開場
@@ -135,7 +135,7 @@ async def test_new_story_shows_premise_then_the_opening(engine):
 
 async def test_a_turn_reveals_choices_and_status_only_after_the_narration(engine):
     view = RecordingView(timed=True)
-    client = Client(view)
+    client = LocalClient(view)
     await client.run()
     view.calls.clear()
     await client.act("1")
@@ -151,7 +151,7 @@ async def test_a_turn_reveals_choices_and_status_only_after_the_narration(engine
 
 async def test_ending_appears_one_part_at_a_time(engine):
     view = RecordingView()
-    client = Client(view)
+    client = LocalClient(view)
     await client.run()
     await client.act("1")
     view.calls.clear()
@@ -165,7 +165,7 @@ async def test_ending_appears_one_part_at_a_time(engine):
 
 async def test_invalid_key_asks_for_a_new_one_and_retries(engine):
     view = RecordingView(keys=["新的 key"])
-    client = Client(view)
+    client = LocalClient(view)
     await client.run()
     engine.fail_with = InvalidKeyError()
     await client.act("1")
@@ -176,14 +176,14 @@ async def test_invalid_key_asks_for_a_new_one_and_retries(engine):
 
 def test_status_line_lists_conditions_and_the_core_warning():
     fine = status_line(3, [Status(conditions=[("疲勞", "moderate"), ("恐懼", "light")])], timed=False)
-    assert fine.mode == "一般模式" and not fine.party
+    assert fine.mode == "一般模式" and not fine.named
     assert fine.characters[0].warning == "" and fine.characters[0].items == [("疲勞", "moderate"), ("恐懼", "light")]
     danger = status_line(3, [Status(conditions=[("失血", "severe")], warning="dying")], timed=True)
     assert danger.characters[0].warning == "dying" and danger.characters[0].warning_text == "瀕死" and danger.mode == "限時模式"
     empty = status_line(1, [Status(conditions=[])], timed=False)
     assert empty.characters[0].items == [("良好", "healthy")]
-    party = status_line(2, [Status(conditions=[], name="阿明", alive=False)], timed=False)
-    assert party.party and party.characters[0].name == "阿明" and not party.characters[0].alive
+    group = status_line(2, [Status(conditions=[], name="阿明", alive=False), Status(conditions=[], name="小華")], timed=False)
+    assert group.named and group.characters[0].name == "阿明" and not group.characters[0].alive
 
 
 class StreamingEngine(FakeEngine):
@@ -209,10 +209,10 @@ class StreamingEngine(FakeEngine):
 
 async def test_narration_is_shown_while_the_ai_is_still_writing(monkeypatch):
     engine = StreamingEngine()
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=engine, **kw))
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=engine, **kw))
     monkeypatch.setenv("GEMINI_API_KEY", "test")
     view = RecordingView()
-    client = Client(view)
+    client = LocalClient(view)
     await client.run()
     view.calls.clear()
     await client.act("1")
@@ -226,10 +226,10 @@ async def test_narration_is_shown_while_the_ai_is_still_writing(monkeypatch):
 
 async def test_half_written_narration_is_taken_back_when_the_turn_fails(monkeypatch):
     engine = StreamingEngine(fail=True)
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=engine, **kw))
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=engine, **kw))
     monkeypatch.setenv("GEMINI_API_KEY", "test")
     view = RecordingView()
-    client = Client(view)
+    client = LocalClient(view)
     await client.run()
     view.calls.clear()
     await client.act("1")

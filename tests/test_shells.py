@@ -10,7 +10,7 @@ from story.core import StoryCore
 
 def test_plain_shell_plays_a_whole_story(monkeypatch, capsys):
     monkeypatch.setenv("GEMINI_API_KEY", "test")
-    monkeypatch.setattr(plain, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=FakeEngine(), **kw))
+    monkeypatch.setattr(plain, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=FakeEngine(), **kw))
     inputs = iter(["", "1", "2", "", "/quit"])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
     plain.main()
@@ -57,7 +57,7 @@ def test_interfaces_go_through_the_shared_client_layer():
     interfaces = [*Path(story.shells.textual.__file__).parent.rglob("*.py"), Path(story.shells.web.view.__file__)]
     for path in sorted(interfaces):
         source = path.read_text(encoding="utf-8")
-        for name in ("StoryCore", "PartyCore", "Connection", "story.shells.room", "story.shells.players"):
+        for name in ("StoryCore", "Connection", "story.shells.room", "story.shells.players"):
             if name in source:
                 problems.append(f"{path.name}: 用到 {name}（應該交給共用層）")
         if re.search(r"\bcore\.\w+", source):

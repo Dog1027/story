@@ -26,10 +26,12 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from story.core import RateLimit, prompts
-from story.core.engine import ACT_TURNS, MODEL, Engine, body_level, body_score, new_client
+from story.core.ai import MODEL, new_client
+from story.core.engine import Engine
 from story.core.genres import Genre, load_genres
-from story.core.models import SCHEMA, GameState
-from story.preview import ARC, PREMISE, SAMPLE, conditions, listed, sample_state
+from story.core.models import SCHEMA, Character, GameState
+from story.core.rules import ACT_TURNS, body_level, body_score
+from story.preview import ARC, PREMISE, SAMPLE, conditions, listed, sample_actions, sample_state
 from story import settings
 
 EVAL = prompts.sections("eval")
@@ -48,7 +50,7 @@ def schema_range(text: str) -> tuple[int, int]:
 
 
 NARRATION_LEN = schema_range(SCHEMA["StoryBeat.narration"])
-CHOICE_COUNT = schema_range(SCHEMA["StoryBeat.choices"])
+CHOICE_COUNT = schema_range(SCHEMA["CharacterUpdate.choices"])
 
 
 class Verdict(BaseModel):
@@ -108,7 +110,7 @@ class Trial:
         low, high = NARRATION_LEN
         self.check(f"劇情 {low}-{high} 字", low <= length <= high, f"{length} 字")
         if not state.game_over:
-            count, (low, high) = len(state.current_choices), CHOICE_COUNT
+            count, (low, high) = len(state.characters[0].choices), CHOICE_COUNT
             self.check(f"選項 {low}-{high} 個", low <= count <= high, f"{count} 個")
         if not may_end:
             self.check("故事沒有結束", not state.game_over)
@@ -121,11 +123,24 @@ class Trial:
         return any("stopped" in call for record in records for call in record["calls"])
 
 
-# ---------- 情境：每個都回傳跑完的狀態 ----------
+# ---------- 情境：每個都回傳跑完的狀態。都是一個人玩（一位角色），範例故事的第一位角色 ----------
+
+
+def hero() -> Character:
+    return sample_state(1, "").characters[0].model_copy(update={"conditions": [], "inventory": []})
+
+
+def mine(action: str) -> dict[str, str]:
+    """一個人玩這回合的行動：{角色名字: 行動}。"""
+    return {hero().name: action}
+
+
+def first_action() -> str:
+    return next(iter(sample_actions(1).values()))
 
 
 def opening(t: Trial) -> GameState:
-    state = GameState(premise=PREMISE)
+    state = GameState(premise=PREMISE, characters=[hero()])
     t.engine.start(state)
     arc = state.arc
     t.check("大綱有隱藏的真相與伏筆", arc is not None and arc.twist and arc.clues)
@@ -136,19 +151,19 @@ def opening(t: Trial) -> GameState:
 
 
 def early(t: Trial) -> GameState:
-    state = sample_state(False, "", act=1, act_turns=3, turn=12, current_narration=SAMPLE["early_narration"])
+    state = sample_state(1, "", act=1, act_turns=3, turn=12, current_narration=SAMPLE["early_narration"])
     action = SAMPLE["early_action"]
-    t.engine.act(state, action)
+    t.engine.act(state, mine(action))
     t.check("沒有試圖寫出結局", not t.tried_ending(), "AI 一開始寫了結局，被要求重寫")
     t.basics(state)
     t.judge("劇情沒有寫成結局", "no_ending", action=action, narration=state.current_narration,
-            choices="\n".join(state.current_choices))
+            choices="\n".join(state.characters[0].choices))
     return state
 
 
 def reveal(t: Trial) -> GameState:
-    state = sample_state(False, "", act=2, act_turns=ACT_TURNS, turn=18, current_narration=SAMPLE["reveal_narration"])
-    t.engine.act(state, SAMPLE["reveal_action"])
+    state = sample_state(1, "", act=2, act_turns=ACT_TURNS, turn=18, current_narration=SAMPLE["reveal_narration"])
+    t.engine.act(state, mine(SAMPLE["reveal_action"]))
     t.basics(state)
     t.judge("揭露了隱藏的真相", "reveal", twist=ARC.twist, clues="\n".join(f"- {c}" for c in ARC.clues),
             narration=state.current_narration)
@@ -156,34 +171,36 @@ def reveal(t: Trial) -> GameState:
 
 
 def agency(t: Trial) -> GameState:
-    state = sample_state(False, "")
-    action = SAMPLE["action"]
-    t.engine.act(state, action)
+    state = sample_state(1, "")
+    action = first_action()
+    t.engine.act(state, mine(action))
     t.basics(state)
     t.judge("沒有替玩家做決定", "agency", action=action, narration=state.current_narration)
     return state
 
 
 def reckless(t: Trial) -> GameState:
-    state = sample_state(False, "", current_narration=SAMPLE["armed"])
-    before = body_score(state)
-    t.engine.act(state, SAMPLE["reckless_action"])
-    after = body_score(state)
+    state = sample_state(1, "", current_narration=SAMPLE["armed"])
+    before = body_score(state.characters[0])
+    t.engine.act(state, mine(SAMPLE["reckless_action"]))
+    after = body_score(state.characters[0])
     t.check("魯莽的行動受了傷（傷勢總分至少加 2）", after - before >= 2, f"傷勢總分 {before} → {after}")
     t.basics(state, may_end=True)
     return state
 
 
 def dying(t: Trial) -> GameState:
-    state = sample_state(False, "", conditions=conditions("dying_wounds"), current_narration=SAMPLE["armed"])
-    t.engine.act(state, SAMPLE["dying_action"])
-    t.check("瀕死還冒險就喪命", body_level(state) == "dead", f"整體狀態：{body_level(state)}")
+    state = sample_state(1, "", current_narration=SAMPLE["armed"])
+    state.characters[0].conditions = conditions("dying_wounds")
+    t.engine.act(state, mine(SAMPLE["dying_action"]))
+    level = body_level(state.characters[0])
+    t.check("瀕死還冒險就喪命", level == "dead", f"整體狀態：{level}")
     return state
 
 
 def tone(genre: Genre) -> Callable[[Trial], GameState]:
     def run(t: Trial) -> GameState:
-        state = GameState(premise=genre.premises[0] if genre.premises else PREMISE, genre=genre.name)
+        state = GameState(premise=genre.premises[0] if genre.premises else PREMISE, characters=[hero()], genre=genre.name)
         t.engine.start(state)
         t.basics(state)
         t.judge("符合題材的文風", "tone", genre=genre.name, guide=genre.guide, narration=state.current_narration)
@@ -198,7 +215,7 @@ def tone(genre: Genre) -> Callable[[Trial], GameState]:
 def calibration(genres: dict[str, Genre]) -> Callable[[Trial], None]:
     def run(t: Trial) -> None:
         clues = "\n".join(f"- {c}" for c in ARC.clues)
-        agency, early = SAMPLE["action"], SAMPLE["early_action"]
+        agency, early = first_action(), SAMPLE["early_action"]
         t.judge("識破替玩家做決定", "agency", expect=False, action=agency, narration=SAMPLE["agency_bad"])
         t.judge("沒問題的劇情判通過（不替玩家做決定）", "agency", action=agency, narration=SAMPLE["agency_good"])
         t.judge("識破寫成結局", "no_ending", expect=False, action=early, narration=SAMPLE["early_bad"], choices="")
@@ -239,7 +256,7 @@ def attempt(scenario: Callable[[Trial], GameState | None], client, genres: dict[
         return Run(checks=trial.checks, error=str(e)[:200])
     if state is None:  # 只檢查評審，沒有寫劇情
         return Run(checks=trial.checks)
-    return Run(state.current_narration, state.current_choices, trial.checks)
+    return Run(state.current_narration, state.characters[0].choices, trial.checks)
 
 
 def report(found: dict, results: dict[str, list[Run]]) -> None:

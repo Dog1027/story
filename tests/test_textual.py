@@ -28,7 +28,7 @@ def fast_and_fake(monkeypatch):
     """打字效果幾乎不等待；StoryApp 建立核心時換上假的 engine；預設有 API key。"""
     monkeypatch.setattr(app_module, "CHAR_DELAY", 0.001)
     monkeypatch.setattr(app_module, "PAUSE_AFTER", {})
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=FakeEngine(), **kw))
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=FakeEngine(), **kw))
     monkeypatch.setenv("GEMINI_API_KEY", "test")
 
 
@@ -37,7 +37,7 @@ def log_lines(app):
 
 
 def status_text(app):
-    """狀態列的純文字（多人模式是表格，要實際排版才拿得到文字）。"""
+    """狀態列的純文字（有好幾位角色時是表格，要實際排版才拿得到文字）。"""
     from rich.console import Console
 
     console = Console(width=app.size.width, record=True, file=io.StringIO())
@@ -249,7 +249,7 @@ async def test_narration_uses_chinese_line_breaking(monkeypatch):
             super().start(state)
             state.current_narration = "阿明轉頭看向 Bob，發現他的手臂正在流血，鮮血順著指尖一滴一滴落在冰冷的石地上。"
 
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=EnglishNameEngine(), **kw))
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=EnglishNameEngine(), **kw))
     app = StoryApp()
     async with app.run_test(size=(48, 28)) as pilot:  # 故事區扣掉邊距後寬 41
         await start_game(pilot, app)
@@ -277,7 +277,7 @@ async def test_busy_line_shows_opening_progress(monkeypatch):
             self.stage = ""
             super().start(state)
 
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=SlowOpening(), **kw))
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=SlowOpening(), **kw))
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog))
@@ -383,7 +383,7 @@ async def test_premise_dialog_lets_you_pick_a_genre(monkeypatch):
     class GenreEngine(FakeEngine):
         genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}
 
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=GenreEngine(), **kw))
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=GenreEngine(), **kw))
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))
@@ -404,7 +404,7 @@ async def test_premise_dialog_works_with_arrow_keys_only(monkeypatch):
     class GenreEngine(FakeEngine):
         genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}
 
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=GenreEngine(), **kw))
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=GenreEngine(), **kw))
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))
@@ -434,7 +434,7 @@ async def test_premise_dialog_reroll_and_genre_change_update_the_default(monkeyp
             "克蘇魯": Genre(name="克蘇魯", description="恐怖", guide="暗示。", premises=["你收到舅舅的包裹。"]),
         }
 
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=PackEngine(), **kw))
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=PackEngine(), **kw))
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))
@@ -461,7 +461,7 @@ async def test_premise_typed_by_the_player_is_kept_when_the_genre_changes(monkey
     class PackEngine(FakeEngine):
         genres = {"克蘇魯": Genre(name="克蘇魯", description="恐怖", guide="暗示。", premises=["你收到舅舅的包裹。"])}
 
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=PackEngine(), **kw))
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=PackEngine(), **kw))
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))
@@ -485,7 +485,7 @@ async def test_rapid_genre_switching_shows_the_last_genres_premise(monkeypatch):
             "克蘇魯": Genre(name="克蘇魯", description="恐怖", guide="暗示。", premises=["你收到舅舅的包裹。"]),
         }
 
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, **kw: StoryCore(api_key, engine=PackEngine(), **kw))
+    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=PackEngine(), **kw))
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
         await wait_until(pilot, lambda: isinstance(app.screen, PremiseDialog) and app.screen.query("#genre"))

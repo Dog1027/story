@@ -1,10 +1,10 @@
 """核心的文字協定：送文字進去、檢查回覆。用 FakeEngine 精準控制每回合的結果。"""
 
 import pytest
-from conftest import FakeEngine, InvalidKeyError
+from conftest import HERO, FakeEngine, InvalidKeyError
 
 from story.core import StoryCore
-from story.core.engine import TIMEOUT_ACTION
+from story.core.prompting import TIMEOUT_ACTION
 from story.core.records import DEFAULT_PREMISE, load
 
 
@@ -15,7 +15,7 @@ def engine():
 
 @pytest.fixture
 def core(engine, isolated):
-    return StoryCore(api_key="test", engine=engine, save_path=isolated / "save.json")
+    return StoryCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
 
 
 def new_game(core, *inputs):
@@ -80,7 +80,7 @@ def test_choosing_by_number_and_reply_fields(core):
     reply = core.send("1")
     assert reply.narration == "你選擇了「往上爬」。"
     assert reply.turn == 2 and reply.characters[0].conditions == [("小腿挫傷", "moderate")]
-    assert reply.changes == [("", [("新增", [("小腿挫傷（中）", "moderate")]), ("獲得", [("油燈", "plain")])])]  # 單人模式：名字是空的
+    assert reply.changes == [(HERO, [("新增", [("小腿挫傷（中）", "moderate")]), ("獲得", [("油燈", "plain")])])]
     assert "回合 2｜狀態 小腿挫傷（中）" in reply.text
 
 
@@ -124,10 +124,10 @@ def test_status_warns_only_when_the_next_wound_could_kill(core):
 
     new_game(core)
     assert core.send("/state").characters[0].warning == ""
-    core.state.conditions = [Condition(name="失血", kind="身體", severity="重")]
+    core.state.characters[0].conditions = [Condition(name="失血", kind="body", severity="severe")]
     reply = core.send("/state")
     assert reply.characters[0].warning == "serious"
-    core.state.conditions = [Condition(name="疲勞", kind="身體", severity="中"), Condition(name="恐懼", kind="精神", severity="重")]
+    core.state.characters[0].conditions = [Condition(name="疲勞", kind="body", severity="moderate"), Condition(name="恐懼", kind="mind", severity="severe")]
     assert core.send("/state").characters[0].warning == ""  # 中度的疲勞、精神狀態都不會致命
 
 
@@ -199,11 +199,11 @@ def test_ending_epilogue_and_play_again(core):
 
 
 def test_resume_from_save(engine, isolated):
-    first = StoryCore(api_key="test", engine=engine, save_path=isolated / "save.json")
+    first = StoryCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
     new_game(first)
     first.send("1")
 
-    second = StoryCore(api_key="test", engine=FakeEngine(), save_path=isolated / "save.json")
+    second = StoryCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json")
     reply = second.start()
     assert reply.phase == "ask_continue" and "第 2 回合" in reply.notice
     reply = second.send("1")
@@ -213,18 +213,18 @@ def test_resume_from_save(engine, isolated):
 
 
 def test_finished_save_starts_new_story(engine, isolated):
-    core = StoryCore(api_key="test", engine=engine, save_path=isolated / "save.json")
+    core = StoryCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
     new_game(core)
     core.send("1")
     core.send("2")
-    assert StoryCore(api_key="test", engine=FakeEngine(), save_path=isolated / "save.json").start().phase == "ask_premise"
+    assert StoryCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json").start().phase == "ask_premise"
 
 
 def test_new_game_from_continue_prompt_reuses_premise(engine, isolated):
-    core = StoryCore(api_key="test", engine=engine, save_path=isolated / "save.json")
+    core = StoryCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
     core.start()
     core.send("自訂的前提")
-    reply = StoryCore(api_key="test", engine=FakeEngine(), save_path=isolated / "save.json")
+    reply = StoryCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json")
     reply.start()
     assert reply.send("2").premise_default == "自訂的前提"
 
@@ -234,7 +234,7 @@ def test_progress_tells_what_the_opening_is_doing(isolated):
     from conftest import beat, make_engine
 
     engine, gemini = make_engine(beat(narration="燈塔的門吱呀一聲打開。"))
-    core = StoryCore(api_key="test", engine=engine, save_path=isolated / "save.json")
+    core = StoryCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
     seen = []
     generate = gemini.generate_content
     gemini.models.generate_content = lambda **kw: (seen.append(core.progress), generate(**kw))[1]

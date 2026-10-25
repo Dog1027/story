@@ -39,7 +39,7 @@ What rarely changes goes first, so Gemini's automatic cache (which only matches 
 [Narration] {narration}
 
 ## turn_label
-Player
+Actions
 
 ## key_events
 <!-- Variable: {events} (one event per line) -->

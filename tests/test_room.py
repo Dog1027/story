@@ -1,15 +1,15 @@
-"""網頁版的大廳與房間：用 connect() 連進大廳、開房間或加入房間，模擬好幾位玩家一起玩。核心用真的 PartyCore，engine 用假的。"""
+"""網頁版的大廳與房間：用 connect() 連進大廳、開房間或加入房間，模擬好幾位玩家一起玩。核心用真的 StoryCore，engine 用假的。"""
 
 import asyncio
 
 import pytest
-from conftest import FakePartyEngine
+from conftest import FakeGroupEngine
 
 import story.shells.lobby as lobby_module
-from story.core import PartyCore, Reply
-from story.core.party import AWAY_ACTION
+from story.core import StoryCore, Reply
+from story.core.prompting import AWAY_ACTION
 from story.shells.lobby import Lobby
-from story.shells.room import Connection
+from story.shells.connection import Connection
 
 
 class Player:
@@ -45,9 +45,9 @@ class Player:
 
 def make_lobby(isolated, engine=None) -> Lobby:
     """每局的核心都用同一個假 engine（lobby.engine），方便檢查 AI 收到了什麼。"""
-    engine = engine or FakePartyEngine()
-    lobby = Lobby(lambda players, on_queue: PartyCore(
-        "test", players, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine))
+    engine = engine or FakeGroupEngine()
+    lobby = Lobby(lambda players, on_queue: StoryCore(
+        "test", players, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine))
     lobby.engine = engine
     return lobby
 
@@ -150,7 +150,7 @@ async def test_names_are_unique_on_the_whole_server_and_rooms_have_a_limit(lobby
     assert screen["choices"] == ["開一個新房間"]  # 滿了的房間不會列出來
 
 
-async def test_only_party_members_can_rejoin_after_start(lobby):
+async def test_only_team_members_can_rejoin_after_start(lobby):
     host, guest = await start_story(lobby)
     await guest.reply()
     stranger = await join(lobby, "路人")
@@ -195,7 +195,7 @@ async def test_host_leaving_passes_the_dialog_to_the_next_player(lobby):
     assert (await guest.reply()).phase == "ask_premise"  # 換小華當房主
 
 
-class TimedEngine(FakePartyEngine):
+class TimedEngine(FakeGroupEngine):
     def start(self, state):
         super().start(state)
         state.current_time_limit = 1
@@ -255,7 +255,7 @@ async def test_failed_timeout_round_restarts_the_countdown(isolated):
         await lobby.stop()
 
 
-class SlowOpeningEngine(FakePartyEngine):
+class SlowOpeningEngine(FakeGroupEngine):
     """開場分兩個階段、各花一點時間，模擬真的呼叫兩次 AI。"""
 
     def start(self, state):
@@ -281,7 +281,7 @@ async def test_everyone_sees_the_opening_progress(isolated):
 async def test_host_genre_choice_reaches_the_core(isolated):
     from story.core.genres import Genre
 
-    class GenreEngine(FakePartyEngine):
+    class GenreEngine(FakeGroupEngine):
         genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}
 
     lobby = make_lobby(isolated, GenreEngine())
@@ -320,7 +320,7 @@ async def test_one_player_can_start_alone(lobby):
     assert (await host.reply(lambda r: bool(r.narration))).choices == ["阿明往上爬", "阿明躲起來"]
 
 
-class StreamingPartyEngine(FakePartyEngine):
+class StreamingGroupEngine(FakeGroupEngine):
     """推進回合時慢慢寫劇情（更新 draft），像真的 AI 在串流。"""
 
     def act(self, state, actions):
@@ -334,7 +334,7 @@ class StreamingPartyEngine(FakePartyEngine):
 
 
 async def test_everyone_sees_the_narration_while_it_is_written(isolated):
-    lobby = make_lobby(isolated, StreamingPartyEngine())
+    lobby = make_lobby(isolated, StreamingGroupEngine())
     try:
         host, guest = await start_story(lobby)
         await host.reply()

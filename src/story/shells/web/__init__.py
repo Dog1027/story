@@ -20,7 +20,7 @@ from aiohttp import WSMsgType, web
 
 from story.core import MAX_PLAYERS, ui_text
 from story import settings
-from story.shells.client import Client
+from story.shells.room_client import RoomClient
 from story.shells.lobby import MAX_ROOMS, Lobby
 from story.shells.web.view import WebView
 
@@ -65,7 +65,7 @@ def make_app(lobby: Lobby) -> web.Application:
             return ws
         sessions += 1
         view = WebView(ws)
-        client = Client(view, lobby=lobby)
+        client = RoomClient(view, lobby)
         view.client = client
         writer = asyncio.create_task(view.write_loop())
         game = asyncio.create_task(client.run())

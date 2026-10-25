@@ -276,7 +276,7 @@ function renderStatus(status) {
   $("mode").textContent = status.mode;
   for (const c of status.characters) {
     const row = tag("div", "status-row" + (c.alive ? "" : " fallen"));
-    if (status.party) row.append(tag("span", "status-name", c.name));
+    if (status.named) row.append(tag("span", "status-name", c.name));
     const chips = tag("div", "chips");
     if (!c.alive) chips.append(tag("span", "t-muted", t("fallen")));
     else {

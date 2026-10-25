@@ -92,7 +92,7 @@ Type an action, or a number to pick a choice.
 No story has started yet.
 
 ## action_recorded
-<!-- Multiplayer: this character's action is recorded, still waiting for others. Variable: {name} -->
+<!-- With several characters: this character's action is recorded, still waiting for others. Variable: {name} -->
 Recorded {name}'s action.
 
 ## character_fallen
@@ -101,9 +101,9 @@ Your character has fallen.
 ## already_acted
 You've already acted this turn. Waiting for the others.
 
-## party_size
+## team_size
 <!-- Variables: {min}, {max} -->
-Multiplayer needs {min} to {max} players with different names.
+A team needs {min} to {max} players with different names.
 
 <!-- ---------- Errors ---------- -->
 
@@ -193,7 +193,7 @@ In timed mode the countdown is up to the shell, which sends /timeout when time r
 What the program remembers
 
 ## memory
-<!-- Variables: {bags} (one line per person, see memory_bag, memory_party_bag), {flags}, {events} (one line per event, see memory_event), {summary}, {turns} -->
+<!-- Variables: {bags} (one line per person, see memory_bag, memory_named_bag), {flags}, {events} (one line per event, see memory_event), {summary}, {turns} -->
 [Inventory]
 {bags}
 
@@ -209,11 +209,11 @@ What the program remembers
 [Story log] {turns} turns of full text
 
 ## memory_bag
-<!-- Single-player inventory. Variable: {items} -->
+<!-- The inventory when there is one character. Variable: {items} -->
   {items}
 
-## memory_party_bag
-<!-- One person's inventory in multiplayer. Variables: {name}, {items} -->
+## memory_named_bag
+<!-- One person's inventory when there are several characters. Variables: {name}, {items} -->
   {name}: {items}
 
 ## memory_event
@@ -244,15 +244,15 @@ You reached the end of the story.
 ## record_dead
 You fell on this journey.
 
-## record_party_alive
+## record_all_alive
 Everyone reached the end of the story together.
 
-## record_party_some_fallen
+## record_some_fallen
 <!-- Variable: {names} -->
 {names} fell on this journey; the others reached the end of the story.
 
-## record_party_all_fallen
-The whole party fell on this journey.
+## record_all_fallen
+The whole team fell on this journey.
 
 ## record_events
 <!-- Variable: {events} (one line per event, see record_event) -->
@@ -311,8 +311,8 @@ Turn {turn}{timed} | Condition: {conditions}
 <!-- The warning when in danger. Variables: {level}, {conditions} -->
 ⚠ {level}  {conditions}
 
-## text_party_line
-<!-- One character in multiplayer. Variables: {name}, {conditions} -->
+## text_character_line
+<!-- One character, when there are several. Variables: {name}, {conditions} -->
 {name} | {conditions}
 
 ## text_fallen
@@ -327,7 +327,7 @@ fallen
    
 
 ## text_named_changes
-<!-- One character's changes in multiplayer. Variables: {name}, {changes} -->
+<!-- One character's changes, when there are several. Variables: {name}, {changes} -->
 {name}  {changes}
 
 ## text_send_for_epilogue

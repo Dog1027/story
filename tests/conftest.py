@@ -9,7 +9,7 @@ import pytest
 os.environ["STORY_LANG"] = "zh-TW"
 
 from story.core.engine import Engine
-from story.core.models import Condition, GenrePick, PartyBeat, StoryArc, StoryBeat
+from story.core.models import Character, Condition, GameState, GenrePick, StoryArc, StoryBeat
 
 
 @pytest.fixture(autouse=True)
@@ -27,27 +27,37 @@ def isolated(tmp_path, monkeypatch):
 # ---------- 假的 AI 回覆 ----------
 
 
+HERO = "主角"  # 一個人玩的測試裡，那位角色的名字
+CHARACTER_FIELDS = {"choices", "conditions_changed", "conditions_removed", "items_gained", "items_lost"}
+
+
 def beat(**fields) -> StoryBeat:
-    """建立一個 StoryBeat，沒指定的欄位用「什麼都沒發生」的預設值。"""
-    base = dict(
-        narration="什麼事也沒發生。", choices=["繼續"], conditions_changed=[], conditions_removed=[],
-        time_passed="片刻", start_time_of_day="傍晚", time_limit=0, milestone_reached=False,
-        items_gained=[], items_lost=[], flags_set=[], key_event="", game_over=False,
-    )
-    return StoryBeat(**{**base, **fields})
+    """一個人玩的 AI 回覆：角色的變化（choices、conditions_changed……）直接寫在參數裡，沒指定的用「什麼都沒發生」的預設值。"""
+    update = upd(HERO, **{"choices": ["繼續"], **{k: fields.pop(k) for k in CHARACTER_FIELDS & fields.keys()}})
+    return pbeat(update, **{"narration": "什麼事也沒發生。", **fields})
 
 
-def pbeat(*updates, **fields) -> PartyBeat:
-    """多人模式的 AI 回覆。updates 用 upd() 建立。"""
+def pbeat(*updates, **fields) -> StoryBeat:
+    """好幾位角色的 AI 回覆。updates 用 upd() 建立。"""
     base = dict(
         narration="大家各自行動。", character_updates=list(updates), time_passed="片刻", start_time_of_day="傍晚",
         time_limit=0, milestone_reached=False, flags_set=[], key_event="", game_over=False,
     )
-    return PartyBeat(**{**base, **fields})
+    return StoryBeat(**{**base, **fields})
+
+
+def solo(**fields) -> GameState:
+    """一個人玩的遊戲狀態：一位叫 HERO 的角色。角色的欄位（conditions、inventory）直接寫在參數裡。"""
+    character = Character(name=HERO, **{k: fields.pop(k) for k in ("conditions", "inventory") if k in fields})
+    return GameState(**{"premise": "x", **fields, "characters": [character]})
+
+
+def hero(state: GameState) -> Character:
+    return state.characters[0]
 
 
 def upd(name: str, **fields) -> dict:
-    """多人模式中一位角色的變化。"""
+    """一位角色這回合的變化。"""
     base = dict(name=name, choices=["前進", "等待"], conditions_changed=[], conditions_removed=[], items_gained=[], items_lost=[])
     return {**base, **fields}
 
@@ -92,7 +102,7 @@ class FakeGemini:
     def generate_content(self, model, contents, config):
         self.prompts.append(contents)
         schema = getattr(config, "response_schema", None)
-        if schema in (StoryBeat, PartyBeat):
+        if schema is StoryBeat:
             return SimpleNamespace(parsed=self.beats.pop(0), candidates=[])
         if schema is StoryArc:
             return SimpleNamespace(parsed=self.arc)
@@ -107,18 +117,18 @@ class FakeGemini:
         return SimpleNamespace(text=self.summary)
 
 
-def make_engine(*beats, engine_class=Engine, genres=None, **kwargs) -> tuple[Engine, FakeGemini]:
-    """用假的 Gemini 建立真的 Engine（多人模式傳 engine_class=PartyEngine），所以 engine 的規則都會實際執行。
+def make_engine(*beats, genres=None, **kwargs) -> tuple[Engine, FakeGemini]:
+    """用假的 Gemini 建立真的 Engine，所以 engine 的規則都會實際執行。
     預設不載入題材包（結果才固定），要測題材時傳 genres。"""
     gemini = FakeGemini(beats, **kwargs)
-    return engine_class(client=gemini, genres=genres or {}), gemini
+    return Engine(client=gemini, genres=genres or {}), gemini
 
 
 # ---------- 給核心與外殼用的假 engine（不跑規則，直接改狀態） ----------
 
 
 class FakeEngine:
-    """取代 Engine，讓核心與外殼的測試可以精準控制每回合的結果。"""
+    """取代 Engine，讓核心與外殼的測試可以精準控制每回合的結果。一個人玩的燈塔故事。"""
 
     genres: dict = {}  # 子類別可以換成自己的題材包
     stage = draft = ""  # 跟 Engine 一樣：開場的進度、串流中的劇情
@@ -142,31 +152,33 @@ class FakeEngine:
         self.compacted += 1
 
     def start(self, state):
-        state.turn, state.minutes, state.inventory = 1, 18 * 60, ["鑰匙"]
+        me = state.characters[0]
+        state.turn, state.minutes, me.inventory = 1, 18 * 60, ["鑰匙"]
         state.current_narration = "你在燈塔醒來。"
-        state.current_choices = ["往上爬", "檢查鑰匙"]
+        me.choices = ["往上爬", "檢查鑰匙"]
         state.current_time_limit = 10 if state.timed_mode else 0
 
-    def act(self, state, action):
+    def act(self, state, actions):
         if self.fail_with:
             state.turn += 99  # 模擬改了一半就失敗
             raise self.fail_with
+        me, action = state.characters[0], next(iter(actions.values()))
         state.turn += 1
         state.current_narration = f"你選擇了「{action}」。"
         if state.turn == 2:
-            state.inventory.append("油燈")
-            state.conditions = [Condition(name="小腿挫傷", kind="身體", severity="中")]
-            state.current_choices = ["點亮油燈", "躲起來"]
+            me.inventory.append("油燈")
+            me.conditions = [Condition(name="小腿挫傷", kind="body", severity="moderate")]
+            me.choices = ["點亮油燈", "躲起來"]
             state.current_time_limit = 10 if state.timed_mode else 0
         else:
-            state.current_choices, state.current_time_limit, state.game_over = [], 0, True
+            me.choices, state.current_time_limit, state.game_over = [], 0, True
 
     def write_epilogue(self, state):
         state.ending_title, state.epilogue = "燈塔守望者", "多年以後，燈塔仍會亮起。"
 
 
-class FakePartyEngine:
-    """取代 Engine 的多人部分，精準控制每回合。"""
+class FakeGroupEngine:
+    """取代 Engine，精準控制每回合。阿明與小華兩個人的燈塔故事（一個人時就是阿明）。"""
 
     genres: dict = {}
     stage = draft = ""
@@ -187,7 +199,7 @@ class FakePartyEngine:
     def start(self, state):
         state.turn, state.minutes = 1, 600
         state.current_narration = "兩人在燈塔醒來。"
-        for c in state.party:
+        for c in state.characters:
             c.choices = [f"{c.name}往上爬", f"{c.name}躲起來"]
 
     def act(self, state, actions):
@@ -198,9 +210,9 @@ class FakePartyEngine:
         state.turn += 1
         state.current_narration = "；".join(f"{k}{v}" for k, v in actions.items())
         if state.turn == 2:
-            state.party[0].inventory.append("油燈")
+            state.characters[0].inventory.append("油燈")
         if state.turn >= 3:
-            state.party[0].alive, state.party[0].choices = False, []
+            state.characters[0].alive, state.characters[0].choices = False, []
         if state.turn >= 4:
             state.game_over = True
 

@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Literal
 
 from story.core import prompts
-from story.core.engine import DAY, PREMISE, SEVERITY_ORDER, body_level
-from story.core.models import GameState, word
+from story.core.models import Character, GameState, word
+from story.core.prompting import PREMISE
+from story.core.rules import DAY, SEVERITY_ORDER
 
 UI = prompts.ui("core")  # 給玩家看的文字（story/ui/語言/core.md）
 join = UI["list_sep"].join
@@ -38,16 +39,16 @@ def load(path: Path = SAVE_PATH) -> GameState | None:
 
 def memory_text(state: GameState) -> str:
     events = "\n".join(UI["memory_event"].format(event=e) for e in state.key_events) or UI["memory_no_events"]
-    if state.party:
-        bags = "\n".join(UI["memory_party_bag"].format(name=c.name, items=join(c.inventory) or UI["memory_empty_bag"]) for c in state.party)
+    if state.solo:
+        bags = UI["memory_bag"].format(items=join(state.characters[0].inventory) or UI["memory_empty_bag"])
     else:
-        bags = UI["memory_bag"].format(items=join(state.inventory) or UI["memory_empty_bag"])
+        bags = "\n".join(UI["memory_named_bag"].format(name=c.name, items=join(c.inventory) or UI["memory_empty_bag"]) for c in state.characters)
     return UI["memory"].format(
         bags=bags,
         flags=join(state.flags) or UI["memory_no_flags"],
         events=events,
         summary=state.summary or UI["memory_no_summary"],
-        turns=len(state.unsummarized) + len(state.recent),
+        turns=len(state.recent),
     )
 
 
@@ -55,16 +56,15 @@ def ending_record(state: GameState) -> str:
     """結局的旅程紀錄。遊戲內時間只在這裡揭曉。"""
     days = (state.minutes or 0) // DAY + 1
     record = UI["record"].format(turns=state.turn, days=days) + "\n"
-    if state.party:
-        fallen = [c.name for c in state.party if not c.alive]
-        if len(fallen) == len(state.party):
-            record += UI["record_party_all_fallen"]
-        elif fallen:
-            record += UI["record_party_some_fallen"].format(names=join(fallen))
-        else:
-            record += UI["record_party_alive"]
+    fallen = [c.name for c in state.characters if not c.alive]
+    if state.solo:
+        record += UI["record_dead"] if fallen else UI["record_alive"]
+    elif len(fallen) == len(state.characters):
+        record += UI["record_all_fallen"]
+    elif fallen:
+        record += UI["record_some_fallen"].format(names=join(fallen))
     else:
-        record += UI["record_dead"] if body_level(state) == "dead" else UI["record_alive"]
+        record += UI["record_all_alive"]
     if state.key_events:
         events = "\n".join(UI["record_event"].format(event=e) for e in state.key_events[-5:])
         record += "\n\n" + UI["record_events"].format(events=events)
@@ -81,14 +81,14 @@ Tone = Literal["light", "moderate", "severe", "good", "bad", "plain", "muted"]
 ChangeGroups = list[tuple[str, list[tuple[str, Tone]]]]  # [(標籤, [(文字, 語氣)])]
 
 
-def snapshot(state: GameState) -> Snapshot:
-    return {c.name: c.severity for c in state.conditions}, Counter(state.inventory)
+def snapshot(who: Character) -> Snapshot:
+    return {c.name: c.severity for c in who.conditions}, Counter(who.inventory)
 
 
-def change_groups(before: Snapshot, state: GameState) -> ChangeGroups:
-    """比較回合前後，列出狀態與背包的變化。只回傳有內容的分組。"""
+def change_groups(before: Snapshot, who: Character) -> ChangeGroups:
+    """比較一位角色回合前後的狀態與背包，列出變化。只回傳有內容的分組。"""
     old_conds, old_items = before
-    new_conds, new_items = snapshot(state)
+    new_conds, new_items = snapshot(who)
     rank, w = SEVERITY_ORDER.index, lambda v: word("severity", v)
     added = lambda n, v: UI["condition"].format(name=n, severity=w(v))  # noqa: E731
     moved = lambda n, v: UI["condition_change"].format(name=n, old=w(old_conds[n]), new=w(v))  # noqa: E731

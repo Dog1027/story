@@ -1,40 +1,36 @@
-"""多人模式：engine 的隊伍規則，以及 PartyCore 收齊每位角色的行動（send_as）才推進的流程。"""
+"""好幾位角色的隊伍：每位角色各自套用規則，以及 StoryCore 收齊每位角色的行動（send_as）才推進的流程。"""
 
 from pathlib import Path
 
 import pytest
-from conftest import ARC, FakePartyEngine, InvalidKeyError, cond, make_engine, pbeat, upd
+from conftest import ARC, FakeGroupEngine, InvalidKeyError, cond, make_engine, pbeat, upd
 
-from story.core import PartyCore
-from story.core.party import AWAY_ACTION, PartyEngine
-from story.core.engine import TIMEOUT_ACTION
+from story.core import StoryCore
+from story.core.prompting import AWAY_ACTION
+from story.core.prompting import TIMEOUT_ACTION
 from story.core.models import Character, GameState
 from story.core.records import ending_record, load
 
 NAMES = ["阿明", "小華"]
 
 
-def make_party_engine(*beats, **kwargs):
-    return make_engine(*beats, engine_class=PartyEngine, **kwargs)
-
-
-def party_state(**kwargs) -> GameState:
-    return GameState(premise="兩個人被困在燈塔。", party=[Character(name=n) for n in NAMES], **kwargs)
+def group_state(**kwargs) -> GameState:
+    return GameState(premise="兩個人被困在燈塔。", characters=[Character(name=n) for n in NAMES], **kwargs)
 
 
 def by_name(state):
-    return {c.name: c for c in state.party}
+    return {c.name: c for c in state.characters}
 
 
 # ---------- engine ----------
 
 
 def test_each_character_gets_own_conditions_items_and_choices():
-    engine, _ = make_party_engine(pbeat(
+    engine, _ = make_engine(pbeat(
         upd("阿明", choices=["往上爬", "點燈"], conditions_changed=[cond("擦傷", "輕")], items_gained=["油燈"]),
         upd("小華", choices=["躲起來"], conditions_changed=[cond("恐懼", "中", "精神")]),
     ))
-    state = party_state()
+    state = group_state()
     engine.start(state)
     a, b = by_name(state)["阿明"], by_name(state)["小華"]
     assert [(c.name, c.severity) for c in a.conditions] == [("擦傷", "light")] and a.inventory == ["油燈"]
@@ -43,11 +39,11 @@ def test_each_character_gets_own_conditions_items_and_choices():
 
 
 def test_shared_rules_apply_per_character():
-    engine, _ = make_party_engine(
+    engine, _ = make_engine(
         pbeat(upd("阿明", conditions_changed=[cond("刀傷", "重")]), upd("小華", items_gained=["繩子"])),
         pbeat(upd("阿明", conditions_changed=[cond("刀傷", "輕")]), upd("小華", items_lost=["寶劍", "繩子"])),
     )
-    state = party_state()
+    state = group_state()
     engine.start(state)
     engine.act(state, {"阿明": "包紮", "小華": "丟掉繩子"})
     assert [(c.name, c.severity) for c in by_name(state)["阿明"].conditions] == [("刀傷", "moderate")]  # 好轉最多一級
@@ -55,19 +51,19 @@ def test_shared_rules_apply_per_character():
 
 
 def test_unknown_names_are_ignored_and_missing_characters_get_no_choices():
-    engine, _ = make_party_engine(pbeat(upd("阿明"), upd("路人甲", items_gained=["寶劍"])))
-    state = party_state()
+    engine, _ = make_engine(pbeat(upd("阿明"), upd("路人甲", items_gained=["寶劍"])))
+    state = group_state()
     engine.start(state)
     assert by_name(state)["小華"].choices == []
-    assert all("寶劍" not in c.inventory for c in state.party)
+    assert all("寶劍" not in c.inventory for c in state.characters)
 
 
 def test_one_character_dies_others_continue():
-    engine, gemini = make_party_engine(
+    engine, gemini = make_engine(
         pbeat(upd("阿明"), upd("小華")),
         pbeat(upd("阿明", conditions_changed=[cond("失血", "重"), cond("骨折", "重")]), upd("小華")),
     )
-    state = party_state()
+    state = group_state()
     engine.start(state)
     engine.act(state, {"阿明": "硬闖", "小華": "等待"})
     assert not by_name(state)["阿明"].alive and by_name(state)["阿明"].choices == []
@@ -78,8 +74,8 @@ def test_one_character_dies_others_continue():
 
 def test_everyone_dead_ends_the_game():
     lethal = [cond("失血", "重"), cond("骨折", "重")]
-    engine, _ = make_party_engine(pbeat(upd("阿明"), upd("小華")), pbeat(upd("阿明", conditions_changed=lethal), upd("小華", conditions_changed=lethal)))
-    state = party_state()
+    engine, _ = make_engine(pbeat(upd("阿明"), upd("小華")), pbeat(upd("阿明", conditions_changed=lethal), upd("小華", conditions_changed=lethal)))
+    state = group_state()
     engine.start(state)
     engine.act(state, {"阿明": "a", "小華": "b"})
     assert state.game_over
@@ -87,59 +83,69 @@ def test_everyone_dead_ends_the_game():
 
 
 def test_dead_characters_get_no_updates():
-    engine, _ = make_party_engine(pbeat(upd("小華"), upd("阿明", items_gained=["寶劍"])))
-    state = party_state(turn=3, minutes=600)
-    state.party[0].alive = False
+    engine, _ = make_engine(pbeat(upd("小華"), upd("阿明", items_gained=["寶劍"])))
+    state = group_state(turn=3, minutes=600)
+    state.characters[0].alive = False
     engine.act(state, {"小華": "a"})
     assert by_name(state)["阿明"].inventory == []
 
 
-def test_party_early_ending_is_ignored():
-    """多人模式也一樣：AI 太早宣告結局時請它重寫，重寫後還是結局就忽略。"""
-    engine, gemini = make_party_engine(pbeat(upd("阿明"), upd("小華"), game_over=True), pbeat(upd("阿明"), upd("小華"), game_over=True))
-    state = party_state(turn=5, minutes=0, arc=ARC, act=1)
+def test_group_early_ending_is_ignored():
+    """好幾位角色也一樣：AI 太早宣告結局時請它重寫，重寫後還是結局就忽略。"""
+    engine, gemini = make_engine(pbeat(upd("阿明"), upd("小華"), game_over=True), pbeat(upd("阿明"), upd("小華"), game_over=True))
+    state = group_state(turn=5, minutes=0, arc=ARC, act=1)
     engine.act(state, {"阿明": "a", "小華": "b"})
     assert not state.game_over and len(gemini.prompts) == 2
 
 
-def test_party_prompt_contents():
-    engine, gemini = make_party_engine(pbeat(upd("阿明"), upd("小華")), pbeat(upd("阿明"), upd("小華")))
-    state = party_state()
+def test_group_prompt_contents():
+    engine, gemini = make_engine(pbeat(upd("阿明"), upd("小華")), pbeat(upd("阿明"), upd("小華")))
+    state = group_state()
     engine.start(state)
-    assert "主角（多人" in gemini.prompts[0] and "阿明、小華" in gemini.prompts[0]  # 大綱知道有兩位主角
+    assert "# 主角" in gemini.prompts[0] and "阿明、小華" in gemini.prompts[0]  # 大綱知道有兩位主角
     engine.act(state, {"阿明": "推開門", "小華": "點燈"})
     prompt = gemini.prompts[-1]
     assert "阿明：推開門\n小華：點燈" in prompt
     assert '"名字":"阿明"' in prompt and '"名字":"小華"' in prompt
-    assert "# 焦點" in prompt
+    assert "# 焦點" in prompt and "# 人稱" not in prompt  # 好幾位角色用名字，不用「你」
 
 
 def test_spotlight_rotates_between_alive_characters():
-    engine, _ = make_party_engine()
-    state = party_state(turn=1, minutes=0)
-    assert "「小華」" in engine.turn_prompt(state, {}).split("# 焦點")[1]
+    engine, _ = make_engine()
+    state = group_state(turn=1, minutes=0)
+    assert "「小華」" in engine.build.turn(state, {}).split("# 焦點")[1]
     state.turn = 2
-    assert "「阿明」" in engine.turn_prompt(state, {}).split("# 焦點")[1]
+    assert "「阿明」" in engine.build.turn(state, {}).split("# 焦點")[1]
 
 
-def test_party_epilogue_uses_party_prompt():
-    engine, gemini = make_party_engine()
-    state = party_state(turn=10, minutes=600, arc=ARC, act=3, game_over=True)
+def test_epilogue_looks_back_on_every_character():
+    engine, gemini = make_engine()
+    state = group_state(turn=10, minutes=600, arc=ARC, act=3, game_over=True)
     engine.write_epilogue(state)
-    assert "回顧每位角色" in gemini.prompts[-1] and "# 隊伍" in gemini.prompts[-1]
+    assert "回顧每位角色" in gemini.prompts[-1] and '"名字":"小華"' in gemini.prompts[-1]
 
 
-# ---------- PartyCore ----------
+def test_one_character_gets_no_focus_and_wrong_names_still_count():
+    """只有一位角色：不用「焦點」、提醒 AI 用「你」；AI 把名字寫錯了，變化也算在他身上。"""
+    engine, gemini = make_engine(pbeat(upd("別的名字", items_gained=["油燈"], choices=["點燈"])))
+    state = GameState(premise="一個人在燈塔。", characters=[Character(name="阿明")])
+    engine.start(state)
+    assert "# 焦點" not in gemini.prompts[-1]
+    assert "# 人稱" in gemini.prompts[-1] and "「阿明」" in gemini.prompts[-1]
+    assert state.characters[0].inventory == ["油燈"] and state.characters[0].choices == ["點燈"]
+
+
+# ---------- StoryCore：好幾位角色 ----------
 
 
 @pytest.fixture
 def engine():
-    return FakePartyEngine()
+    return FakeGroupEngine()
 
 
 @pytest.fixture
 def core(engine, isolated):
-    return PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine)
+    return StoryCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
 
 
 def act(core, text: str):
@@ -148,10 +154,10 @@ def act(core, text: str):
 
 
 def test_needs_one_to_four_unique_players():
-    PartyCore("test", ["阿明"], save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakePartyEngine())  # 一個人也能開始
+    StoryCore("test", ["阿明"], save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakeGroupEngine())  # 一個人也能開始
     for players in ([], ["阿明", "阿明"], ["a", "b", "c", "d", "e"]):
         with pytest.raises(ValueError):
-            PartyCore("test", players, save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakePartyEngine())
+            StoryCore("test", players, save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakeGroupEngine())
 
 
 def test_everyone_acts_before_the_round_resolves(core, engine):
@@ -226,7 +232,7 @@ def test_failed_timeout_round_does_not_get_stuck(core, engine):
     assert core.waiting() == ["阿明", "小華"]
 
 
-def test_party_ending(core):
+def test_group_ending(core):
     core.start()
     core.send("")
     for _ in range(2):
@@ -239,28 +245,28 @@ def test_party_ending(core):
     assert "阿明 在這趟旅程中倒下了" in reply.ending.record
 
 
-def test_resume_party_save(engine, isolated):
-    first = PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine)
+def test_resume_team_save(engine, isolated):
+    first = StoryCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
     first.start()
     first.send("")
     act(first, "1")
     act(first, "1")
-    assert load(isolated / "party.json").turn == 2
+    assert load(isolated / "team.json").turn == 2
 
-    same = PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=FakePartyEngine())
+    same = StoryCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
     assert same.start().phase == "ask_continue"
     reply = same.send("1")
     assert reply.resumed and same.view("阿明", reply).choices == ["阿明往上爬", "阿明躲起來"]
 
-    others = PartyCore("test", ["阿明", "小美"], save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=FakePartyEngine())
+    others = StoryCore("test", ["阿明", "小美"], save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
     assert others.start().phase == "ask_premise"  # 玩家不同就開新局
 
 
 def test_resume_ignores_player_order(engine, isolated):
-    first = PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine)
+    first = StoryCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
     first.start()
     first.send("")
-    reversed_order = PartyCore("test", NAMES[::-1], save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=FakePartyEngine())
+    reversed_order = StoryCore("test", NAMES[::-1], save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
     assert reversed_order.start().phase == "ask_continue"  # 房間裡加入的順序不同也能接續
 
 
@@ -326,14 +332,14 @@ def test_reply_survives_json_round_trip(core):
     assert back.narration == reply.narration and back.choices == reply.choices
 
 
-def test_party_core_with_real_engine(isolated):
-    """PartyCore 接上真的 Engine（只有 Gemini 是假的），從開場一路玩到有人倒下。"""
+def test_group_core_with_real_engine(isolated):
+    """StoryCore 接上真的 Engine（只有 Gemini 是假的），從開場一路玩到有人倒下。"""
     lethal = [cond("失血", "重"), cond("骨折", "重")]
-    engine, gemini = make_party_engine(
+    engine, gemini = make_engine(
         pbeat(upd("阿明", choices=["推門", "點燈"]), upd("小華", choices=["守門", "搜索"]), narration="兩人醒來。"),
         pbeat(upd("阿明", conditions_changed=lethal), upd("小華", items_gained=["鑰匙"], choices=["逃走"]), narration="惡犬撲來。"),
     )
-    core = PartyCore("test", NAMES, save_path=isolated / "party.json", log_path=isolated / "party.log.jsonl", engine=engine)
+    core = StoryCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
     core.start()
     reply = core.send("")
     assert reply.narration == "兩人醒來。" and core.view("阿明", reply).choices == ["推門", "點燈"]
@@ -344,4 +350,4 @@ def test_party_core_with_real_engine(isolated):
     assert core.waiting() == ["小華"] and reply.choices == ["逃走"]  # 阿明倒下了，只剩小華
     assert [(s.name, s.alive) for s in reply.characters] == [("阿明", False), ("小華", True)]
     assert ("小華", [("獲得", [("鑰匙", "plain")])]) in reply.changes
-    assert load(isolated / "party.json").party[0].alive is False
+    assert load(isolated / "team.json").characters[0].alive is False

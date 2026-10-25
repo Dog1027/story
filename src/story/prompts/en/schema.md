@@ -15,48 +15,7 @@ body = wounds, exhaustion, poison, illness; mind = fear, panic, despair, anger
 ## ConditionChange.severity
 light = doesn't hinder action; moderate = clearly hinders action; severe = life-threatening
 
-<!-- ---------- StoryBeat: the single-player response each turn ---------- -->
-
-## StoryBeat.game_over
-Decide before writing: does the story end this turn (death, reaching an ending, etc.)
-
-## StoryBeat.narration
-This turn's narration, in the second person, 100-200 words
-
-## StoryBeat.choices
-2-4 action choices for the player, one sentence each
-
-## StoryBeat.conditions_changed
-New conditions, or existing conditions whose severity changed
-
-## StoryBeat.conditions_removed
-Names of existing conditions that healed or faded
-
-## StoryBeat.time_passed
-How much time this turn took: instant = dodging a blow; moment = a conversation, a search; a while = travelling, about an hour; overnight = sleeping
-
-## StoryBeat.start_time_of_day
-The current time of day; only used for the opening or when the time is still "unknown"
-
-## StoryBeat.time_limit
-In timed mode, the seconds to react when things are urgent; otherwise 0
-
-## StoryBeat.milestone_reached
-Whether this turn reached the current act's milestone in "Story progress"
-
-## StoryBeat.items_gained
-Names of items the player gained this turn
-
-## StoryBeat.items_lost
-Names of items the player lost or used up this turn
-
-## StoryBeat.flags_set
-Newly established long-term facts, e.g. "made an enemy of the gatekeeper"; usually empty
-
-## StoryBeat.key_event
-A major event that changes the course of the story, one sentence; an empty string on most turns
-
-<!-- ---------- CharacterUpdate: multiplayer, one character's changes this turn ---------- -->
+<!-- ---------- CharacterUpdate: one character's changes this turn ---------- -->
 
 ## CharacterUpdate.name
 The character's name, exactly as in "Party"
@@ -76,33 +35,33 @@ Names of items this character gained this turn
 ## CharacterUpdate.items_lost
 Names of items this character lost or used up this turn
 
-<!-- ---------- PartyBeat: the multiplayer response each turn ---------- -->
+<!-- ---------- StoryBeat: the response each turn ---------- -->
 
-## PartyBeat.game_over
+## StoryBeat.game_over
 Decide before writing: does the story reach its natural ending this turn
 
-## PartyBeat.narration
-This turn's narration, including the result of every character's action, 130-260 words; refer to characters by name
+## StoryBeat.narration
+This turn's narration, including the result of every character's action, 100-200 words (up to 260 with several characters); in the second person (\"you\") when there is only one character, by name when there are several
 
-## PartyBeat.character_updates
+## StoryBeat.character_updates
 One entry for each character in the party, in the same order as "Party"
 
-## PartyBeat.time_passed
+## StoryBeat.time_passed
 How much time this turn took: instant = dodging a blow; moment = a conversation, a search; a while = travelling, about an hour; overnight = sleeping
 
-## PartyBeat.start_time_of_day
+## StoryBeat.start_time_of_day
 The current time of day; only used for the opening or when the time is still "unknown"
 
-## PartyBeat.time_limit
+## StoryBeat.time_limit
 In timed mode, the seconds to react when things are urgent; otherwise 0
 
-## PartyBeat.milestone_reached
+## StoryBeat.milestone_reached
 Whether this turn reached the current act's milestone in "Story progress"
 
-## PartyBeat.flags_set
+## StoryBeat.flags_set
 Newly established long-term facts, e.g. "made an enemy of the gatekeeper"; usually empty
 
-## PartyBeat.key_event
+## StoryBeat.key_event
 A major event that changes the course of the story, one sentence; an empty string on most turns
 
 <!-- ---------- Act: one act of the outline ---------- -->

@@ -2,8 +2,9 @@
 
 分工：
 - 核心（story.core）：遊戲規則、AI、存檔。送文字進去、拿 Reply 出來，沒有時間感，也不知道畫面的存在。
-- 這一層（Client）：「什麼時候顯示什麼」。開局要問什麼、連本機核心還是網頁版的大廳與房間、
-  依回覆的階段跳出哪個對話框、打完字才顯示選項、大家看完才倒數、結局一段一段出現……
+- 這一層（Client）：「什麼時候顯示什麼」。依回覆的階段跳出哪個對話框、打完字才顯示選項、
+  大家看完才倒數、結局一段一段出現……終端機版用 LocalClient（自己的核心），網頁版用 room_client.py 的
+  RoomClient（連進大廳與房間），兩者只差在把輸入交給誰、回覆從哪裡來。
 - 介面（View 的實作，例如 Textual 的 StoryApp）：只負責「長什麼樣子」，把 View 的每個方法畫出來，
   再把玩家的輸入交給 Client（act、command、timeout）。
 
@@ -14,15 +15,13 @@
 import asyncio
 from dataclasses import dataclass, field
 
-from story.core import ChangeGroups, Ending, Reply, Status, StoryCore, pick_choice, ui_text, word
+from story.core import ChangeGroups, Ending, Reply, Status, StoryCore, ui_text, word
 from story import settings
-from story.shells.lobby import Lobby
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
-from story.shells.room import Connection
 
 # 介面的對話框也會用到的規則（名字怎樣才能用、key 存在哪裡），一律從這裡取用
 CONFIG_PATH = settings.CONFIG_PATH
-__all__ = ["CONFIG_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "StatusLine", "View", "status_line"]
+__all__ = ["CONFIG_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "LocalClient", "StatusLine", "View", "status_line"]
 
 UI = ui_text("shells")  # 外殼共用的文字（story/ui/語言/shells.md）
 BUSY_DELAY = 0.15  # 核心超過這麼久還沒回覆才顯示「故事生成中」，很快的回覆就不閃一下
@@ -34,7 +33,7 @@ DRAFT_POLL = 0.1  # 等核心時每隔幾秒看一次 AI 寫到哪裡（串流�
 
 @dataclass
 class CharacterLine:
-    """狀態列上一位角色（單人模式只有一位，名字是空的）。"""
+    """狀態列上一位角色（只有一位角色時不顯示名字，見 StatusLine.named）。"""
 
     name: str
     alive: bool
@@ -49,7 +48,7 @@ class StatusLine:
     mode: str  # 「限時模式」或「一般模式」，跟回合寫在同一排
     timed: bool
     characters: list[CharacterLine] = field(default_factory=list)
-    party: bool = False  # 多人模式：每位角色一列
+    named: bool = False  # 好幾位角色：每位角色一列，列出名字
 
 
 def character_line(status: Status) -> CharacterLine:
@@ -60,11 +59,11 @@ def character_line(status: Status) -> CharacterLine:
 
 
 def status_line(turn: int, characters: list[Status], timed: bool) -> StatusLine | None:
-    """單人模式只有主角一位、沒有名字；多人模式每位角色一列。"""
+    """只有一位角色時不列名字；好幾位時每位角色一列。"""
     if not characters:
         return None
     mode = UI["mode_timed" if timed else "mode_normal"]
-    return StatusLine(turn, mode, timed, [character_line(s) for s in characters], party=bool(characters[0].name))
+    return StatusLine(turn, mode, timed, [character_line(s) for s in characters], named=len(characters) > 1)
 
 
 # ---------- 介面要實作的方法 ----------
@@ -104,7 +103,7 @@ class View:
         raise NotImplementedError
 
     def show_changes(self, groups: ChangeGroups, name: str = "") -> None:
-        """回合間的變化（新增、痊癒、獲得……）；多人模式有角色名字。"""
+        """回合間的變化（新增、痊癒、獲得……）；好幾位角色時有角色名字，一個人玩是空的。"""
         raise NotImplementedError
 
     def show_ending_title(self, title: str) -> None:
@@ -184,48 +183,68 @@ class View:
 
 
 class Client:
-    def __init__(self, view: View, lobby: Lobby | None = None):
+    """跟真人玩家互動的流程，終端機版（LocalClient）與網頁版（RoomClient，room_client.py）共用：
+    一回合怎麼出現、結局怎麼一段一段出現、狀態列、輸入框的提示。兩邊不一樣的地方（把輸入交給誰、回覆從哪裡來）是下面的掛勾。"""
+
+    def __init__(self, view: View):
         self.view = view
-        self.lobby = lobby  # 網頁版：伺服器的大廳；這時不建立自己的核心，遊戲在大廳的房間裡
-        self.core: StoryCore | None = None  # 終端機版、純文字版：自己的核心
-        self.room: Connection | None = None  # 網頁版：和大廳（與房間）的連線
-        self.my_name = ""  # 網頁版：自己的名字
-        self.actor = ""  # 網頁版：自己這回合還沒行動時是自己的名字，行動完是空的
-        self.waiting: list[str] = []  # 網頁版：這回合還沒行動的人
+        self.actor = ""  # 自己這回合還沒行動時是自己的名字，行動完是空的
         self.choices: list[str] = []
         self.draft = ""  # 已經交給介面、還在串流中的劇情
         self.busy = False
-        self.progress = ""  # 網頁版：房間推來的進度（終端機版直接讀核心的 progress）
         self.timed = False
         self.shown: tuple[int, list[Status]] = (0, [])  # 狀態列目前的內容：(回合, 每位角色)，模式改變時重畫
-        self.inbox: asyncio.Queue[dict] = asyncio.Queue()  # 房間推來、要依序處理的訊息
-        self.premise_answer: asyncio.Future | None = None  # 網頁版：前提對話框在等房間回覆
+
+    # ---------- 兩邊各自的掛勾 ----------
 
     @property
     def connected(self) -> bool:
-        return self.core is not None or self.room is not None
+        raise NotImplementedError
+
+    async def run(self) -> None:
+        raise NotImplementedError
+
+    async def deliver(self, text: str) -> None:
+        """把一句輸入交給核心或房間；回覆由各自的方式交給 handle()。"""
+        raise NotImplementedError
+
+    async def deliver_quietly(self, text: str) -> None:
+        """前提對話框選好的模式與題材：交給核心或房間，回覆不需要顯示。"""
+        raise NotImplementedError
+
+    def premise_asker(self):
+        """前提對話框用的 ask(*指令)：在背景執行緒呼叫，送出指令並回傳最後一個回覆（換題材、換一個、幫我想）。"""
+        raise NotImplementedError
+
+    def echo_for(self, text: str) -> str:
+        """送出前先顯示的行動。"""
+        raise NotImplementedError
+
+    def progress(self) -> str:
+        """等待時目前在做什麼（例如「規劃故事大綱」）。"""
+        raise NotImplementedError
+
+    async def timeout(self) -> None:
+        """介面的倒數到了。"""
+
+    async def narration_read(self, reply: Reply) -> None:
+        """限時的一回合顯示完了：開始倒數（或告訴房間看完了）。"""
+
+    async def story_over(self) -> None:
+        """故事剛結束：接著寫尾聲。"""
+
+    async def play_again(self) -> None:
+        """玩家在結局選了再玩一次。"""
+
+    def close(self) -> None:
+        pass
+
+    # ---------- 共用的流程 ----------
 
     @property
     def ready(self) -> bool:
         """可以接受玩家的輸入。"""
         return self.connected and not self.busy
-
-    def close(self) -> None:
-        if self.room:
-            self.room.close()
-
-    # ---------- 啟動：取得 key，建立核心 ----------
-
-    async def run(self) -> None:
-        if self.lobby:
-            await self.join_lobby()
-            return
-        key = settings.api_key() or await self.ask_api_key(UI["ask_missing_key"])
-        if key is None:
-            self.view.exit()
-            return
-        self.core = StoryCore(api_key=key)
-        await self.handle(self.core.start())
 
     async def ask_name(self, claim, hint: str = "") -> str | None:
         """問名字，不能用時帶著原因再問。claim(名字) 負責佔用這個名字：成功回傳空字串，否則是不能用的原因。"""
@@ -242,17 +261,6 @@ class Client:
             if not (error := await claim(name)):
                 return name
 
-    async def ask_api_key(self, reason: str) -> str | None:
-        result = await self.view.ask_api_key(reason)
-        if result is None:
-            return None
-        key, keep = result
-        if keep:
-            settings.put("api_key", key)
-        return key
-
-    # ---------- 玩家的輸入 ----------
-
     async def act(self, text: str) -> None:
         """玩家的行動：選項編號或自由輸入。先在故事區顯示行動，再送出。"""
         await self.send(text, echo=self.echo_for(text))
@@ -261,61 +269,15 @@ class Client:
         """指令（/state、/restart 等），不顯示在故事區。"""
         await self.send(text)
 
-    async def timeout(self) -> None:
-        """介面的倒數到了。網頁版由房間統一計時，不用送。"""
-        if self.room is None and self.core is not None:
-            await self.send("/timeout", echo=self.core.action_for("/timeout") or "")
-
-    def echo_for(self, text: str) -> str:
-        """送出前先顯示的行動。"""
-        if self.room:  # 網頁版沒有自己的核心：還沒行動時，照畫面上的選項對應
-            if not self.actor or text.startswith("/"):
-                return ""
-            return pick_choice(text, self.choices) or text
-        return self.core.action_for(text) or ""
-
-    # ---------- 和核心對話 ----------
-
     async def send(self, text: str, echo: str = "") -> None:
-        """送一句文字給核心並顯示回覆。echo 是要先顯示在故事區的玩家行動。"""
+        """送一句文字並顯示回覆。echo 是要先顯示在故事區的玩家行動。"""
         if self.busy:
             return
         self.view.stop_timer()
         if echo:
             self.set_choices([])
             self.view.show_action(echo)
-        if self.room:  # 網頁版：回覆會由房間推回來
-            await self.room.send({"type": "send", "text": text})
-            return
-        reply = await self.ask_core(text)
-        if reply is not None:
-            await self.handle(reply)
-
-    async def ask_core(self, text: str) -> Reply | None:
-        """在背景執行緒呼叫核心；超過一下子才顯示等待提示。key 無效時請玩家換一個再重送。"""
-        self.set_busy(True)
-        try:
-            while True:
-                task = asyncio.create_task(asyncio.to_thread(self.core.send, text))
-                waited = 0.0
-                while not task.done():
-                    await asyncio.wait({task}, timeout=DRAFT_POLL)
-                    waited += DRAFT_POLL
-                    self.follow_draft(self.core.draft)
-                    if waited >= BUSY_DELAY and not self.draft:
-                        self.view.show_busy()
-                reply = await task
-                if reply.error != "api_key":
-                    return reply
-                settings.put("api_key", None)
-                self.set_busy(False)
-                key = await self.ask_api_key(UI["ask_new_key"])
-                if key is None:
-                    return reply
-                self.core.set_api_key(key)
-                self.set_busy(True)
-        finally:
-            self.set_busy(False)
+        await self.deliver(text)
 
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
@@ -347,7 +309,7 @@ class Client:
 
     def busy_text(self) -> str:
         """等待提示的文字，例如「故事生成中：規劃故事大綱…」。"""
-        progress = self.progress if self.room else (self.core.progress if self.core else "")
+        progress = self.progress()
         return UI["busy"].format(progress=UI["busy_progress"].format(progress=progress) if progress else "")
 
     async def handle(self, reply: Reply) -> None:
@@ -378,34 +340,20 @@ class Client:
             await self.send("1" if sure else "2")
         elif reply.phase in ("playing", "ending"):
             await self.show_turn(reply)
-            if reply.phase == "ending" and not self.room:  # 網頁版由房間接著寫尾聲
-                await self.send("")  # 讓核心接著寫尾聲
+            if reply.phase == "ending":
+                await self.story_over()
         elif reply.phase == "ended":
             await self.show_ending(reply.ending)
 
     async def ask_premise(self, reply: Reply) -> None:
         if reply.error == "api":
             return  # 開場生成失敗：錯誤已經提示了，留在原處，玩家可以用 /restart 再試
-        loop = asyncio.get_running_loop()
-
-        def ask(*commands: str) -> Reply:
-            """對話框在背景執行緒呼叫：把指令送給核心，回傳最後一個回覆（換題材、換一個、幫我想）。"""
-            if self.room:  # 請房間代問後等結果
-                return asyncio.run_coroutine_threadsafe(self.ask_room(list(commands)), loop).result()
-            for command in commands:
-                answer = self.core.send(command)
-            return answer
-
-        answer = await self.view.ask_premise(reply, ask)
+        answer = await self.view.ask_premise(reply, self.premise_asker())
         if answer is None:
             return
         premise, want_timed, genre = answer
-        commands = [f"/timed {'on' if want_timed else 'off'}"] * (want_timed != reply.timed) + [f"/genre {genre}"]
-        for command in commands:  # 模式與題材的選擇送給核心（回覆不需要顯示）
-            if self.room:
-                await self.room.send({"type": "send", "text": command})
-            else:
-                await asyncio.to_thread(self.core.send, command)
+        for command in [f"/timed {'on' if want_timed else 'off'}"] * (want_timed != reply.timed) + [f"/genre {genre}"]:
+            await self.deliver_quietly(command)
         self.clear_story(premise)
         await self.send(premise)
 
@@ -422,16 +370,13 @@ class Client:
                 self.view.show_note(reply.notice)
             await self.narrate(reply.narration)
             for name, groups in reply.changes:
-                self.view.show_changes(groups, name)
+                self.view.show_changes(groups, name if len(reply.characters) > 1 else "")  # 一個人玩不用寫名字
             self.view.show_choices(self.choices)
         else:
             self.set_choices(reply.choices)
         self.set_status(reply.turn, reply.characters)
         if reply.narration and reply.time_limit:
-            if self.room:  # 網頁版：告訴房間看完了，大家都看完房間才開始倒數
-                await self.room.send({"type": "ready"})
-            else:
-                self.view.start_timer(reply.time_limit)
+            await self.narration_read(reply)
 
     async def show_ending(self, ending: Ending) -> None:
         """一段一段來：先讀完最後的劇情，按 Enter 才出現尾聲，再按一次才看總結。"""
@@ -444,8 +389,8 @@ class Client:
         await self.view.wait_enter(UI["wait_ending"])
         if not await self.view.ask_ending(ending.title, ending.record):
             self.view.exit()
-        elif not self.room:  # 網頁版：房間會自動回到大廳
-            await self.send("1")
+        else:
+            await self.play_again()
 
     def clear_story(self, premise: str = "") -> None:
         self.choices = []
@@ -463,93 +408,94 @@ class Client:
         self.view.set_status(status_line(turn, characters, self.timed))
 
     def refresh_hint(self) -> None:
-        """輸入框的提示：網頁版自己行動完之後，改成提示還在等誰。"""
-        if self.room and not self.actor and self.waiting:
-            self.view.set_hint(UI["hint_waiting"].format(names=UI["list_sep"].join(self.waiting)))
-        else:
-            self.view.set_hint(UI["hint_input"])
+        self.view.set_hint(UI["hint_input"])
 
-    # ---------- 網頁版：和大廳、房間對話 ----------
 
-    async def join_lobby(self) -> None:
-        self.room = self.lobby.connect()
-        name = await self.ask_name(self.claim_seat)
-        if name is None:
+class LocalClient(Client):
+    """終端機版：自己有一個核心（一個人玩，一人隊伍），在背景執行緒呼叫它。"""
+
+    def __init__(self, view: View):
+        super().__init__(view)
+        self.core: StoryCore | None = None
+
+    @property
+    def connected(self) -> bool:
+        return self.core is not None
+
+    async def run(self) -> None:
+        key = settings.api_key() or await self.ask_api_key(UI["ask_missing_key"])
+        if key is None:
             self.view.exit()
             return
-        self.my_name = name
-        inbox = asyncio.create_task(self.process_inbox())
+        self.core = StoryCore(key, [settings.get("name") or UI["default_name"]])
+        await self.handle(self.core.start())
+
+    async def ask_api_key(self, reason: str) -> str | None:
+        result = await self.view.ask_api_key(reason)
+        if result is None:
+            return None
+        key, keep = result
+        if keep:
+            settings.put("api_key", key)
+        return key
+
+    async def deliver(self, text: str) -> None:
+        reply = await self.ask_core(text)
+        if reply is not None:
+            await self.handle(reply)
+
+    async def deliver_quietly(self, text: str) -> None:
+        await asyncio.to_thread(self.core.send, text)
+
+    def premise_asker(self):
+        def ask(*commands: str) -> Reply:
+            for command in commands:
+                answer = self.core.send(command)
+            return answer
+
+        return ask
+
+    def echo_for(self, text: str) -> str:
+        return self.core.action_for(text) or ""
+
+    def progress(self) -> str:
+        return self.core.progress if self.core else ""
+
+    async def timeout(self) -> None:
+        if self.core is not None:
+            await self.send("/timeout", echo=self.core.action_for("/timeout") or "")
+
+    async def narration_read(self, reply: Reply) -> None:
+        self.view.start_timer(reply.time_limit)
+
+    async def story_over(self) -> None:
+        await self.send("")  # 讓核心接著寫尾聲
+
+    async def play_again(self) -> None:
+        await self.send("1")
+
+    async def ask_core(self, text: str) -> Reply | None:
+        """在背景執行緒呼叫核心；超過一下子才顯示等待提示。key 無效時請玩家換一個再重送。"""
+        self.set_busy(True)
         try:
-            await self.listen()
+            while True:
+                task = asyncio.create_task(asyncio.to_thread(self.core.send, text))
+                waited = 0.0
+                while not task.done():
+                    await asyncio.wait({task}, timeout=DRAFT_POLL)
+                    waited += DRAFT_POLL
+                    self.follow_draft(self.core.draft)
+                    if waited >= BUSY_DELAY and not self.draft:
+                        self.view.show_busy()
+                reply = await task
+                if reply.error != "api_key":
+                    return reply
+                settings.put("api_key", None)
+                self.set_busy(False)
+                key = await self.ask_api_key(UI["ask_new_key"])
+                if key is None:
+                    return reply
+                self.core.set_api_key(key)
+                self.set_busy(True)
         finally:
-            inbox.cancel()
-
-    async def claim_seat(self, name: str) -> str:
-        await self.room.send({"type": "join", "name": name})
-        answer = await self.room.receive()
-        if answer is None:
-            return UI["room_lost"]
-        return answer.get("reason", "") if answer["type"] == "rejected" else ""
-
-    async def listen(self) -> None:
-        """收房間推來的訊息。簡單的直接處理；回覆、大廳等要等前一個顯示完的，排進 inbox 依序處理。"""
-        while (message := await self.room.receive()) is not None:
-            kind = message["type"]
-            if kind == "busy":
-                self.progress = message.get("progress", "")
-                self.set_busy(message["on"])
-                if message["on"]:
-                    self.view.show_busy()
-            elif kind == "draft":  # 房間轉來的 AI 正在寫的劇情
-                self.follow_draft(message["text"])
-            elif kind == "timer":
-                self.view.start_timer(message["seconds"])
-            elif kind == "waiting":
-                self.update_waiting(message["names"])
-            elif kind == "notice":
-                self.view.notify(message["text"])
-            elif kind == "new_story":  # 立刻清空，不排隊：緊接著的「故事生成中」才不會被一起清掉
-                self.clear_story(message.get("premise", ""))
-            elif kind == "premise" and self.premise_answer:
-                self.premise_answer.set_result(Reply.from_dict(message["reply"]))
-            else:
-                self.inbox.put_nowait(message)
-        self.set_busy(False)
-        self.view.notify(UI["room_disconnected"], error=True, lasting=True)
-
-    def update_waiting(self, names: list[str]) -> None:
-        """這回合還沒行動的人變了：有人行動時跳出通知，並更新提示（不重建選項，畫面才不會閃）。"""
-        if set(names) < set(self.waiting):  # 名單變短：有人剛行動（新回合時名單會變回全部的人）
-            acted = [n for n in self.waiting if n not in names and n != self.my_name]
-            if acted:
-                self.view.notify(UI["acted"].format(names=UI["list_sep"].join(acted)))
-        self.waiting = names
-        self.refresh_hint()
-
-    async def process_inbox(self) -> None:
-        while True:
-            message = await self.inbox.get()
-            kind = message["type"]
-            if kind == "reply":
-                await self.handle(Reply.from_dict(message["reply"]))
-            elif kind == "lobby":
-                self.show_lobby(message)
-
-    async def ask_room(self, commands: list[str]) -> Reply:
-        """依序送出指令，只有最後一個要求房間回覆（answer），收到的一定是這一個的結果。"""
-        self.premise_answer = asyncio.get_running_loop().create_future()
-        for i, command in enumerate(commands):
-            await self.room.send({"type": "send", "text": command, "answer": i == len(commands) - 1})
-        try:
-            return await self.premise_answer
-        finally:
-            self.premise_answer = None
-
-    def show_lobby(self, screen: dict) -> None:
-        """大廳或房間的等人畫面（內容由大廳、房間決定）。剛進來或剛離開房間時先清空畫面。"""
-        if screen.get("clear"):
-            self.clear_story()
-        self.view.show_lobby(screen["title"], screen["members"])
-        self.actor, self.waiting = "", []
-        self.set_choices(screen["choices"])
-        self.view.set_hint(screen["hint"])
+            self.set_busy(False)

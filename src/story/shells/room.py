@@ -2,12 +2,12 @@
 
 房間由大廳（lobby.py）建立與關閉；玩家的連線、名字也由大廳管理，大廳把進到這個房間的人交給 add()，
 離開或斷線時呼叫 remove()，房間裡的訊息交給 handle()。
-房間持有一份 PartyCore：把每位玩家的輸入交給核心，再把回覆送給每位玩家（各自看到自己的選項）。
+房間持有一份 StoryCore：把每位玩家的輸入交給核心，再把回覆送給每位玩家（各自看到自己的選項）。
 
 流程：等人（房主按開始）→ 房主回答「繼續存檔／故事前提」→ 遊戲中（每個人各自行動，到齊才推進）
 → 結局 → 回到等人的畫面。房主是第一位進來的人；房主離開時交給下一位在線的人。
 
-訊息是可以轉成 JSON 的 dict，經過 Connection 傳送。
+訊息是可以轉成 JSON 的 dict，經過 Connection（connection.py）傳送。
 玩家 → 房間
   {"type": "send", "text": "1"}           玩家的輸入：行動、指令，或房主回答對話框
                                           房主在前提對話框送的指令可以加 "answer": true，要求回傳結果
@@ -25,52 +25,17 @@
 """
 
 import asyncio
-import json
 from collections.abc import Callable
 from dataclasses import replace
 
-from story.core import MAX_PLAYERS, PartyCore, Reply, pick_choice, ui_text
+from story.core import MAX_PLAYERS, Reply, StoryCore, pick_choice, ui_text
+from story.shells.connection import Connection
 
 UI = ui_text("shells")  # story/ui/語言/shells.md
 START, LEAVE = UI["start_game"], UI["leave_room"]  # 等人的畫面裡的選項
 READY_WAIT = 90  # 等大家看完劇情最多幾秒，超過就直接開始倒數
 TIMEOUT_GRACE = 1  # 倒數結束後多等一下，抵銷網路延遲
 PROGRESS_POLL = 0.1  # 呼叫 AI 時每隔幾秒看一次進度與 AI 寫到哪裡
-
-
-class Connection:
-    """玩家與伺服器之間連線的一端：send() 的訊息由另一端的 receive() 收到。
-    任一端 close() 之後，另一端的 receive() 回傳 None，再 send() 會丟出 ConnectionError。"""
-
-    def __init__(self, inbox: asyncio.Queue, outbox: asyncio.Queue):
-        self.inbox, self.outbox = inbox, outbox
-        self.peer: Connection | None = None
-        self.closed = False
-
-    @staticmethod
-    def pair() -> tuple["Connection", "Connection"]:
-        a, b = asyncio.Queue(), asyncio.Queue()
-        one, other = Connection(a, b), Connection(b, a)
-        one.peer, other.peer = other, one
-        return one, other
-
-    async def send(self, message: dict) -> None:
-        if self.closed or self.peer.closed:
-            raise ConnectionError("connection closed")
-        # 轉成 JSON 再轉回來：兩端不會共用同一個物件，收到的只有 JSON 的型別（tuple 變成 list），訊息格式才是唯一的約定
-        self.outbox.put_nowait(json.loads(json.dumps(message, ensure_ascii=False)))
-
-    async def receive(self) -> dict | None:
-        """收下一則訊息；連線結束時回傳 None。"""
-        if self.closed:
-            return None
-        return await self.inbox.get()
-
-    def close(self) -> None:
-        if not self.closed:
-            self.closed = True
-            self.outbox.put_nowait(None)  # 讓另一端的 receive() 結束
-            self.inbox.put_nowait(None)  # 自己這端還在等的 receive() 也結束
 
 
 class Member:
@@ -80,12 +45,12 @@ class Member:
 
 
 class Room:
-    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None]], PartyCore]):
+    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None]], StoryCore]):
         """make_core(玩家, on_queue) 建立這一局的核心；on_queue(是否排隊中) 讓 AI 呼叫排隊時畫面顯示「排隊中」。"""
         self.make_core = make_core
         self.members: dict[str, Member] = {}  # 依進來的順序；遊戲中斷線的人會保留，可以重新連線
         self.host = ""
-        self.core: PartyCore | None = None
+        self.core: StoryCore | None = None
         self.host_reply: Reply | None = None  # 正在等房主回答的畫面（存檔、前提、確認重來），換房主時重送
         self.lock = asyncio.Lock()  # 一次只處理一則輸入，核心不會被同時呼叫
         self.ready: set[str] = set()  # 已經看完這回合劇情的人

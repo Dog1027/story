@@ -11,7 +11,7 @@ def main() -> None:
     key = settings.api_key() or getpass(UI["plain_ask_key"]).strip()
     if not key:
         return
-    core = StoryCore(api_key=key)
+    core = StoryCore(key, [settings.get("name") or UI["default_name"]])  # 一個人玩：一人隊伍
     reply = core.start()
     while True:
         print(f"\n{reply.text}\n")

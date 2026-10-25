@@ -1,6 +1,7 @@
 """最小核心：送文字進來、拿回覆出去。
 
-外面看起來就像呼叫一個 LLM：`reply = core.send("往上爬")`。記憶、規則、存檔、遊戲流程都藏在這裡。
+外面看起來就像呼叫一個 LLM：`reply = core.send("往上爬")`（好幾位角色時是 `core.send_as("阿明", "往上爬")`）。
+記憶、規則、存檔、遊戲流程都藏在這裡。
 回覆和 LLM 的 API 一樣是「文字＋附帶資料」：只會印文字的外殼直接顯示 `reply.text`；
 想做狀態列、倒數、選項按鈕的外殼，再去讀其他欄位。
 
@@ -9,16 +10,20 @@ API key、玩家名字、倒數計時、打字效果屬於外殼，不在這裡�
 
 import random
 import threading
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
 from google.genai import errors
 
-from story.core.records import DEFAULT_PREMISE, SAVE_PATH, ChangeGroups, change_groups, ending_record, load, memory_text, save, snapshot
-from story.core.engine import LOG_PATH, TIMEOUT_ACTION, Engine, condition_list, is_key_error, warning_level
+
 from story.core import prompts
-from story.core.models import GameState, word
+from story.core.ai import LOG_PATH, is_key_error
+from story.core.engine import Engine
+from story.core.models import Character, GameState, word
+from story.core.prompting import AWAY_ACTION, TIMEOUT_ACTION
+from story.core.records import DEFAULT_PREMISE, SAVE_PATH, ChangeGroups, change_groups, ending_record, load, memory_text, save, snapshot
+from story.core.rules import condition_list, warning_level
 
 Phase = Literal[
     "ask_continue",  # 找到存檔，問要不要繼續
@@ -30,6 +35,7 @@ Phase = Literal[
 ]
 
 UI = prompts.ui("core")  # 給玩家看的文字（story/ui/語言/core.md）
+MAX_PLAYERS = 4  # 一隊最多幾位角色
 GENRE_AUTO, GENRE_NONE = "auto", "none"  # 題材的兩個特別選項：依前提由 AI 挑、不套用題材（顯示的字是 genre_label()）
 CONTINUE_CHOICES = [UI["choice_continue"], UI["choice_new_game"]]
 CONFIRM_CHOICES = [UI["choice_confirm"], UI["choice_cancel"]]
@@ -47,12 +53,12 @@ def join(items) -> str:
 
 @dataclass
 class Status:
-    """狀態列需要的資料：一位角色（單人模式是主角）。背包不在這裡，變化在 changes，完整內容用 /state 看。"""
+    """狀態列需要的資料：一位角色。背包不在這裡，變化在 changes，完整內容用 /state 看。"""
 
     conditions: list[tuple[str, str]]  # 目前的狀態：(名稱, 程度的代號)，身體在前、精神在後
     warning: str = ""  # 要警告玩家的整體狀態代號（serious、dying：再受傷就有生命危險）；不危險時是空字串。顯示的詞用 word("level", …)
-    name: str = ""  # 多人模式：角色名字
-    alive: bool = True  # 多人模式：角色是否還活著
+    name: str = ""  # 角色名字
+    alive: bool = True  # 角色是否還活著
 
 
 @dataclass
@@ -70,8 +76,8 @@ class Reply:
     text: str = ""  # 完整的純文字，只會印文字的外殼直接顯示這個就好
     narration: str = ""  # 這次產生（或讀檔重新顯示）的劇情；沒有新劇情時是空字串
     choices: list[str] = field(default_factory=list)
-    characters: list[Status] = field(default_factory=list)  # 每位角色的狀態；單人模式只有主角一位（名字是空的）
-    changes: list[tuple[str, ChangeGroups]] = field(default_factory=list)  # 這回合有變化的角色：(名字, 新增、痊癒、獲得……)；單人模式名字是空的
+    characters: list[Status] = field(default_factory=list)  # 每位角色的狀態（一個人玩只有一位）
+    changes: list[tuple[str, ChangeGroups]] = field(default_factory=list)  # 這回合有變化的角色：(名字, 新增、痊癒、獲得……)
     time_limit: int = 0  # 限時秒數；0 代表不限時
     notice: str = ""  # 簡短的系統訊息，例如「讀取存檔」「沒有這個指令」
     resumed: bool = False  # 這次是讀取存檔、重新顯示上次的劇情
@@ -82,7 +88,7 @@ class Reply:
     suggestion: str = ""  # ask_premise：/suggest 想出來的前提
     ending: Ending | None = None  # ended：尾聲與旅程紀錄
     error: Literal["api_key", "api"] | None = None  # api_key：key 無效，外殼換 key 後可以重送同一句
-    actor: str = ""  # 多人模式：這位玩家（send_as、view 的對象）這回合還沒行動時是他的名字，choices 是他的選項；單人模式是空的
+    actor: str = ""  # 送出輸入的那位玩家（send_as、view 的對象；一個人玩就是他）這回合還沒行動時是他的名字，choices 是他的選項
 
     def to_dict(self) -> dict:
         """轉成可以存成 JSON 的 dict（網頁版的房間傳送回覆用）。"""
@@ -106,9 +112,29 @@ def pick_choice(raw: str, options: list[str]) -> str | None:
 
 
 class StoryCore:
-    def __init__(self, api_key: str, save_path: Path = SAVE_PATH, log_path: Path = LOG_PATH, engine: Engine | None = None):
-        self.engine = engine or Engine(api_key=api_key, log_path=log_path)
+    """一局遊戲：一支一到四位角色的隊伍，每位由一位玩家扮演（一個人玩就是只有一位）。
+
+    每位角色的行動用 send_as(名字, 文字) 送，誰先送誰先記，所有還活著的角色都行動了才呼叫 AI 寫這一回合；
+    隊伍只有一位時，send(文字) 就是他的行動。不屬於某位玩家的輸入（時間到、對話框的回答、寫尾聲、/state）用 send()。
+    view(名字) 取得某位玩家眼中的畫面（自己的選項）。"""
+
+    def __init__(
+        self,
+        api_key: str,
+        players: list[str],
+        *,
+        save_path: Path = SAVE_PATH,
+        log_path: Path = LOG_PATH,
+        engine: Engine | None = None,
+        client=None,
+    ):
+        """client：要共用的 Gemini client（例如受 RateLimit 限制的），沒給就用 api_key 建一個。"""
+        names = [n.strip() for n in players if n.strip()]
+        if not 1 <= len(names) <= MAX_PLAYERS or len(set(names)) != len(names):
+            raise ValueError(UI["team_size"].format(min=1, max=MAX_PLAYERS))
+        self.engine = engine or Engine(api_key=api_key, client=client, log_path=log_path)
         self.save_path = save_path
+        self._players = names
         self.state: GameState | None = None
         self._phase: Phase = "ask_premise"
         self.timed = False  # 開新局時的模式，沿用上一局的選擇
@@ -116,10 +142,17 @@ class StoryCore:
         self.last_premise = ""
         self.suggested = ""  # /suggest 想出來的前提，留白送出時優先使用
         self.drawn = ""  # 從題材包的開頭靈感隨機抽到的前提；再玩一次時不抽，延續上一局的前提
+        self.pending: dict[str, str] = {}  # 這一回合已經送出的行動
+        self._as: str | None = None  # send_as() 指定的角色
         self._compaction: threading.Thread | None = None
 
     def set_api_key(self, api_key: str) -> None:
         self.engine.set_api_key(api_key)
+
+    @property
+    def players(self) -> list[str]:
+        """隊伍裡的玩家名字（唯讀），依建立時的順序。"""
+        return list(self._players)
 
     @property
     def phase(self) -> Phase:
@@ -141,9 +174,9 @@ class StoryCore:
     # ---------- 對外介面 ----------
 
     def start(self) -> Reply:
-        """第一個回覆：有存檔就問要不要繼續，否則請玩家輸入故事前提。"""
+        """第一個回覆：同一組玩家有沒結束的存檔就問要不要繼續，否則請玩家輸入故事前提。"""
         state = load(self.save_path)
-        if state and self._resumable(state):
+        if state and not state.game_over and sorted(state.names) == sorted(self._players):  # 順序不同也是同一組人
             self.state, self.timed, self._phase = state, state.timed_mode, "ask_continue"
             return self._reply(choices=CONTINUE_CHOICES, notice=UI["found_save"].format(turn=state.turn, premise=state.premise))
         return self._ask_premise()
@@ -156,12 +189,15 @@ class StoryCore:
             return None
         if raw == "/timeout":
             return TIMEOUT_ACTION
+        if raw == "/away":
+            return AWAY_ACTION
         if raw.startswith("/"):
             return None
-        return pick_choice(raw, self._current_choices()) or raw
+        actor = self._actor()
+        return pick_choice(raw, actor.choices if actor else []) or raw
 
     def send(self, text: str) -> Reply:
-        """送出一句玩家輸入，拿回覆。可能會呼叫 LLM，所以會花幾秒。"""
+        """送出一句輸入，拿回覆。可能會呼叫 LLM，所以會花幾秒。"""
         raw = text.strip()
         if raw == "/help":
             return self._reply(info=(UI["help_title"], UI["help"]), **self._screen())
@@ -179,6 +215,39 @@ class StoryCore:
             "ended": self._on_ended,
         }[self._phase]
         return handler(raw)
+
+    def send_as(self, name: str, text: str) -> Reply:
+        """以某位角色的身分送出輸入，不用照隊伍順序。遊戲中以外的階段（前提、確認……）等同 send()。"""
+        if self._phase == "playing" and (not text.strip().startswith("/") or text.strip() == "/away"):  # 行動才要檢查
+            character = next((c for c in self.state.characters if c.name == name), None)
+            if character is None or not character.alive:
+                return self._reply(notice=UI["character_fallen"], **self._screen())
+            if name in self.pending:
+                return self._reply(notice=UI["already_acted"], **self._screen())
+        self._as = name
+        try:
+            return self.send(text)
+        finally:
+            self._as = None
+
+    def view(self, name: str, reply: Reply | None = None) -> Reply:
+        """某位玩家眼中的畫面：actor 與 choices 換成這位角色的（已經行動或倒下的人沒有選項）。
+        給了 reply 就沿用它的其他欄位，否則是目前這一回合的畫面（重新連線時用）。"""
+        if reply is None:
+            reply = self._reply(**self._screen())
+            if self._phase == "playing":
+                reply.narration, reply.resumed = self.state.current_narration, True
+        if self._phase != "playing":
+            mine = replace(reply, actor="", choices=[] if reply.actor else reply.choices)
+        else:
+            actor = next((c for c in self._waiting() if c.name == name), None)
+            mine = replace(reply, actor=name if actor else "", choices=list(actor.choices) if actor else [])
+        mine.text = render_text(mine)
+        return mine
+
+    def waiting(self) -> list[str]:
+        """這回合還沒行動的角色名字。"""
+        return [c.name for c in self._waiting()] if self.state and self._phase == "playing" else []
 
     # ---------- 各階段 ----------
 
@@ -241,19 +310,32 @@ class StoryCore:
         return self._take_action(action, timeout=raw == "/timeout")
 
     def _take_action(self, action: str, timeout: bool) -> Reply:
-        """收到一個行動。單人模式直接推進一回合；多人模式會先收齊所有人的行動。"""
-        return self._play_turn(action)
+        """記下這位角色的行動；所有人都行動後才推進一回合。時間到時，還沒行動的人都算遲疑。"""
+        if timeout:
+            for c in self._waiting():
+                self.pending[c.name] = action
+        else:
+            actor = self._actor()
+            if actor is None:
+                raise ValueError("好幾位角色時，行動要用 send_as(名字, 文字) 送，才知道是誰的行動")
+            self.pending[actor.name] = action
+            if self._waiting():
+                return self._reply(notice=UI["action_recorded"].format(name=actor.name), **self._screen())
+        return self._play_turn({c.name: self.pending[c.name] for c in self.state.characters if c.name in self.pending})
 
-    def _play_turn(self, action) -> Reply:
+    def _play_turn(self, actions: dict[str, str]) -> Reply:
         """呼叫 engine 推進一回合，存檔，回傳這回合的回覆。"""
         self._wait_compaction()
-        before = self._snapshot()
+        before = {c.name: snapshot(c) for c in self.state.characters}
         try:
-            self.engine.act(self.state, action)
+            self.engine.act(self.state, actions)
         except (errors.APIError, RuntimeError) as e:
             self.state = load(self.save_path) or self.state  # act() 可能已經改了一半的狀態，從存檔還原
-            self._turn_failed()
+            # 撤回這回合所有的行動，大家重新選擇。只撤回最後一個人不夠：時間到或替離線的人自動填入的行動失敗時，
+            # 會變成每個人都「已行動」卻沒有人能重送，整局卡住
+            self.pending = {}
             return self._failed(e, lambda **kw: self._reply(**self._screen(), **kw), hint=UI["failed_turn"])
+        self.pending = {}
         save(self.state, self.save_path)
         if self.state.game_over:
             self._phase = "ending"
@@ -309,14 +391,10 @@ class StoryCore:
             error=error,
         )
 
-    # ---------- 多人模式覆寫的掛勾（下面是單人模式的版本） ----------
-
-    def _resumable(self, state: GameState) -> bool:
-        """這份存檔能不能接續。"""
-        return not state.game_over
-
     def _new_state(self, premise: str) -> GameState:
-        return GameState(premise=premise, timed_mode=self.timed, **self._genre_fields())
+        self.pending = {}
+        characters = [Character(name=n) for n in self._players]
+        return GameState(premise=premise, characters=characters, timed_mode=self.timed, **self._genre_fields())
 
     def _genre_fields(self) -> dict:
         """新局的題材欄位：指定題材就直接套用；選「自動」時，規劃大綱時由 AI 從目錄挑。"""
@@ -324,16 +402,16 @@ class StoryCore:
             return {"genre": self.genre}
         return {"genre_pending": self.genre == GENRE_AUTO and bool(self.engine.genres)}
 
-    def _current_choices(self) -> list[str]:
-        """現在要輸入行動的人的選項。"""
-        return self.state.current_choices
+    def _waiting(self) -> list[Character]:
+        """還活著、這回合還沒送出行動的角色，依隊伍順序。"""
+        return [c for c in self.state.characters if c.alive and c.name not in self.pending]
 
-    def _snapshot(self):
-        """回合開始前記下的狀態，用來算出這回合的變化。"""
-        return snapshot(self.state)
-
-    def _turn_failed(self) -> None:
-        """推進回合失敗、已從存檔還原之後要做的事。"""
+    def _actor(self) -> Character | None:
+        """這句輸入是誰的：send_as() 指定的角色；隊伍只有一位時就是他。已經行動或倒下了就沒有。"""
+        if self.state is None:
+            return None
+        name = self._as if self._as is not None else (self.state.characters[0].name if self.state.solo else None)
+        return next((c for c in self._waiting() if c.name == name), None)
 
     def _default_premise(self) -> str:
         """留白時使用的前提：AI 想的 → 隨機抽的 → 上一局的（再玩一次）→ 預設的。"""
@@ -352,22 +430,29 @@ class StoryCore:
 
     def _resume(self) -> Reply:
         self._phase = "playing"
+        self.pending = {}
         s = self.state
         return self._reply(narration=s.current_narration, notice=UI["resumed"].format(premise=s.premise), resumed=True, **self._screen())
 
     def _turn_reply(self, before) -> Reply:
         s = self.state
-        return self._reply(
-            narration=s.current_narration,
-            changes=[("", groups)] if before is not None and (groups := change_groups(before, s)) else [],
-            **self._screen(),
-        )
+        changes = []
+        if before is not None:
+            for c in s.characters:
+                if groups := change_groups(before[c.name], c):
+                    changes.append((c.name, groups))
+        return self._reply(narration=s.current_narration, changes=changes, **self._screen())
 
     def _screen(self) -> dict:
-        """遊戲中畫面的固定部分：選項與限時。"""
+        """遊戲中畫面的固定部分：送出輸入的那位角色（隊伍只有一位時就是他）的選項，以及限時。"""
         if self.state is None or self._phase not in ("playing", "ending"):
             return {}
-        return {"choices": list(self.state.current_choices), "time_limit": self.state.current_time_limit}
+        actor = self._actor() if self._phase == "playing" else None
+        return {
+            "actor": actor.name if actor else "",
+            "choices": list(actor.choices) if actor else [],
+            "time_limit": self.state.current_time_limit,
+        }
 
     def _failed(self, e: Exception, retry_screen, hint: str = "") -> Reply:
         """LLM 呼叫失敗：留在原本的階段，讓外殼決定要不要換 key 後重送。"""
@@ -375,17 +460,13 @@ class StoryCore:
             return retry_screen(error="api_key", notice=UI["key_invalid"])
         return retry_screen(error="api", notice=UI["failed"].format(hint=hint, error=str(e)[:300]))
 
-    def _characters(self) -> list[Status]:
-        """回覆裡每位角色的狀態：單人模式只有主角一位、沒有名字，外殼跟多人模式用同一套顯示。"""
-        return [Status(conditions=condition_list(self.state), warning=warning_level(self.state))]
-
     def _reply(self, **fields) -> Reply:
         in_story = self.state is not None and self._phase != "ask_premise"  # 有一局在進行（等前提時還沒有）
         reply = Reply(
             phase=self._phase,
             turn=self.state.turn if in_story else 0,
             timed=self.state.timed_mode if in_story else self.timed,
-            characters=self._characters() if in_story else [],
+            characters=[character_status(c) for c in self.state.characters] if in_story else [],
             **fields,
         )
         reply.text = render_text(reply)
@@ -416,6 +497,11 @@ class StoryCore:
             self._compaction = None
 
 
+def character_status(c: Character) -> Status:
+    """給外殼顯示的一位角色的狀態（Reply.characters 裡的一項）。"""
+    return Status(conditions=condition_list(c), warning=warning_level(c) if c.alive else "", name=c.name, alive=c.alive)
+
+
 # ---------- 純文字版的回覆 ----------
 
 
@@ -429,8 +515,8 @@ def status_line(turn: int, status: Status, timed: bool) -> str:
     return UI["text_status"].format(turn=turn, timed=UI["text_status_timed"] if timed else "", conditions=conditions_text(status))
 
 
-def party_line(status: Status) -> str:
-    return UI["text_party_line"].format(name=status.name, conditions=conditions_text(status) if status.alive else UI["text_fallen"])
+def character_line(status: Status) -> str:
+    return UI["text_character_line"].format(name=status.name, conditions=conditions_text(status) if status.alive else UI["text_fallen"])
 
 
 def changes_line(groups: ChangeGroups) -> str:
@@ -438,7 +524,8 @@ def changes_line(groups: ChangeGroups) -> str:
 
 
 def render_text(reply: Reply) -> str:
-    """把回覆組成一段完整的純文字。"""
+    """把回覆組成一段完整的純文字。只有一位角色時不列名字，也不說輪到誰。"""
+    several = len(reply.characters) > 1
     parts: list[str] = []
     if reply.notice:
         parts.append(UI["text_notice"].format(notice=reply.notice))
@@ -456,7 +543,7 @@ def render_text(reply: Reply) -> str:
     if reply.narration:
         parts.append(reply.narration)
     for name, groups in reply.changes:
-        parts.append(UI["text_named_changes"].format(name=name, changes=changes_line(groups)) if name else changes_line(groups))
+        parts.append(UI["text_named_changes"].format(name=name, changes=changes_line(groups)) if several else changes_line(groups))
     if reply.ending:
         e = reply.ending
         parts.append(UI["text_ending_title"].format(title=e.title or UI["text_story_over"]))
@@ -464,13 +551,13 @@ def render_text(reply: Reply) -> str:
             parts.append(e.epilogue)
         parts.append(e.record)
     if reply.characters and reply.phase in ("playing", "ending") and reply.narration:
-        if reply.characters[0].name:  # 多人：每位角色一行
-            parts.append("\n".join(party_line(st) for st in reply.characters) + ("\n" + UI["text_mode_timed"] if reply.timed else ""))
+        if several:  # 每位角色一行
+            parts.append("\n".join(character_line(st) for st in reply.characters) + ("\n" + UI["text_mode_timed"] if reply.timed else ""))
         else:
             parts.append(status_line(reply.turn, reply.characters[0], reply.timed))
     if reply.phase == "ending":
         parts.append(UI["text_send_for_epilogue"])
-    if reply.actor:
+    if reply.actor and several:
         parts.append(UI["text_actor"].format(name=reply.actor))
     if reply.choices:
         parts.append("\n".join(f"{i}. {c}" for i, c in enumerate(reply.choices, 1)))

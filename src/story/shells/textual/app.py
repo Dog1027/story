@@ -17,7 +17,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import Input, OptionList, Static
 
 from story.core import ChangeGroups, Reply, ui_text
-from story.shells.client import CharacterLine, Client, StatusLine, View
+from story.shells.client import CharacterLine, LocalClient, StatusLine, View
 from story.shells.textual.commands import COMMANDS, help_text
 from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, PremiseDialog
 from story.shells.textual.prose import Marked, Prose
@@ -119,7 +119,7 @@ class StoryApp(App, View):
 
     def __init__(self) -> None:
         super().__init__()
-        self.client = Client(self)
+        self.client = LocalClient(self)
         self.choices: list[str] = []
         self.choices_hidden = False  # prepare_choices 放好、還看不見的選項
         self.busy = False

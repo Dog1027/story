@@ -16,7 +16,7 @@ Pick a genre for this interactive text adventure.
 - {name}: {description}
 
 ## arc
-<!-- Plan the outline. Variables: {target_turns}, {premise}, {cast} (the protagonists in multiplayer, empty in single-player), {situation} (arc_new or arc_resume below) -->
+<!-- Plan the outline. Variables: {target_turns}, {premise}, {cast} (the protagonists when there are several, empty when there is one), {situation} (arc_new or arc_resume below) -->
 Plan the outline for this interactive text adventure, about {target_turns} turns long.
 # Premise
 {premise}

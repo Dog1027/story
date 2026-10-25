@@ -92,7 +92,7 @@
 還沒有開始故事。
 
 ## action_recorded
-<!-- 多人模式：這位角色的行動記下來了，還在等其他人。變數：{name} -->
+<!-- 有好幾位角色時：這位角色的行動記下來了，還在等其他人。變數：{name} -->
 已記下 {name} 的行動。
 
 ## character_fallen
@@ -101,9 +101,9 @@
 ## already_acted
 你這回合已經行動了，等其他人行動。
 
-## party_size
+## team_size
 <!-- 變數：{min}、{max} -->
-多人模式需要 {min} 到 {max} 位不重複的玩家。
+隊伍需要 {min} 到 {max} 位不重複的玩家。
 
 <!-- ---------- 錯誤 ---------- -->
 
@@ -193,7 +193,7 @@ AI 沒有想出開頭，請再試一次。
 程式記住的東西
 
 ## memory
-<!-- 變數：{bags}（每個人一行，見 memory_bag、memory_party_bag）、{flags}、{events}（每個事件一行，見 memory_event）、{summary}、{turns} -->
+<!-- 變數：{bags}（每個人一行，見 memory_bag、memory_named_bag）、{flags}、{events}（每個事件一行，見 memory_event）、{summary}、{turns} -->
 [背包]
 {bags}
 
@@ -209,11 +209,11 @@ AI 沒有想出開頭，請再試一次。
 [劇情紀錄] {turns} 回合原文
 
 ## memory_bag
-<!-- 單人的背包。變數：{items} -->
+<!-- 只有一位角色時的背包。變數：{items} -->
   {items}
 
-## memory_party_bag
-<!-- 多人時一個人的背包。變數：{name}、{items} -->
+## memory_named_bag
+<!-- 有好幾位角色時，一個人的背包。變數：{name}、{items} -->
   {name}：{items}
 
 ## memory_event
@@ -244,14 +244,14 @@ AI 沒有想出開頭，請再試一次。
 ## record_dead
 你在這趟旅程中倒下了。
 
-## record_party_alive
+## record_all_alive
 所有人一起走到了故事的盡頭。
 
-## record_party_some_fallen
+## record_some_fallen
 <!-- 變數：{names} -->
 {names} 在這趟旅程中倒下了，其他人走到了故事的盡頭。
 
-## record_party_all_fallen
+## record_all_fallen
 隊伍全員都在這趟旅程中倒下了。
 
 ## record_events
@@ -311,8 +311,8 @@ AI 沒有想出開頭，請再試一次。
 <!-- 危險時的警告。變數：{level}、{conditions} -->
 ⚠ {level}　{conditions}
 
-## text_party_line
-<!-- 多人時一位角色。變數：{name}、{conditions} -->
+## text_character_line
+<!-- 有好幾位角色時的一位角色。變數：{name}、{conditions} -->
 {name}｜{conditions}
 
 ## text_fallen
@@ -327,7 +327,7 @@ AI 沒有想出開頭，請再試一次。
 　
 
 ## text_named_changes
-<!-- 多人時一位角色的變化。變數：{name}、{changes} -->
+<!-- 有好幾位角色時，一位角色的變化。變數：{name}、{changes} -->
 {name}　{changes}
 
 ## text_send_for_epilogue

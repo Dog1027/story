@@ -15,6 +15,17 @@ A Gemini API key is needed; get one free at https://aistudio.google.com/apikey. 
 ## setup_key_prompt
 Gemini API key (hidden while typing; press Enter to skip for now): 
 
+## setup_name
+What's your character's name? (You can change it later in ~/.config/story/config.toml)
+
+## setup_name_prompt
+<!-- Press Enter to use default_name -->
+Name (press Enter for "Hero"): 
+
+## default_name
+<!-- The character's name in the terminal version when no name is set -->
+Hero
+
 ## setup_theme
 Choose a color theme for the terminal version (you can change it in the game with F2):
 
@@ -148,7 +159,7 @@ That name is already taken. Please choose another.
 
 ## room_members_only
 <!-- Variable: {players} -->
-A game is in progress; only party members ({players}) can rejoin.
+A game is in progress; only team members ({players}) can rejoin.
 
 ## room_full
 <!-- Variable: {max} -->

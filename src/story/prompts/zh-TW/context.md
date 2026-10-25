@@ -39,7 +39,7 @@
 [敘述] {narration}
 
 ## turn_label
-玩家
+行動
 
 ## key_events
 <!-- 變數：{events}（每個事件一行） -->

@@ -15,6 +15,17 @@
 ## setup_key_prompt
 Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
 
+## setup_name
+你的角色叫什麼名字？（之後可以在 ~/.config/story/config.toml 改）
+
+## setup_name_prompt
+<!-- 直接按 Enter 用 default_name -->
+名字（直接按 Enter 用「主角」）：
+
+## default_name
+<!-- 終端機版沒有設定名字時，角色的名字 -->
+主角
+
 ## setup_theme
 選擇終端機版的配色主題（之後可以在遊戲裡按 F2 換）：
 

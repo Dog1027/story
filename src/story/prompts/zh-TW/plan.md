@@ -16,7 +16,7 @@
 - {name}：{description}
 
 ## arc
-<!-- 規劃大綱。變數：{target_turns}、{premise}、{cast}（多人模式的主角名單，單人是空的）、{situation}（下面的 arc_new 或 arc_resume） -->
+<!-- 規劃大綱。變數：{target_turns}、{premise}、{cast}（有好幾位角色時的主角名單，只有一位時是空的）、{situation}（下面的 arc_new 或 arc_resume） -->
 為這個互動文字冒險故事規劃大綱，預定約 {target_turns} 回合。
 # 故事前提
 {premise}

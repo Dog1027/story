@@ -6,9 +6,9 @@ from story import setup
 
 
 def main() -> None:
-    """uv run story：預設是 Textual 終端機介面，--plain 是純文字。第一次啟動時先問語言、API key（與配色主題）。"""
+    """uv run story：預設是 Textual 終端機介面，--plain 是純文字。第一次啟動時先問語言、API key、角色名字（與配色主題）。"""
     plain = "--plain" in sys.argv[1:]
-    setup.run(key=True, theme=not plain)  # 要在 import 核心之前：語言在 import 時就決定了
+    setup.run(key=True, theme=not plain, name=True)  # 要在 import 核心之前：語言在 import 時就決定了
     if plain:
         from story.shells.plain import main as plain_main
 
