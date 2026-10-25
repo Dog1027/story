@@ -61,11 +61,9 @@ async def enter_name(client, name: str) -> Browser:
 async def enter_own_room(client) -> Browser:
     """一個人玩：在大廳開一個自己的房間、按開始、輸入前提。"""
     browser = await enter_name(client, "阿明")
-    await browser.expect("lobby", lambda m: m["title"] == "大廳")
-    await browser.expect("choices", lambda m: m["choices"] == ["開一個新房間"])
+    await browser.expect("lobby", lambda m: m["screen"]["title"] == "大廳" and m["screen"]["choices"] == ["開一個新房間"])
     await browser.send("act", text="1")
-    await browser.expect("lobby", lambda m: m["title"] == "阿明 的房間")
-    await browser.expect("choices", lambda m: m["choices"] == ["開始遊戲", "離開房間"])
+    await browser.expect("lobby", lambda m: m["screen"]["title"] == "阿明 的房間" and m["screen"]["choices"] == ["開始遊戲", "離開房間"])
     await browser.send("act", text="1")
     premise = await browser.expect("premise")
     await browser.answer(premise["id"], ["燈塔", False, "auto"])
@@ -111,7 +109,7 @@ async def test_premise_dialog_can_ask_the_core_while_open(isolated):
     async with TestClient(TestServer(app())) as client:
         browser = await enter_name(client, "阿明")
         for _ in range(2):  # 開房間、開始遊戲
-            await browser.expect("choices", lambda m: m["choices"] and m["choices"][0] in ("開一個新房間", "開始遊戲"))
+            await browser.expect("lobby", lambda m: m["screen"]["choices"][0] in ("開一個新房間", "開始遊戲"))
             await browser.send("act", text="1")
         premise = await browser.expect("premise")
         await browser.send("premise_ask", req=1, commands=["/suggest"])
@@ -140,14 +138,17 @@ async def test_sessions_are_limited(isolated, monkeypatch):
 async def test_friends_join_the_same_room(isolated):
     async with TestClient(TestServer(app())) as client:
         host = await enter_name(client, "阿明")
-        await host.expect("choices", lambda m: m["choices"] == ["開一個新房間"])
+        await host.expect("lobby", lambda m: m["screen"]["choices"] == ["開一個新房間"] and m["screen"]["rooms"] == [])
         await host.send("act", text="1")
-        await host.expect("lobby", lambda m: m["title"] == "阿明 的房間")
+        await host.expect("lobby", lambda m: m["screen"]["title"] == "阿明 的房間")
         guest = await enter_name(client, "小華")
-        await guest.expect("choices", lambda m: m["choices"] == ["開一個新房間", "加入 阿明 的房間（1/4 人）"])
+        lobby = (await guest.expect("lobby", lambda m: m["screen"]["view"] == "lobby"))["screen"]
+        assert lobby["choices"] == ["開一個新房間", "加入 阿明 的房間（1/4 人）"]  # 輸入框打編號也能選
+        assert lobby["rooms"] == [{"title": "阿明 的房間", "host": "阿明", "members": ["阿明"], "state": "open", "choice": "2"}]
+        assert {p["name"]: p["room"] for p in lobby["people"]} == {"阿明": "阿明", "小華": ""}  # 誰在哪裡
         await guest.send("act", text="2")
-        await host.expect("lobby", lambda m: m["members"] == ["阿明（房主）", "小華"])
-        await guest.expect("choices", lambda m: m["choices"] == ["離開房間"])
+        await host.expect("lobby", lambda m: m["screen"]["members"] == ["阿明", "小華"] and m["screen"]["host"] == "阿明")
+        await guest.expect("lobby", lambda m: m["screen"]["view"] == "room" and m["screen"]["choices"] == ["離開房間"])
         await host.send("act", text="1")
         premise = await host.expect("premise")
         await host.answer(premise["id"], ["燈塔", False, "auto"])

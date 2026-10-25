@@ -148,8 +148,8 @@ class WebView(View):
     def set_status(self, status: StatusLine | None) -> None:
         self.post("status", status=asdict(status) if status else None)
 
-    def show_lobby(self, title: str, members: list[str]) -> None:
-        self.post("lobby", title=title, members=members)
+    def show_lobby(self, screen: dict) -> None:
+        self.post("lobby", screen=screen)
 
     def set_busy(self, busy: bool) -> None:
         self.post("busy", on=busy)

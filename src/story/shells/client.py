@@ -129,8 +129,9 @@ class View:
     def set_status(self, status: StatusLine | None) -> None:
         raise NotImplementedError
 
-    def show_lobby(self, title: str, members: list[str]) -> None:
-        """網頁版的大廳或房間的等人畫面：狀態列顯示標題（「大廳」「阿明 的房間」）與在這裡的人。"""
+    def show_lobby(self, screen: dict) -> None:
+        """網頁版的大廳或房間的等人畫面，內容見 lobby.py、room.py 開頭的說明（view 是 lobby 或 room）。
+        choices 裡的選項畫成按鈕，按下時用 client.act(編號) 送出。"""
         raise NotImplementedError
 
     def set_busy(self, busy: bool) -> None:

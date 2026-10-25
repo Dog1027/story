@@ -48,6 +48,67 @@ Story
 ## exited
 已經離開了。重新整理頁面就能再進來。
 
+## lobby_counts
+<!-- 大廳標題旁邊。變數：{rooms}、{max}（房間數上限）、{people}（在線人數） -->
+房間 {rooms}/{max}　·　{people} 人在線
+
+## lobby_rooms
+房間
+
+## lobby_people
+在線的人
+
+## lobby_rooms_tab
+<!-- 手機上大廳的分頁。變數：{count} -->
+房間（{count}）
+
+## lobby_people_tab
+<!-- 變數：{count} -->
+在線（{count}）
+
+## lobby_no_rooms
+還沒有房間。開一個新房間：一個人玩，或等朋友加入。
+
+## room_state_open
+<!-- 房間卡片的狀態。變數：{count}、{max} -->
+等人中 {count}/{max}
+
+## room_state_full
+<!-- 變數：{count}、{max} -->
+已滿 {count}/{max}
+
+## room_state_playing
+<!-- 變數：{count}、{max} -->
+遊戲中
+
+## join
+加入
+
+## host_tag
+房主
+
+## you_tag
+<!-- 接在自己的名字後面 -->
+你
+
+## where_lobby
+在大廳
+
+## where_room
+<!-- 變數：{host} -->
+在 {host} 的房間
+
+## where_playing
+<!-- 變數：{host} -->
+在 {host} 的房間遊戲中
+
+## room_seats
+<!-- 房間標題旁邊。變數：{count}、{max} -->
+{count}/{max} 人
+
+## seat_empty
+空位
+
 ## exited_hint
 已離開
 

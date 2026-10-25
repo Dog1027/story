@@ -26,6 +26,7 @@ const state = {
   follow: true, // 故事區停在最底時，新內容出現就跟著捲
   busyLine: null,
   timer: null, // { total, left, last }
+  lobbyPane: "rooms", // 手機上大廳顯示哪個分頁：rooms、people
   premise: null, // 開著的前提對話框
   exited: false,
 };
@@ -58,6 +59,7 @@ const answer = (id, value = null) => send({ t: "answer", id, value });
 const handlers = {
   clear({ premise }) {
     log.replaceChildren();
+    $("app").classList.remove("wide");
     state.busyLine = null;
     state.follow = true;
     if (premise) {
@@ -132,15 +134,7 @@ const handlers = {
     if (!state.waitingEnter) input.placeholder = placeholder;
   },
   status({ status }) { renderStatus(status); },
-  lobby({ title, members }) {
-    const box = $("status");
-    box.replaceChildren();
-    const line = tag("div", "lobby", title + "　");
-    members.forEach((m, i) => { if (i) line.append(" · "); line.append(tag("strong", "", m)); });
-    box.append(line);
-    $("turn").textContent = "";
-    $("mode").hidden = true;
-  },
+  lobby({ screen }) { renderLobby(screen); },
   busy({ on }) { setBusy(on); },
   busy_line({ text }) {
     if (!state.busy) return;
@@ -286,6 +280,121 @@ function renderStatus(status) {
     row.append(chips);
     box.append(row);
   }
+}
+
+// ---------- 大廳與房間的等人畫面 ----------
+
+// 大廳：左邊（手機是第一個分頁）是房間，右邊是所有在線的人；房間：座位與開始、離開的按鈕。
+// 按鈕送出的是選項的編號，跟在輸入框打編號一樣
+function renderLobby(screen) {
+  renderStatus(null);
+  $("app").classList.toggle("wide", screen.view === "lobby"); // 大廳兩欄並排：上下的狀態列、輸入框跟著變寬
+  log.querySelectorAll(".lobby-panel").forEach((el) => el.remove());
+  const panel = screen.view === "room" ? roomPanel(screen) : lobbyPanel(screen);
+  add("section", "lobby-panel").replaceWith(panel);
+  scrollLog(true);
+}
+
+function pick(choice) {
+  if (!state.busy) send({ t: "act", text: choice });
+}
+
+function actionButton(label, choice, primary = false) {
+  const button = tag("button", "btn" + (primary ? " primary" : ""), label);
+  button.type = "button";
+  button.onclick = () => pick(choice);
+  return button;
+}
+
+function initial(name) {
+  return [...name][0] || "?";
+}
+
+function lobbyPanel({ title, you, choices, rooms, people, max_rooms, seats }) {
+  const panel = tag("section", "lobby-panel lobby-view");
+  const head = tag("div", "lobby-head");
+  head.append(tag("h1", "", title), tag("span", "lobby-count", t("lobby_counts", { rooms: rooms.length, max: max_rooms, people: people.length })));
+
+  const tabs = tag("div", "lobby-tabs");
+  tabs.setAttribute("role", "tablist");
+  const roomsPane = tag("div", "lobby-pane rooms-pane"), peoplePane = tag("div", "lobby-pane people-pane");
+  const showPane = (which) => {
+    panel.dataset.pane = which;
+    tabs.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.pane === which)));
+  };
+  for (const [which, label] of [["rooms", t("lobby_rooms_tab", { count: rooms.length })], ["people", t("lobby_people_tab", { count: people.length })]]) {
+    const button = tag("button", "", label);
+    button.type = "button";
+    button.dataset.pane = which;
+    button.setAttribute("role", "tab");
+    button.onclick = () => { state.lobbyPane = which; showPane(which); };
+    tabs.append(button);
+  }
+
+  roomsPane.append(tag("h2", "", t("lobby_rooms")));
+  const create = actionButton("＋ " + choices[0], "1", true);
+  create.classList.add("new-room");
+  roomsPane.append(create);
+  if (!rooms.length) roomsPane.append(tag("p", "lobby-empty", t("lobby_no_rooms")));
+  const list = tag("ul", "room-list");
+  for (const room of rooms) {
+    const card = tag("li", `room-card ${room.state}`);
+    const top = tag("div", "room-top");
+    top.append(tag("strong", "", room.title), tag("span", `room-state ${room.state}`, t(`room_state_${room.state}`, { count: room.members.length, max: seats })));
+    const members = tag("div", "room-members");
+    room.members.forEach((m) => {
+      const who = tag("span", "member", m);
+      if (m === room.host) who.append(tag("span", "host-tag", t("host_tag")));
+      members.append(who);
+    });
+    card.append(top, members);
+    if (room.choice) card.append(actionButton(t("join"), room.choice));
+    list.append(card);
+  }
+  roomsPane.append(list);
+
+  peoplePane.append(tag("h2", "", t("lobby_people")));
+  const roster = tag("ul", "people-list");
+  for (const person of people) {
+    const row = tag("li", "person" + (person.room ? (person.playing ? " playing" : " in-room") : ""));
+    const name = tag("span", "person-name", person.name);
+    if (person.name === you) name.append(tag("span", "you-tag", t("you_tag")));
+    const where = person.room
+      ? t(person.playing ? "where_playing" : "where_room", { host: person.room })
+      : t("where_lobby");
+    row.append(tag("span", "avatar", initial(person.name)), name, tag("span", "person-where", where));
+    roster.append(row);
+  }
+  peoplePane.append(roster);
+
+  panel.append(head, tabs, tag("div", "lobby-cols"));
+  panel.lastChild.append(roomsPane, peoplePane);
+  showPane(state.lobbyPane);
+  return panel;
+}
+
+function roomPanel({ title, host, you, members, seats, choices }) {
+  const panel = tag("section", "lobby-panel room-view");
+  const head = tag("div", "lobby-head");
+  head.append(tag("h1", "", title), tag("span", "lobby-count", t("room_seats", { count: members.length, max: seats })));
+  const list = tag("ol", "seats");
+  for (let i = 0; i < seats; i++) {
+    const name = members[i];
+    const seat = tag("li", "seat" + (name ? "" : " empty"));
+    if (name) {
+      const label = tag("span", "seat-name", name);
+      if (name === you) label.append(tag("span", "you-tag", t("you_tag")));
+      seat.append(tag("span", "avatar", initial(name)), label);
+      if (name === host) seat.append(tag("span", "host-tag", t("host_tag")));
+    } else {
+      seat.append(tag("span", "avatar", ""), tag("span", "seat-name", t("seat_empty")));
+    }
+    list.append(seat);
+  }
+  const actions = tag("div", "room-actions");
+  choices.forEach((label, i) => actions.append(actionButton(label, String(i + 1), i === 0 && choices.length > 1)));
+  panel.append(head, list, actions);
+  return panel;
 }
 
 // ---------- 選項與輸入 ----------

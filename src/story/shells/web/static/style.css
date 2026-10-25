@@ -65,8 +65,72 @@ button { cursor: pointer; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
 .chip { font-size: 13px; padding: 0 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
 .chip.warning { background: var(--sev-3); border-color: var(--sev-3); color: var(--surface); font-weight: 600; }
-.lobby { color: var(--muted); }
-.lobby strong { color: var(--ink); }
+
+/* ---------- 大廳與房間的等人畫面（在故事區裡） ---------- */
+#app.wide { --column: 52rem; }
+.lobby-panel { display: grid; gap: 16px; }
+.lobby-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; }
+.lobby-head h1 { margin: 0; font-family: var(--serif); font-size: 1.5rem; font-weight: 600; letter-spacing: 0.04em; }
+.lobby-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.lobby-pane { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.lobby-pane h2 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); }
+
+/* 手機：房間與在線的人是兩個分頁；寬螢幕：左右並排，不用分頁 */
+.lobby-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: var(--line); }
+.lobby-tabs button { flex: 1; border: 0; background: none; border-radius: 9px; padding: 6px 10px; color: var(--muted); }
+.lobby-tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.lobby-pane h2 { display: none; }
+.lobby-view[data-pane="rooms"] .people-pane, .lobby-view[data-pane="people"] .rooms-pane { display: none; }
+@media (min-width: 760px) {
+  .lobby-tabs { display: none; }
+  .lobby-cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; }
+  .lobby-view[data-pane] .lobby-pane { display: grid; }
+  .lobby-pane h2 { display: block; }
+}
+
+.new-room { width: 100%; padding: 12px 16px; font-size: 1rem; }
+.lobby-empty { margin: 4px 0 0; color: var(--muted); text-align: center; padding: 20px 12px; border: 1px dashed var(--line); border-radius: 12px; }
+.room-list, .people-list, .seats { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.room-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center;
+}
+.room-card.open { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.room-card.full, .room-card.playing { background: none; }
+.room-top { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
+.room-top strong { font-weight: 600; }
+.room-card.full .room-top strong, .room-card.playing .room-top strong { color: var(--muted); }
+.room-state { font-size: 12px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.room-state.open { background: var(--accent-soft); color: var(--accent); }
+.room-state.full { background: color-mix(in srgb, var(--sev-1) 14%, transparent); color: var(--sev-1); }
+.room-state.playing { background: color-mix(in srgb, var(--muted) 16%, transparent); color: var(--muted); }
+.room-members { grid-column: 1; display: flex; flex-wrap: wrap; gap: 2px 12px; color: var(--muted); font-size: 14px; }
+.room-card .btn { grid-column: 2; grid-row: 1 / span 2; }
+.host-tag, .you-tag { font-size: 11px; margin-left: 6px; padding: 0 6px; border-radius: 999px; vertical-align: 1px; }
+.host-tag { background: color-mix(in srgb, var(--sev-1) 16%, transparent); color: var(--sev-1); }
+.you-tag { border: 1px solid var(--line); color: var(--muted); }
+
+.person { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--line); min-width: 0; }
+.person:last-child { border-bottom: 0; }
+.person-name { font-weight: 600; white-space: nowrap; }
+.person-where { margin-left: auto; color: var(--muted); font-size: 13px; text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person.playing .person-where { color: var(--sev-1); }
+.person.in-room .person-where { color: var(--accent); }
+.avatar {
+  flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent); font-weight: 600; font-size: 14px;
+}
+
+.seats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.seat { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; min-width: 0; }
+.seat-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.seat .host-tag { margin-left: auto; }
+.seat.empty { background: none; border-style: dashed; }
+.seat.empty .seat-name { color: var(--muted); font-weight: 400; }
+.seat.empty .avatar { background: none; border: 1px dashed var(--line); }
+.room-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.room-actions .btn { padding: 10px 20px; }
+.room-actions .btn.primary { order: 2; }
 
 /* 程度與語氣（核心給的代號） */
 .t-light { color: var(--sev-1); }

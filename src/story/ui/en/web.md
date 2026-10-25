@@ -48,6 +48,67 @@ Lost the connection to the server. Please reload the page.
 ## exited
 You've left. Reload the page to come back in.
 
+## lobby_counts
+<!-- Next to the lobby title. Variables: {rooms}, {max} (room limit), {people} (people online) -->
+Rooms {rooms}/{max}  ·  {people} online
+
+## lobby_rooms
+Rooms
+
+## lobby_people
+Online
+
+## lobby_rooms_tab
+<!-- Lobby tab on phones. Variable: {count} -->
+Rooms ({count})
+
+## lobby_people_tab
+<!-- Variable: {count} -->
+Online ({count})
+
+## lobby_no_rooms
+No rooms yet. Open a new one: play alone, or wait for friends to join.
+
+## room_state_open
+<!-- A room card's state. Variables: {count}, {max} -->
+Waiting {count}/{max}
+
+## room_state_full
+<!-- Variables: {count}, {max} -->
+Full {count}/{max}
+
+## room_state_playing
+<!-- Variables: {count}, {max} -->
+In a game
+
+## join
+Join
+
+## host_tag
+Host
+
+## you_tag
+<!-- After your own name -->
+you
+
+## where_lobby
+In the lobby
+
+## where_room
+<!-- Variable: {host} -->
+In {host}'s room
+
+## where_playing
+<!-- Variable: {host} -->
+Playing in {host}'s room
+
+## room_seats
+<!-- Next to the room title. Variables: {count}, {max} -->
+{count}/{max} players
+
+## seat_empty
+Empty seat
+
 ## exited_hint
 Left
 

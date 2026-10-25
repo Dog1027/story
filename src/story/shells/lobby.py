@@ -14,8 +14,12 @@
   其他訊息在房間裡時交給房間
 大廳 → 玩家
   {"type": "joined"} 或 {"type": "rejected", "reason": "..."}
-  {"type": "lobby", "title": "大廳", "members": [...], "choices": [...], "hint": "...", "clear": true}
-      大廳或房間的等人畫面：標題、在這裡的人、可以選的、輸入框的提示；clear 時先清空畫面（剛進來或剛離開房間）
+  {"type": "lobby", "view": "lobby", "title": "大廳", "you": "阿明", "choices": [...], "hint": "...", "clear": true,
+   "rooms": [{"title": "小華 的房間", "host": "小華", "members": [...], "state": "open", "choice": "2"}, ...],
+   "people": [{"name": "阿明", "room": "", "playing": false}, ...], "max_rooms": 10, "seats": 4}
+      大廳的畫面：所有房間（state 是 open 等人中、full 已滿、playing 遊戲中；choice 是加入它要送的選項，不能加入時是空的）、
+      所有在線的人與他們在哪裡（room 是房主的名字，在大廳時是空的）、可以選的、輸入框的提示；clear 時先清空畫面（剛進來或剛離開房間）
+      房間的等人畫面也是 "type": "lobby"，"view": "room"，見 room.py
   {"type": "notice", "text": "..."}
   其他訊息見 room.py
 """
@@ -191,15 +195,24 @@ class Lobby:
                 labels.append(UI["room_entry"].format(host=room.host, count=len(room.online), max=MAX_PLAYERS))
         return labels
 
+    def _room_card(self, room: Room, choice: str) -> dict:
+        state = "playing" if room.playing else "full" if len(room.online) >= MAX_PLAYERS else "open"
+        return {"title": UI["room_title"].format(host=room.host), "host": room.host, "members": room.online, "state": state, "choice": choice}
+
     async def _show_rooms(self, clear_for: str = "") -> None:
-        """把房間列表送給在大廳的人：開新房間，以及還在等人、還沒滿的房間。內容沒變就不重送，畫面才不會一直閃。"""
+        """把大廳的畫面送給在大廳的人：所有房間（還在等人、還沒滿的才能加入）與所有在線的人。內容沒變就不重送，畫面才不會一直閃。"""
         joinable = [r for r in self.rooms if not r.playing and len(r.online) < MAX_PLAYERS]
         in_lobby = [n for n, room in self.where.items() if room is None]
-        busy = len(self.rooms) - len(joinable)
-        hint = UI["rooms_hint"] + (UI["rooms_busy"].format(count=busy) if busy else "")
+        options = [None, *joinable]  # 選項 1 是開新房間，之後是能加入的房間
+        rooms = [self._room_card(r, str(options.index(r) + 1) if r in joinable else "") for r in self.rooms]
+        people = [{"name": n, "room": room.host if room else "", "playing": bool(room and room.playing)} for n, room in self.where.items()]
         for name in in_lobby:
-            self.options[name] = [None, *joinable]
-            screen = {"type": "lobby", "title": UI["lobby_title"], "members": in_lobby, "choices": self._labels(self.options[name]), "hint": hint}
+            self.options[name] = options
+            screen = {
+                "type": "lobby", "view": "lobby", "title": UI["lobby_title"], "you": name,
+                "choices": self._labels(options), "hint": UI["rooms_hint"],
+                "rooms": rooms, "people": people, "max_rooms": MAX_ROOMS, "seats": MAX_PLAYERS,
+            }
             if self.shown.get(name) == screen and name != clear_for:
                 continue
             self.shown[name] = screen

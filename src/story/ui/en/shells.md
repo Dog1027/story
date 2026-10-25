@@ -103,11 +103,7 @@ Join {host}'s room ({count}/{max})
 
 ## rooms_hint
 <!-- The lobby's input hint -->
-Pick a room to join, or open a new one (playing alone is a room of your own too)
-
-## rooms_busy
-<!-- Added after rooms_hint when rooms are in a game. Variable: {count} -->
-; {count} room(s) in a game
+Join a room, or open one (even to play alone)
 
 ## rooms_full
 <!-- Variable: {max} -->
@@ -121,7 +117,7 @@ That room has closed.
 {host}'s room
 
 ## room_hint_host
-Choose "Start game" and everyone in the room enters the story together, or wait for friends to join
+Wait for friends, or start the game
 
 ## leave_room
 <!-- A choice on the waiting screen; during a game you can also type /leave -->
@@ -139,12 +135,6 @@ Lost the connection to the game room.
 
 ## room_disconnected
 Lost the connection to the game room. Please reload the page.
-
-## host_mark
-<!-- The host's name in the lobby. Variable: {name} -->
-{name} (host)
-
-
 
 ## lobby_waiting_host
 <!-- Variable: {host} -->

@@ -13,7 +13,9 @@
                                           房主在前提對話框送的指令可以加 "answer": true，要求回傳結果
   {"type": "ready"}                       新劇情顯示完了（大家都顯示完才開始限時倒數）
 房間 → 玩家
-  {"type": "lobby", ...}                  等人的畫面：見 lobby.py 的說明（title、members、choices、hint）
+  {"type": "lobby", "view": "room", "title": "阿明 的房間", "host": "阿明", "you": "小華", "members": [...], "seats": 4,
+   "choices": [...], "hint": "...", "clear": true}
+                                          等人的畫面：房間裡的人（members，依進來的順序）、座位數、可以選的、輸入框的提示
   {"type": "reply", "reply": {...}}       核心的回覆（Reply.to_dict()，已換成這位玩家的選項）
   {"type": "premise", "reply": {...}}     前提對話框的指令（幫我想、換一個、換題材）的結果，只回給要求 answer 的房主
   {"type": "new_story", "premise": "..."}  新故事開始：清空畫面，先顯示故事前提
@@ -320,13 +322,16 @@ class Room:
 
     async def _broadcast_lobby(self, clear_for: str = "") -> None:
         """等人的畫面：房間裡有誰、房主能開始、大家都能離開。clear_for 是剛進來的人，他的畫面要先清空。"""
-        members = [UI["host_mark"].format(name=n) if n == self.host else n for n in self.online]
         for member in self._online_members():
             host = member.name == self.host
             await self._safe_write(member, {
                 "type": "lobby",
+                "view": "room",
                 "title": UI["room_title"].format(host=self.host),
-                "members": members,
+                "host": self.host,
+                "you": member.name,
+                "members": self.online,
+                "seats": MAX_PLAYERS,
                 "choices": self._lobby_choices(member.name),
                 "hint": UI["room_hint_host"] if host else UI["lobby_waiting_host"].format(host=self.host),
                 "clear": member.name == clear_for,

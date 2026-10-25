@@ -349,7 +349,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 
 | 名稱 | 做什麼 |
 |---|---|
-| `View` | 介面要實作的方法：故事區（`start_narration()`、`extend_narration()`、`finish_narration()`、`discard_narration()`：劇情邊收邊顯示；`show_action()`、`show_changes()`、`wait_enter()`…）、選項與提示（`prepare_choices()`、`show_choices()`、`set_hint()`）、狀態列（`set_status()`、`show_lobby()`）、等待與倒數（`set_busy()`、`show_busy()`、`start_timer()`）、通知與對話框（`ask_premise()`、`ask_confirm()`、`ask_ending()`、`ask_name()`、`ask_api_key()`…） |
+| `View` | 介面要實作的方法：故事區（`start_narration()`、`extend_narration()`、`finish_narration()`、`discard_narration()`：劇情邊收邊顯示；`show_action()`、`show_changes()`、`wait_enter()`…）、選項與提示（`prepare_choices()`、`show_choices()`、`set_hint()`）、狀態列（`set_status()`）、大廳與房間的等人畫面（`show_lobby()`）、等待與倒數（`set_busy()`、`show_busy()`、`start_timer()`）、通知與對話框（`ask_premise()`、`ask_confirm()`、`ask_ending()`、`ask_name()`、`ask_api_key()`…） |
 | `Client` | 兩種玩法共用的流程。子類別決定核心在哪裡：`run()`（開始）、`deliver()`（把一句輸入交給核心）、`echo_for()`（送出前先顯示的行動）、`progress()`、`timeout()` 等掛勾 |
 | `LocalClient` | 在這台電腦上玩（終端機版）：取得 API key（設定檔或問玩家），建立只有一位角色的 `StoryCore`（名字是設定檔的 `name`），在背景執行緒呼叫它 |
 | `RoomClient`（`room_client.py`） | 網頁版：連進大廳、問名字、收大廳與房間推來的訊息；輸入送給房間，由房間呼叫核心 |
@@ -360,7 +360,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 | `show_turn()` | 先放好選項（看不見）→ 劇情 → 變化 → 選項出現 → 更新狀態列 → 開始倒數（網頁版改成告訴房間看完了） |
 | `show_ending()` | 按 Enter → 尾聲 → 按 Enter → 結局對話框（一段一段來，先讀完最後的劇情） |
 | `refresh_hint()`、`RoomClient.update_waiting()` | 輸入框的提示：網頁版行動完之後提示還在等誰，還沒行動時提示誰已經行動了（不用通知，才不會蓋住劇情） |
-| `RoomClient.show_lobby()` | 大廳或房間的等人畫面：標題、在這裡的人、選項、輸入框提示都由大廳與房間決定，剛進來或剛離開房間時先清空畫面 |
+| `RoomClient.show_lobby()` | 大廳或房間的等人畫面：內容（房間、在線的人、座位、選項、輸入框提示）都由大廳與房間決定，介面把選項畫成按鈕，下方的選項區不再列一次（輸入框打編號一樣能選）。剛進來或剛離開房間時先清空畫面 |
 | `status_line()` | 把 `Status` 轉成狀態列要顯示的內容（`StatusLine`）：直接列出每個狀態與程度、核心判斷的警告（`Status.warning`）、沒有狀態時是「良好」，只說程度不說顏色；`named` 是要不要顯示名字（有好幾位角色時）。背包不放在狀態列（完整內容用 `/state` 看） |
 
 介面的對話框也會用到的規則（名字的檢查 `check_name()`、設定檔的位置 `CONFIG_PATH`）也從這裡取用。
@@ -427,7 +427,7 @@ Textual 底層的 Rich 只會在空格處換行，是為英文設計的。AI 常
 | `__init__.py`：`main()` | `uv run story-web` 的進入點；參數 `--host`、`--port`。用設定檔的 API key 建立大廳（`Lobby.for_server()`） |
 | `view.py`：`WebView` | 實作共用層的 `View`。要等玩家的（劇情顯示完、按 Enter、對話框）帶一個 `id`，等瀏覽器回覆；前提對話框開著時，瀏覽器可以送指令給核心（換題材、換一個、幫我想）。訊息格式寫在檔案開頭 |
 | `static/index.html`、`style.css` | 頁面與外觀：上方狀態列（第幾回、限時模式、每位角色的狀態）、中間故事、下方選項按鈕與輸入框；手機上對話框從下方滑出，要打字的（名字、故事前提）改從上方出現，鍵盤才不會蓋住。跟著系統的淺色／深色，也可以在選單裡切換（存在這個瀏覽器） |
-| `static/app.js` | 把訊息畫出來：打字效果（劇情邊收邊打；點故事區或按 Enter 加速、再按一次全部顯示）、往上捲時不自動跟隨、選項（點擊，或在輸入框用 ↑↓ 選擇）、倒數條（只負責顯示，時間到由房間處理）、對話框排隊、通知。手機上不會自動把焦點移到輸入框，不然鍵盤會一直跳出來 |
+| `static/app.js` | 把訊息畫出來：大廳（房間與在線的人，手機上是兩個分頁、寬螢幕左右並排）與房間的座位、打字效果（劇情邊收邊打；點故事區或按 Enter 加速、再按一次全部顯示）、往上捲時不自動跟隨、選項（點擊，或在輸入框用 ↑↓ 選擇）、倒數條（只負責顯示，時間到由房間處理）、對話框排隊、通知。手機上不會自動把焦點移到輸入框，不然鍵盤會一直跳出來 |
 
 **手機**：用一般的網頁輸入框打字（中文選字正常）、原生的捲動、字級 16px 以上（手機不會自動放大畫面）。
 
@@ -441,7 +441,7 @@ Textual 底層的 Rich 只會在空格處換行，是為英文設計的。AI 常
 
 | 名稱 | 做什麼 |
 |---|---|
-| `Lobby` | 名字（整台伺服器不重複）、房間列表、開房與進出房間。在大廳的人看到「開一個新房間」與還在等人、還沒滿的房間；選了就交給那個房間（`Room.add()`），之後的訊息都轉給房間，直到離開（`/leave` 或在等人的畫面選「離開房間」）回到大廳 |
+| `Lobby` | 名字（整台伺服器不重複）、房間列表、開房與進出房間。在大廳的人看到所有房間（等人中、已滿、遊戲中，只有等人中的能加入）與所有在線的人在哪裡；選了就交給那個房間（`Room.add()`），之後的訊息都轉給房間，直到離開（`/leave` 或在等人的畫面選「離開房間」）回到大廳 |
 | `Lobby.for_server(api_key)` | 網頁伺服器用：每個房間的核心都用架站者的 key 與同一個 `RateLimit`（每分鐘 `AI_PER_MINUTE` 次），排隊時畫面顯示「排隊中」 |
 | `team_save()` | 一隊的存檔與紀錄：`saves/team-阿明+小華.json`（名字排序，所以順序不同也是同一隊），同一組人再開房間時可以接著玩 |
 | `MAX_ROOMS` | 同時最多幾個房間（10） |

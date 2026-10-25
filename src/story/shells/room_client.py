@@ -145,8 +145,9 @@ class RoomClient(Client):
         """大廳或房間的等人畫面（內容由大廳、房間決定）。剛進來或剛離開房間時先清空畫面。"""
         if screen.get("clear"):
             self.clear_story()
-        self.view.show_lobby(screen["title"], screen["members"])
+        self.view.show_lobby({k: v for k, v in screen.items() if k not in ("type", "clear", "hint")})
         self.actor, self.waiting = "", []
-        self.set_choices(screen["choices"])
+        self.choices = list(screen["choices"])  # 輸入框打編號也能選；按鈕由介面畫在大廳的畫面裡，下方的選項區不用再列一次
+        self.view.show_choices([])
         self.view.set_hint(screen["hint"])
 

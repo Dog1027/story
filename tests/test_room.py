@@ -104,7 +104,7 @@ async def gather(lobby, *names: str) -> list[Player]:
 
 async def start_story(lobby) -> tuple[Player, Player]:
     host, guest = await gather(lobby, "阿明", "小華")
-    await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["members"] == ["阿明（房主）", "小華"])
+    await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["members"] == ["阿明", "小華"] and m["host"] == "阿明")
     await host.send("1")  # 開始遊戲
     assert (await host.reply()).phase == "ask_premise"
     await guest.expect(lambda m: m["type"] == "notice" and "房主正在設定故事" in m["text"])
@@ -155,7 +155,7 @@ async def test_only_team_members_can_rejoin_after_start(lobby):
     await guest.reply()
     stranger = await join(lobby, "路人")
     screen = await stranger.expect(is_lobby())
-    assert screen["choices"] == ["開一個新房間"] and "1 個房間正在遊戲中" in screen["hint"]
+    assert screen["choices"] == ["開一個新房間"] and [r["state"] for r in screen["rooms"]] == ["playing"]
 
 
 async def test_only_host_answers_dialogs_and_restarts(lobby):
@@ -313,7 +313,7 @@ async def test_one_player_can_start_alone(lobby):
     host = await join(lobby, "阿明")
     await open_room(host)
     screen = await host.expect(is_lobby("阿明 的房間"))
-    assert screen["members"] == ["阿明（房主）"] and screen["choices"] == ["開始遊戲", "離開房間"]
+    assert screen["members"] == ["阿明"] and screen["choices"] == ["開始遊戲", "離開房間"]
     await host.send("1")
     assert (await host.reply()).phase == "ask_premise"
     await host.send("燈塔")
@@ -371,7 +371,7 @@ async def test_leaving_a_room_goes_back_to_the_lobby_and_empty_rooms_close(lobby
     host, guest = await gather(lobby, "阿明", "小華")
     await guest.send("1")  # 小華的選項只有「離開房間」
     await guest.expect(lambda m: is_lobby()(m) and m["clear"])
-    await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["members"] == ["阿明（房主）"])
+    await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["members"] == ["阿明"])
     await host.send("/leave")
     await host.expect(lambda m: is_lobby()(m) and m["choices"] == ["開一個新房間"])
     assert lobby.rooms == []  # 沒有人了，房間關閉

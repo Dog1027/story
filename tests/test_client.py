@@ -64,8 +64,8 @@ class RecordingView(View):
     def set_status(self, status):
         self.record("set_status", status)
 
-    def show_lobby(self, members):
-        self.record("show_lobby", members)
+    def show_lobby(self, screen):
+        self.record("show_lobby", screen)
 
     def set_busy(self, busy):
         self.record("set_busy", busy)
