@@ -407,7 +407,7 @@ setInterval(() => {
 let closeCurrent = null;
 const sheetQueue = []; // 已經有對話框開著時，後來的排隊，不會蓋掉正在回答的那個
 
-// top：要打字的對話框（名字、key、故事前提）出現在畫面上方，手機的鍵盤從下面彈出來才不會蓋住
+// top：要打字的對話框（名字、故事前提）出現在畫面上方，手機的鍵盤從下面彈出來才不會蓋住
 function openSheet(build, onClose, dismissible = true, top = false) {
   if (closeCurrent) {
     sheetQueue.push([build, onClose, dismissible, top]);
@@ -435,8 +435,8 @@ function openSheet(build, onClose, dismissible = true, top = false) {
   if (heading) heading.id = "sheet-title";
   overlay.hidden = false;
   document.addEventListener("keydown", onKey);
-  // 要打字的對話框（名字、key）才聚焦到輸入框；手機上前提可以直接用預設的，不要一打開就跳出鍵盤
-  const focus = sheet.querySelector(TOUCH ? "input[type=text], input[type=password]" : "textarea, input:not([type=checkbox]), .btn.primary");
+  // 要打字的對話框（名字）才聚焦到輸入框；手機上前提可以直接用預設的，不要一打開就跳出鍵盤
+  const focus = sheet.querySelector(TOUCH ? "input[type=text]" : "textarea, input:not([type=checkbox]), .btn.primary");
   if (focus) focus.focus();
 }
 

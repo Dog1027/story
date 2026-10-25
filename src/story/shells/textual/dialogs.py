@@ -96,9 +96,9 @@ class ApiKeyDialog(Dialog):
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static(self.reason, classes="title")
-            yield Static(UI["key_where"].format(link="https://aistudio.google.com/apikey"), classes="hint")
-            yield Input(placeholder=UI["key_placeholder"], password=True, id="key")
-            yield Checkbox(UI["key_save"].format(path=CONFIG_PATH), value=True, id="save")
+            yield Static(TERMINAL["key_where"].format(link="https://aistudio.google.com/apikey"), classes="hint")
+            yield Input(placeholder=TERMINAL["key_placeholder"], password=True, id="key")
+            yield Checkbox(TERMINAL["key_save"].format(path=CONFIG_PATH), value=True, id="save")
             with Horizontal():
                 yield Button(UI["leave"], id="cancel", compact=True)
                 yield Button(UI["ok"], variant="primary", id="ok", compact=True)

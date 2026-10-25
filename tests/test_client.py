@@ -105,9 +105,6 @@ class RecordingView(View):
         self.record("ask_api_key", reason)
         return (self.keys.pop(0), False) if self.keys else None
 
-    async def ask_party_names(self):
-        return ["阿明", "小華"]
-
     def exit(self):
         self.record("exit")
 

@@ -66,3 +66,16 @@ While text is appearing, press Enter to speed up, again to show it all
 
 Timed mode (chosen when starting a new game): a countdown appears when
 things get tense; when it runs out, you hesitated. It pauses while a dialog or menu is open.
+
+<!-- ---------- API key ---------- -->
+
+## key_placeholder
+Paste your API key
+
+## key_where
+<!-- Where to get an API key. Variable: {link} (the address) -->
+You can get one free at {link}.
+
+## key_save
+<!-- Whether to save it. Variable: {path} -->
+Save to {path} and use it automatically next time

@@ -39,19 +39,6 @@ Play again
 ## send
 Send
 
-<!-- ---------- API key ---------- -->
-
-## key_placeholder
-Paste your API key
-
-## key_where
-<!-- Where to get an API key. Variable: {link} (the address; a link on the web) -->
-You can get one free at {link}. 
-
-## key_save
-<!-- Terminal: whether to save it. Variable: {path} -->
-Save to {path} and use it automatically next time
-
 <!-- ---------- Name (web) ---------- -->
 
 ## name_title

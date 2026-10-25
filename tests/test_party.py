@@ -1,4 +1,4 @@
-"""多人模式：engine 的隊伍規則，以及 PartyCore 的輪流輸入流程。"""
+"""多人模式：engine 的隊伍規則，以及 PartyCore 收齊每位角色的行動才推進的流程。"""
 
 from pathlib import Path
 
