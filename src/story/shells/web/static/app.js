@@ -37,7 +37,10 @@ function connect() {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${scheme}://${location.host}/ws`);
   state.ws = ws;
-  ws.onopen = () => { input.placeholder = ""; };
+  ws.onopen = () => {
+    input.placeholder = "";
+    setBusy(false); // 頁面一開始的輸入框是停用的（還沒連上）。不能等到第一次「故事生成中」結束才打開：讀檔、大廳都不會呼叫 AI
+  };
   ws.onmessage = (event) => handle(JSON.parse(event.data));
   ws.onclose = () => {
     if (!state.exited) {
