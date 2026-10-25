@@ -435,6 +435,8 @@ class Client:
         """有新劇情時先顯示劇情，顯示完才出現變化、選項與更新狀態列，避免先劇透。"""
         if reply.narration:
             self.view.stop_timer()
+            if reply.resumed:  # 讀檔、重新連線：從乾淨的畫面接著顯示（網頁版前面還留著房間或大廳的等人畫面）
+                self.clear_story()
             self.choices = list(reply.choices)
             self.view.prepare_choices(self.choices, timed=bool(reply.time_limit))
             self.refresh_hint()

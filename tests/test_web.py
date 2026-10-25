@@ -92,6 +92,22 @@ async def test_playing_alone_in_own_room(isolated, fake_core):
         assert (Path("saves") / "team-阿明.json").exists()  # 存檔跟著隊伍（一個人也是一隊）
 
 
+async def test_continuing_a_save_starts_from_a_clean_screen(isolated):
+    """讀檔時先清掉房間的等人畫面，再顯示上次的劇情。"""
+    async with TestClient(TestServer(app())) as client:
+        browser = await enter_own_room(client)
+        await browser.ws.close()  # 離開：房間關了，存檔還在
+        browser = await enter_name(client, "阿明")
+        await browser.expect("lobby", lambda m: m["screen"]["title"] == "大廳")
+        await browser.send("act", text="1")
+        await browser.expect("lobby", lambda m: m["screen"]["view"] == "room")
+        await browser.send("act", text="1")  # 開始遊戲：找到存檔
+        await browser.answer((await browser.expect("confirm"))["id"], True)
+        await browser.expect("narration_start")
+        kinds = [m["t"] for m in browser.seen]
+        assert "clear" in kinds[kinds.index("confirm"):]  # 接著玩之前先清空畫面
+
+
 async def test_name_problems_are_shown_and_asked_again(isolated):
     async with TestClient(TestServer(app())) as client:
         first = await enter_own_room(client)
