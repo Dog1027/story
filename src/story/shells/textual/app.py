@@ -291,6 +291,9 @@ class StoryApp(App, View):
     def extend_narration(self, text: str) -> None:
         self.narration_text = text
 
+    def show_past_narration(self, text: str) -> None:
+        self.query_one("#log", VerticalScroll).mount(Prose(text, classes="narration"))
+
     async def finish_narration(self, text: str) -> None:
         self.narration_text, self.narration_done = text, True
         await self.narration_task

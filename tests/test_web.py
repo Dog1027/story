@@ -96,6 +96,8 @@ async def test_continuing_a_save_starts_from_a_clean_screen(isolated):
     """讀檔時先清掉房間的等人畫面，再顯示上次的劇情。"""
     async with TestClient(TestServer(app())) as client:
         browser = await enter_own_room(client)
+        await browser.send("act", text="1")
+        await browser.expect("status", lambda m: m["status"] and m["status"]["turn"] == 2)
         await browser.ws.close()  # 離開：房間關了，存檔還在
         browser = await enter_name(client, "阿明")
         await browser.expect("lobby", lambda m: m["screen"]["title"] == "大廳")
@@ -105,7 +107,10 @@ async def test_continuing_a_save_starts_from_a_clean_screen(isolated):
         await browser.answer((await browser.expect("confirm"))["id"], True)
         await browser.expect("narration_start")
         kinds = [m["t"] for m in browser.seen]
-        assert "clear" in kinds[kinds.index("confirm"):]  # 接著玩之前先清空畫面
+        after = kinds[kinds.index("confirm"):]
+        past = next(m for m in browser.seen if m["t"] == "past_narration")
+        assert past["text"] == "兩人在燈塔醒來。"
+        assert "clear" in after and after.index("clear") < after.index("past_narration") < after.index("narration_start")  # 先清空，再顯示之前的劇情
 
 
 async def test_name_problems_are_shown_and_asked_again(isolated):

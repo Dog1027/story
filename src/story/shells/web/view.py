@@ -114,6 +114,9 @@ class WebView(View):
     def start_narration(self) -> None:
         self.post("narration_start")
 
+    def show_past_narration(self, text: str) -> None:
+        self.post("past_narration", text=text)
+
     def extend_narration(self, text: str) -> None:
         self.post("narration_text", text=text)
 

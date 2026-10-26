@@ -311,6 +311,13 @@ AI 沒有想出開頭，請再試一次。
 <!-- 有好幾位角色時的一位角色。變數：{name}、{conditions} -->
 {name}｜{conditions}
 
+## text_history_trimmed
+（更早的劇情已經整理成摘要，用 /state 可以看）
+
+## text_action
+<!-- 純文字版讀檔時，之前的劇情裡的一次行動。變數：{action} -->
+› {action}
+
 ## text_fallen
 已倒下
 

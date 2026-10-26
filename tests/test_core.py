@@ -209,6 +209,9 @@ def test_resume_from_save(engine, isolated):
     reply = second.send("1")
     assert reply.resumed and reply.narration == "你選擇了「往上爬」。"
     assert reply.choices == ["點亮油燈", "躲起來"]
+    (opening, action), = reply.history  # 之前的劇情也一起送回來；一個人玩，行動前面不寫名字
+    assert opening and action == "往上爬" and not reply.history_trimmed
+    assert reply.text.index(opening) < reply.text.index("› 往上爬") < reply.text.index("你選擇了「往上爬」。")  # 純文字版也看得到
     assert not second.send("1").resumed
 
 

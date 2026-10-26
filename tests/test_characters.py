@@ -257,6 +257,7 @@ def test_resume_team_save(engine, isolated):
     assert same.start().phase == "ask_continue"
     reply = same.send("1")
     assert reply.resumed and same.view("阿明", reply).choices == ["阿明往上爬", "阿明躲起來"]
+    assert reply.history == [("兩人在燈塔醒來。", "阿明：阿明往上爬\n小華：小華往上爬")]  # 好幾位角色：行動每人一行，寫名字
 
     others = StoryCore("test", ["阿明", "小美"], save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
     assert others.start().phase == "ask_premise"  # 玩家不同就開新局
@@ -305,6 +306,7 @@ def test_view_gives_each_player_their_own_choices(core):
     core.send_as("阿明", "1")
     me = core.view("阿明")  # 重新連線：目前這回合的畫面
     assert me.actor == "" and me.choices == [] and me.resumed and me.narration == "兩人在燈塔醒來。"
+    assert me.history == []  # 還在第一回合，沒有之前的劇情
     assert core.view("小華").choices == ["小華往上爬", "小華躲起來"]
 
 

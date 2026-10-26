@@ -21,7 +21,7 @@ from story.core import prompts
 from story.core.ai import LOG_PATH, is_key_error
 from story.core.engine import Engine
 from story.core.models import Character, GameState, word
-from story.core.prompting import AWAY_ACTION, TIMEOUT_ACTION
+from story.core.prompting import AWAY_ACTION, TIMEOUT_ACTION, TURN
 from story.core.records import DEFAULT_PREMISE, SAVE_PATH, ChangeGroups, change_groups, ending_record, load, memory_text, save, snapshot
 from story.core.rules import condition_list, warning_level
 
@@ -81,6 +81,8 @@ class Reply:
     time_limit: int = 0  # 限時秒數；0 代表不限時
     notice: str = ""  # 簡短的系統訊息，例如「讀取存檔」「沒有這個指令」
     resumed: bool = False  # 這次是讀取存檔、重新顯示上次的劇情
+    history: list[tuple[str, str]] = field(default_factory=list)  # resumed：之前的劇情，每回合 (劇情, 看完之後的行動，每人一行)
+    history_trimmed: bool = False  # resumed：更早的劇情已經壓縮成摘要，history 從中間開始
     info: tuple[str, str] | None = None  # 要另外顯示的內容：(標題, 內容)，例如記憶、說明
     premise_default: str = ""  # ask_premise：留白時使用的前提
     genre: str = ""  # ask_premise：開新局會用的題材選擇（GENRE_AUTO、GENRE_NONE 或題材名稱）
@@ -237,6 +239,7 @@ class StoryCore:
             reply = self._reply(**self._screen())
             if self._phase == "playing":
                 reply.narration, reply.resumed = self.state.current_narration, True
+                reply.history, reply.history_trimmed = self._history(), bool(self.state.summary)
         if self._phase != "playing":
             mine = replace(reply, actor="", choices=[] if reply.actor else reply.choices)
         else:
@@ -432,7 +435,16 @@ class StoryCore:
         self._phase = "playing"
         self.pending = {}
         s = self.state
-        return self._reply(narration=s.current_narration, notice=UI["resumed"].format(premise=s.premise), resumed=True, **self._screen())
+        return self._reply(
+            narration=s.current_narration, notice=UI["resumed"].format(premise=s.premise), resumed=True,
+            history=self._history(), history_trimmed=bool(s.summary), **self._screen(),
+        )
+
+    def _history(self) -> list[tuple[str, str]]:
+        """之前的劇情（劇情紀錄的原文）：(劇情, 看完之後的行動)。只有一位角色時，行動前面不寫名字，跟平常顯示的一樣。"""
+        s = self.state
+        prefix = TURN["action_entry"].format(name=s.characters[0].name, action="") if s.solo else ""
+        return [(t.narration, t.action.removeprefix(prefix)) for t in s.recent]
 
     def _turn_reply(self, before) -> Reply:
         s = self.state
@@ -540,6 +552,11 @@ def render_text(reply: Reply) -> str:
         if reply.genres:
             choices = [GENRE_AUTO, GENRE_NONE, *(name for name, _ in reply.genres)]
             parts.append(UI["text_genres"].format(genres=join(genre_label(g) for g in choices)))
+    if reply.history_trimmed:
+        parts.append(UI["text_history_trimmed"])
+    for narration, action in reply.history:
+        parts.append(narration)
+        parts.append(UI["text_action"].format(action=action))
     if reply.narration:
         parts.append(reply.narration)
     for name, groups in reply.changes:

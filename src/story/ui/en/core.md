@@ -311,6 +311,13 @@ Turn {turn}{timed} | Condition: {conditions}
 <!-- One character, when there are several. Variables: {name}, {conditions} -->
 {name} | {conditions}
 
+## text_history_trimmed
+(Earlier parts of the story were condensed into a summary; see /state)
+
+## text_action
+<!-- In the plain-text version when loading a save: one action in the earlier story. Variable: {action} -->
+› {action}
+
 ## text_fallen
 fallen
 

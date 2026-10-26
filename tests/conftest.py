@@ -9,7 +9,8 @@ import pytest
 os.environ["STORY_LANG"] = "zh-TW"
 
 from story.core.engine import Engine
-from story.core.models import Character, Condition, GameState, GenrePick, StoryArc, StoryBeat
+from story.core.models import Character, Condition, GameState, GenrePick, StoryArc, StoryBeat, Turn
+from story.core.prompting import format_actions
 
 
 @pytest.fixture(autouse=True)
@@ -162,6 +163,7 @@ class FakeEngine:
         if self.fail_with:
             state.turn += 99  # 模擬改了一半就失敗
             raise self.fail_with
+        state.recent.append(Turn(narration=state.current_narration, action=format_actions(actions)))  # 跟真的 engine 一樣記下劇情紀錄
         me, action = state.characters[0], next(iter(actions.values()))
         state.turn += 1
         state.current_narration = f"你選擇了「{action}」。"
@@ -207,6 +209,7 @@ class FakeGroupEngine:
             state.turn += 99
             raise self.fail_with
         self.rounds.append(dict(actions))
+        state.recent.append(Turn(narration=state.current_narration, action=format_actions(actions)))
         state.turn += 1
         state.current_narration = "；".join(f"{k}{v}" for k, v in actions.items())
         if state.turn == 2:

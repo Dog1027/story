@@ -100,6 +100,10 @@ class View:
         """這段劇情的完整內容；全部顯示完才回傳。"""
         raise NotImplementedError
 
+    def show_past_narration(self, text: str) -> None:
+        """讀檔、重新連線時之前的劇情：直接整段顯示，不用打字效果，也不捲動。"""
+        raise NotImplementedError
+
     def discard_narration(self) -> None:
         """收回還沒寫完的這段劇情（AI 出錯，這回合沒有推進）。"""
         raise NotImplementedError
@@ -437,11 +441,10 @@ class Client:
             self.view.stop_timer()
             if reply.resumed:  # 讀檔、重新連線：從乾淨的畫面接著顯示（網頁版前面還留著房間或大廳的等人畫面）
                 self.clear_story()
+                self.show_history(reply)
             self.choices = list(reply.choices)
             self.view.prepare_choices(self.choices, timed=bool(reply.time_limit))
             self.refresh_hint()
-            if reply.resumed:
-                self.view.show_note(reply.notice)
             await self.narrate(reply.narration)
             for name, groups in reply.changes:
                 self.view.show_changes(groups, name if len(reply.characters) > 1 else "")  # 一個人玩不用寫名字
@@ -451,6 +454,19 @@ class Client:
         self.set_status(reply.turn, reply.characters)
         if reply.narration and reply.time_limit:
             await self.narration_read(reply)
+
+    def show_history(self, reply: Reply) -> None:
+        """讀檔、重新連線：先一次顯示之前的劇情與大家的行動，再接著顯示目前這一段。"""
+        if reply.notice:
+            self.view.show_note(reply.notice)  # 「讀取存檔：……」
+        if reply.history_trimmed:
+            self.view.show_note(UI["history_trimmed"])
+        for narration, action in reply.history:
+            self.view.show_past_narration(narration)
+            for line in action.splitlines():
+                self.view.show_action(line)
+        if reply.history:
+            self.view.show_note(UI["history_end"])
 
     async def show_ending(self, ending: Ending) -> None:
         """一段一段來：先讀完最後的劇情，按 Enter 才出現尾聲，再按一次才看總結。"""

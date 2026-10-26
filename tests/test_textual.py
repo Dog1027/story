@@ -218,8 +218,11 @@ async def test_resume_from_save():
     async with app.run_test(size=SIZE) as pilot:
         await wait_until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
         await pilot.press("enter")  # 繼續
-        await wait_until(pilot, lambda: app.choices == ["點亮油燈", "躲起來"])
-        assert log_lines(app)[0].startswith("讀取存檔")
+        await wait_until(pilot, lambda: app.choices == ["點亮油燈", "躲起來"] and not app.typing)
+        lines = log_lines(app)
+        assert lines[0].startswith("讀取存檔")
+        assert any("往上爬" in line for line in lines[1:])  # 之前的劇情與行動也看得到
+        assert lines.index(next(line for line in lines if "以上是之前的劇情" in line)) < len(lines) - 1
 
 
 async def test_missing_key_asks_for_it_and_saves_it(monkeypatch, isolated):

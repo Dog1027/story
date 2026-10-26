@@ -73,6 +73,14 @@ Press Enter to see the ending
 ## story_over
 The End
 
+## history_trimmed
+<!-- 讀檔、重新連線時，之前的劇情最前面：更早的部分已經壓縮成摘要 -->
+(Earlier parts of the story were condensed into a summary; see /state)
+
+## history_end
+<!-- 讀檔、重新連線時，之前的劇情與目前這一段之間 -->
+── The story so far ──
+
 ## hint_input
 <!-- The input box hint -->
 ↑↓ to choose, or write your action

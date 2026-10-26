@@ -80,6 +80,7 @@ const handlers = {
   },
   note({ text }) { add("div", "note", text); },
   narration_start() { startNarration(); },
+  past_narration({ text }) { add("div", "narration", text); }, // 讀檔時之前的劇情：直接顯示，不打字
   narration_text({ text }) { if (state.narration) state.narration.text = text; },
   narration_end({ id, text }) {
     if (!state.narration) startNarration();

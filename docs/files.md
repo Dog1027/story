@@ -251,6 +251,7 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 | `time_limit` | 限時秒數，0 代表不限時 |
 | `notice` | 簡短的系統訊息 |
 | `resumed` | 這次是讀取存檔、重新顯示上次的劇情 |
+| `history`、`history_trimmed` | `resumed` 時之前的劇情：每回合 (劇情, 看完之後的行動，每人一行；只有一位角色時不寫名字)，來自劇情紀錄的原文；更早的部分已經壓縮成摘要時 `history_trimmed` |
 | `info` | 要另外顯示的內容（標題, 內容），例如 `/state`、`/help` |
 | `premise_default`、`suggestion`、`genres` | 等前提時：留白會用的前提、`/suggest` 想出來的前提、可選的題材 |
 | `ending` | 結束時：結局名稱、尾聲、旅程紀錄 |
@@ -349,7 +350,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 
 | 名稱 | 做什麼 |
 |---|---|
-| `View` | 介面要實作的方法：故事區（`start_narration()`、`extend_narration()`、`finish_narration()`、`discard_narration()`：劇情邊收邊顯示；`show_action()`、`show_changes()`、`wait_enter()`…）、選項與提示（`prepare_choices()`、`show_choices()`、`set_hint()`）、狀態列（`set_status()`）、大廳與房間的等人畫面（`show_lobby()`）、等待與倒數（`set_busy()`、`show_busy()`、`start_timer()`）、通知與對話框（`ask_premise()`、`ask_confirm()`、`ask_ending()`、`ask_name()`、`ask_api_key()`…） |
+| `View` | 介面要實作的方法：故事區（`start_narration()`、`extend_narration()`、`finish_narration()`、`discard_narration()`：劇情邊收邊顯示；`show_action()`、`show_changes()`、`show_past_narration()`（讀檔時之前的劇情，不打字）、`wait_enter()`…）、選項與提示（`prepare_choices()`、`show_choices()`、`set_hint()`）、狀態列（`set_status()`）、大廳與房間的等人畫面（`show_lobby()`）、等待與倒數（`set_busy()`、`show_busy()`、`start_timer()`）、通知與對話框（`ask_premise()`、`ask_confirm()`、`ask_ending()`、`ask_name()`、`ask_api_key()`…） |
 | `Client` | 兩種玩法共用的流程。子類別決定核心在哪裡：`run()`（開始）、`deliver()`（把一句輸入交給核心）、`echo_for()`（送出前先顯示的行動）、`progress()`、`timeout()` 等掛勾 |
 | `LocalClient` | 在這台電腦上玩（終端機版）：取得 API key（設定檔或問玩家），建立只有一位角色的 `StoryCore`（名字是設定檔的 `name`），在背景執行緒呼叫它 |
 | `RoomClient`（`room_client.py`） | 網頁版：連進大廳、問名字、收大廳與房間推來的訊息；輸入送給房間，由房間呼叫核心 |
