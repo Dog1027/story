@@ -12,9 +12,11 @@ from story.shells.lobby import Lobby
 
 
 class RoomClient(Client):
-    def __init__(self, view: View, lobby: Lobby):
+    def __init__(self, view: View, lobby: Lobby, token: str = ""):
         super().__init__(view)
         self.lobby = lobby
+        self.token = token  # 瀏覽器記住的識別碼：同一個瀏覽器再連進來時，新的連線取代舊的（見 lobby.py）
+        self.replaced = False
         self.room: Connection | None = None  # 和大廳（與房間）的連線
         self.my_name = ""
         self.waiting: list[str] = []  # 這回合還沒行動的人
@@ -85,7 +87,7 @@ class RoomClient(Client):
     # ---------- 和大廳、房間對話 ----------
 
     async def claim_seat(self, name: str) -> str:
-        await self.room.send({"type": "join", "name": name})
+        await self.room.send({"type": "join", "name": name, "token": self.token})
         answer = await self.room.receive()
         if answer is None:
             return UI["room_lost"]
@@ -108,6 +110,10 @@ class RoomClient(Client):
                 self.update_waiting(message["names"])
             elif kind == "notice":
                 self.view.notify(message["text"])
+            elif kind == "replaced":  # 同一個瀏覽器從別的地方進來了：這裡結束
+                self.replaced = True
+                self.view.notify(UI["session_replaced"], lasting=True)
+                self.view.exit()
             elif kind == "new_story":  # 立刻清空，不排隊：緊接著的「故事生成中」才不會被一起清掉
                 self.clear_story(message.get("premise", ""))
             elif kind == "premise" and self.premise_answer:
@@ -117,7 +123,8 @@ class RoomClient(Client):
         if self.premise_answer and not self.premise_answer.done():  # 前提對話框還在等房間：不然會一直等下去
             self.premise_answer.set_exception(ConnectionError(UI["room_disconnected"]))
         self.set_busy(False)
-        self.view.notify(UI["room_disconnected"], error=True, lasting=True)
+        if not self.replaced:
+            self.view.notify(UI["room_disconnected"], error=True, lasting=True)
 
     def update_waiting(self, names: list[str]) -> None:
         """這回合還沒行動的人變了：更新提示（不重建選項，畫面才不會閃）。"""

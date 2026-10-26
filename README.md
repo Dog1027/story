@@ -59,11 +59,11 @@ The web server uses port 8080 by default (`just serve 9000` to change it). Open 
 
 The web version calls the AI with the host's API key (entered the first time you start the server); players only enter a name.
 
-- Enter a name when you join (unique on the whole server); your name is your character in the story
+- Enter a name when you join (unique on the whole server); your name is your character in the story. Your browser remembers it, so next time you go straight in; use "Change name" in the ⋯ menu to pick another
 - You start in the lobby: open a new room, or join a room that's still waiting for players. Playing alone is just a room of your own. Several rooms can play at once, so different groups can team up separately (at most 10 rooms, 4 players per room)
 - Whoever opens the room is the host, who chooses "Start game", the premise, whether to continue a save, and whether to start over. Once the host sends the premise, everyone sees it, and you all enter the story together when the AI finishes the opening
 - In the game everyone sees their own choices and can act in any order; the input box hint shows who has acted and who you are waiting for, and the turn advances once everyone has acted. In timed mode the room runs a single countdown, which starts only after everyone has finished reading
-- If you disconnect, come back with the same name and you go straight back to your room. If everyone else has acted and you're still away, your character "steps away" for that turn
+- If you disconnect, come back with the same name and you go straight back to your room. Coming back from the same browser (a refresh, or a phone that kept the old connection open in the background) takes over your seat right away, and the old tab leaves. If everyone else has acted and you're still away, your character "steps away" for that turn
 - If the host leaves, the next person in the room becomes host
 - When the story ends you return to the room's waiting screen and can play again, or choose "Leave room" to go back to the lobby (you can also type `/leave` during a game). A room closes when nobody is left in it
 - All rooms share one API key: the free tier allows 15 AI calls per minute, so with many rooms calls queue up, and the screen shows "queued"

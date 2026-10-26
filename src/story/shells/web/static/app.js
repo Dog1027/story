@@ -29,13 +29,14 @@ const state = {
   lobbyPane: "rooms", // 手機上大廳顯示哪個分頁：rooms、people
   premise: null, // 開著的前提對話框
   exited: false,
+  autoNamed: false, // 已經自動用記住的名字試過一次（失敗時改問玩家，不會一直重試）
 };
 
 // ---------- 連線 ----------
 
 function connect() {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${scheme}://${location.host}/ws`);
+  const ws = new WebSocket(`${scheme}://${location.host}/ws?token=${encodeURIComponent(browserToken())}`);
   state.ws = ws;
   ws.onopen = () => {
     input.placeholder = "";
@@ -165,7 +166,14 @@ const handlers = {
       sheet.append(buttons([[t("leave"), () => close(false)], [t("play_again"), () => close(true), true]]));
     }, (value) => answer(id, value), false);
   },
-  name(message) { nameSheet(message); },
+  name(message) {
+    // 記得上次的名字：第一次問時直接用它進去；不能用（例如舊的連線還沒斷）才跳出對話框，說明原因並預先填好
+    const saved = savedName();
+    if (saved && !message.error && !state.autoNamed) {
+      state.autoNamed = true;
+      answer(message.id, saved);
+    } else nameSheet(message);
+  },
   premise(message) { premiseSheet(message); },
   premise_update(message) { if (state.premise) state.premise.update(message); },
   exit() {
@@ -291,6 +299,7 @@ function renderStatus(status) {
 // 按鈕送出的是選項的編號，跟在輸入框打編號一樣
 function renderLobby(screen) {
   renderStatus(null);
+  if (screen.you) saveName(screen.you); // 伺服器接受的名字才記住
   renderChoices([]); // 上一局留下來、看不見但還佔著位置的選項也清掉：等人的畫面的按鈕在面板裡
   $("app").classList.toggle("wide", screen.view === "lobby"); // 大廳兩欄並排：上下的狀態列、輸入框跟著變寬
   log.querySelectorAll(".lobby-panel").forEach((el) => el.remove());
@@ -582,10 +591,35 @@ function helpSheet() {
 }
 
 // 名字能不能用由伺服器判斷，不能用時會帶著原因（error）再問一次
+// 這個瀏覽器的識別碼：同一個瀏覽器用同一個名字再連進來時，伺服器讓新的連線取代舊的（不用等舊的斷線）。
+// 用 getRandomValues 而不是 randomUUID：區網的 http 網址不是安全環境，沒有 randomUUID
+function browserToken() {
+  try {
+    let token = localStorage.getItem("story-token");
+    if (!token) {
+      token = [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      localStorage.setItem("story-token", token);
+    }
+    return token;
+  } catch (e) {
+    return ""; // 存不了（例如無痕模式）：就不取代，跟以前一樣要等舊的連線斷掉
+  }
+}
+
+// 上次用的名字只存在這個瀏覽器（跟外觀一樣），讀寫失敗（例如無痕模式）就當作沒有
+function savedName() {
+  try { return localStorage.getItem("story-name") || ""; } catch (e) { return ""; }
+}
+
+function saveName(name) {
+  try { if (name) localStorage.setItem("story-name", name); else localStorage.removeItem("story-name"); } catch (e) {}
+}
+
 function nameSheet({ id, hint, error, max_len }) {
   openSheet((sheet, close) => {
     const name = field("text", "name-input", t("name_placeholder"));
     name.maxLength = max_len;
+    name.value = savedName();
     const errorLine = tag("p", "error", error || "");
     const submit = () => close(name.value);
     name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
@@ -696,6 +730,10 @@ menu.addEventListener("click", (event) => {
   } else if (button.dataset.local === "help") {
     menu.hidden = true;
     helpSheet();
+  } else if (button.dataset.local === "rename") {
+    saveName(""); // 忘掉名字再重新連線：會離開目前的房間，重新問名字
+    state.exited = true;
+    location.reload();
   } else if (button.dataset.themeChoice) {
     const choice = button.dataset.themeChoice;
     if (choice === "system") delete document.documentElement.dataset.theme;

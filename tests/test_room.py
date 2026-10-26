@@ -63,10 +63,10 @@ def room_of(lobby) -> object:
     return lobby.rooms[0]
 
 
-async def join(lobby, name: str) -> Player:
-    """連進大廳，用這個名字進來。"""
+async def join(lobby, name: str, token: str = "") -> Player:
+    """連進大廳，用這個名字進來。token 是瀏覽器記住的識別碼。"""
     conn = lobby.connect()
-    await conn.send({"type": "join", "name": name})
+    await conn.send({"type": "join", "name": name, "token": token})
     answer = await conn.receive()
     assert answer == {"type": "joined"}, answer
     return Player(conn)
@@ -185,6 +185,37 @@ async def test_disconnected_players_rejoin_or_are_skipped(lobby):
     await host.send("1")  # 在線的人都行動了：替離線的小華送出「暫時離開」
     await host.reply(lambda r: bool(r.narration))
     assert lobby.engine.rounds == [{"阿明": "阿明往上爬", "小華": AWAY_ACTION}]
+
+
+async def test_the_same_browser_takes_over_its_old_connection(lobby):
+    """舊的分頁還沒斷（例如手機切到背景），同一個瀏覽器又用同一個名字進來：新的連線坐回原本的位置。"""
+    first = await join(lobby, "阿明", token="browser-1")
+    await open_room(first)
+    await first.expect(is_lobby("阿明 的房間"))
+    await first.send("1")  # 開始遊戲
+    assert (await first.reply()).phase == "ask_premise"
+    await first.send("燈塔")
+    await first.reply(lambda r: bool(r.narration))
+
+    second = await join(lobby, "阿明", token="browser-1")
+    await first.expect(lambda m: m["type"] == "replaced")
+    view = await second.reply()
+    assert view.resumed and view.narration and view.actor == "阿明"
+    await asyncio.sleep(0.05)  # 舊的連線結束了
+    assert len(lobby.rooms) == 1 and lobby.people["阿明"] is not first.conn  # 房間沒有因為舊的連線離開而關掉
+    await second.send("1")
+    await second.reply(lambda r: bool(r.narration))
+    assert lobby.engine.rounds == [{"阿明": "阿明往上爬"}]
+
+
+async def test_other_browsers_cannot_take_a_name_in_use(lobby):
+    await join(lobby, "阿明", token="browser-1")
+    for token in ("browser-2", ""):
+        conn = lobby.connect()
+        await conn.send({"type": "join", "name": "阿明", "token": token})
+        answer = await conn.receive()
+        assert answer["type"] == "rejected" and "已經有人在用" in answer["reason"]
+        conn.close()
 
 
 async def test_host_leaving_passes_the_dialog_to_the_next_player(lobby):

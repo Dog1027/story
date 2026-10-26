@@ -3,17 +3,20 @@
 每個瀏覽器分頁的共用層 Client 用 connect() 連進大廳，拿到一端 Connection。先輸入名字（整台伺服器不重複），
 接著在大廳看到房間列表：開一個新房間，或加入等人中的房間。一個人玩就是開一個只有自己的房間。
 進了房間之後，訊息交給那個房間處理；離開房間（/leave，或在等人的畫面選「離開房間」）回到大廳。
-遊戲中斷線的人，用同一個名字回來時直接回到原本的房間。房間裡沒有人在線就關閉（存檔還在，同一組人再開房間可以接著玩）。
+遊戲中斷線的人，用同一個名字回來時直接回到原本的房間。
+同一個瀏覽器帶著同一個名字與 token 再連進來時（重新整理、手機切回來時舊的連線還沒斷），新的連線直接取代舊的，
+坐回原本的位置，不用等舊的斷線；token 不同的人用這個名字還是會被拒絕。房間裡沒有人在線就關閉（存檔還在，同一組人再開房間可以接著玩）。
 
 所有房間共用架站者的 API key，呼叫 AI 受同一個次數限制（RateLimit），超過的排隊。
 
 訊息是可以轉成 JSON 的 dict。
 玩家 → 大廳
-  {"type": "join", "name": "阿明"}        第一則訊息
+  {"type": "join", "name": "阿明", "token": "..."}   第一則訊息；token 是瀏覽器記住的識別碼（可以是空的）
   {"type": "send", "text": "1"}           在大廳：選房間；在房間裡：交給房間（見 room.py）
   其他訊息在房間裡時交給房間
 大廳 → 玩家
   {"type": "joined"} 或 {"type": "rejected", "reason": "..."}
+  {"type": "replaced"}                    同一個瀏覽器（同名、同 token）從別的分頁或重新連線進來了：這條連線被取代，接著會關閉
   {"type": "lobby", "view": "lobby", "title": "大廳", "you": "阿明", "choices": [...], "hint": "...", "clear": true,
    "rooms": [{"title": "小華 的房間", "host": "小華", "members": [...], "state": "open", "choice": "2"}, ...],
    "people": [{"name": "阿明", "room": "", "playing": false}, ...], "max_rooms": 10, "seats": 4}
@@ -49,6 +52,7 @@ class Lobby:
         self.make_core = make_core
         self.people: dict[str, Connection] = {}  # 在線的人（大廳這一端的連線）
         self.where: dict[str, Room | None] = {}  # 每個人在哪個房間；None 是在大廳
+        self.tokens: dict[str, str] = {}  # 每個人的瀏覽器識別碼：同一個瀏覽器再連進來時取代舊的連線
         self.rooms: list[Room] = []  # 依開房的順序
         self.options: dict[str, list[Room | None]] = {}  # 每個人在大廳看到的選項：None 是「開新房間」
         self.shown: dict[str, dict] = {}  # 每個人最後收到的大廳畫面（沒變就不重送）
@@ -90,15 +94,26 @@ class Lobby:
                 message = await conn.receive()
                 if not message or message.get("type") != "join":
                     return
+                raw, token = message.get("name", ""), str(message.get("token", ""))[:64]
                 async with self.lock:
-                    if error := self._name_error(message.get("name", "")):
+                    old = self._same_browser(raw, token)
+                    if old is None and (error := self._name_error(raw)):
                         await conn.send({"type": "rejected", "reason": error})
                         continue
-                    name = check_name(message["name"])
-                    self.people[name], self.where[name] = conn, None
+                    name = check_name(raw)
+                    if old is not None:  # 取代舊的連線：坐回原本的位置，不經過離開，房間才不會因為沒人而關掉
+                        await self._send_to(old, {"type": "replaced"})
+                        old.close()
+                    else:
+                        self.where[name] = None
+                    self.people[name], self.tokens[name] = conn, token
                     await conn.send({"type": "joined"})
-                    back = next((r for r in self.rooms if r.playing and name in r.members), None)
-                if back:  # 遊戲中斷線的人回來了：直接回到原本的房間
+                    room = self.where[name]
+                    back = room or next((r for r in self.rooms if r.playing and name in r.members), None)
+                if room is not None:
+                    self.shown.pop(name, None)
+                    await room.add(name, conn)
+                elif back:  # 遊戲中斷線的人回來了：直接回到原本的房間
                     await self._enter(name, back)
                 else:
                     await self._show_rooms(clear_for=name)
@@ -107,15 +122,25 @@ class Lobby:
         except ConnectionError:
             pass
         finally:
-            if name:
+            if name and self.people.get(name) is conn:  # 被新的連線取代了就不用收拾：位置已經交給新的連線
                 await self._leave_room(name, back_to_lobby=False)
                 async with self.lock:
-                    del self.people[name], self.where[name]
+                    del self.people[name], self.where[name], self.tokens[name]
                     self.options.pop(name, None)
                     self.shown.pop(name, None)
                 await self._show_rooms()
             conn.close()
             self.links.pop(conn, None)
+
+    def _same_browser(self, raw: str, token: str) -> Connection | None:
+        """同名、同 token 的人已經在線：回傳他舊的連線（要被取代）。"""
+        try:
+            name = check_name(raw)
+        except InvalidName:
+            return None
+        if token and name in self.people and self.tokens.get(name) == token:
+            return self.people[name]
+        return None
 
     def _name_error(self, raw: str) -> str:
         try:
@@ -222,7 +247,12 @@ class Lobby:
         await self._send(name, {"type": "notice", "text": text})
 
     async def _send(self, name: str, message: dict) -> None:
+        if name in self.people:
+            await self._send_to(self.people[name], message)
+
+    @staticmethod
+    async def _send_to(conn: Connection, message: dict) -> None:
         try:
-            await self.people[name].send(message)
-        except (ConnectionError, KeyError):
+            await conn.send(message)
+        except ConnectionError:
             pass  # 對方已經斷線，serve() 結束時會處理

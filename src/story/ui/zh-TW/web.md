@@ -24,6 +24,10 @@ Story
 ## menu_help
 說明
 
+## menu_rename
+<!-- 忘掉這個瀏覽器記住的名字，重新進入（會離開目前的房間） -->
+換名字
+
 ## menu_theme
 外觀
 

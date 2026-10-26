@@ -24,6 +24,10 @@ Start over
 ## menu_help
 Help
 
+## menu_rename
+<!-- Forget the name this browser remembers and enter again (leaves the current room) -->
+Change name
+
 ## menu_theme
 Appearance
 

@@ -133,6 +133,10 @@ queued (everyone shares one API key)
 ## room_lost
 Lost the connection to the game room.
 
+## session_replaced
+<!-- The same browser came back from another tab or reconnected: the old tab shows this -->
+You entered the game from another tab or device, so this one has left.
+
 ## room_disconnected
 Lost the connection to the game room. Please reload the page.
 

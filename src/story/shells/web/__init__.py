@@ -65,7 +65,7 @@ def make_app(lobby: Lobby) -> web.Application:
             return ws
         sessions += 1
         view = WebView(ws)
-        client = RoomClient(view, lobby)
+        client = RoomClient(view, lobby, token=request.query.get("token", "")[:64])
         view.client = client
         writer = asyncio.create_task(view.write_loop())
         game = asyncio.create_task(client.run())
