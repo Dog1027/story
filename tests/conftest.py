@@ -11,6 +11,7 @@ os.environ["STORY_LANG"] = "zh-TW"
 from story.core.engine import Engine
 from story.core.models import Character, Condition, GameState, GenrePick, StoryArc, StoryBeat, Turn
 from story.core.prompting import format_actions
+from story.core.soup.models import Puzzle
 
 
 @pytest.fixture(autouse=True)
@@ -230,3 +231,38 @@ class InvalidKeyError(RuntimeError):
 
     def __str__(self):
         return "API key not valid. Please pass a valid API key."
+
+
+# ---------- 海龜湯 ----------
+
+PUZZLE = Puzzle(title="空號", surface="他每晚撥同一個空號。", truth="那是母親錄的語音。", key_points=["語音是母親錄的", "母親過世了", "他想聽母親的聲音"])
+AI_PUZZLE = Puzzle(title="AI 的題目", surface="AI 的湯面", truth="AI 的湯底", key_points=["一", "二"])
+
+
+class FakeJudge:
+    """假的裁判：提問一律回答「是」；猜湯底時，文字裡有「全部」就說中所有關鍵點，否則說中一個。"""
+
+    def __init__(self, puzzle=None, fail_with=None):
+        self.stage = ""
+        self.puzzle, self.fail_with = puzzle, fail_with
+        self.rounds: list[list[tuple[str, str, str]]] = []
+        self.avoided: list[str] = []
+
+    def judge(self, state, moves):
+        if self.fail_with:
+            raise self.fail_with
+        self.rounds.append([(m.name, m.kind, m.text) for m in moves])
+        for m in moves:
+            if m.kind == "ask":
+                m.answer = "yes"
+            else:
+                m.hit = len(state.puzzle.key_points) if "全部" in m.text else 1
+
+    def make_puzzle(self, avoid):
+        self.avoided = avoid
+        if isinstance(self.puzzle, Exception):
+            raise self.puzzle
+        return self.puzzle
+
+    def set_api_key(self, key):
+        pass

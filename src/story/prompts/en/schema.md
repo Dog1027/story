@@ -101,3 +101,37 @@ The ending's title, 2-6 words, like a chapter title in a novel, e.g. "The Lighth
 
 ## Epilogue.text
 The epilogue, 100-170 words: look back on the key choices of the protagonist's journey, convey the aftertaste of the ending, and you may mention what later became of other characters
+
+<!-- ---------- Turtle soup: Ruling and Judgement are the judge's ruling on this round ---------- -->
+
+## Ruling.move
+The number of this round's move (as listed under "This round")
+
+## Ruling.answer
+The answer to a question, judged against the truth. If the question has nothing to do with the truth, choose "Irrelevant"; if it's half right, choose "Yes and no"; if it can't be answered yes or no, choose "Not a yes/no question". Guesses must fill this in too: always "Irrelevant"
+
+## Ruling.matched
+For a guess, which key points it got right (their numbers). It only counts if the guess states what the key point actually is; brushing against it or a lucky hint doesn't count. Leave empty for questions
+
+## Judgement.rulings
+One entry for each move this round, in the order listed under "This round"
+
+<!-- ---------- Turtle soup: a puzzle written by the AI, and the check of it ---------- -->
+
+## PuzzleDraft.title
+The puzzle's title, 2-5 words
+
+## PuzzleDraft.surface
+The scenario: 40-90 words describing a strange situation that makes people ask "why?". Only what can be seen; don't hint at the reason
+
+## PuzzleDraft.truth
+The truth: 80-150 words explaining what really happened, so that every strange detail in the scenario makes sense
+
+## PuzzleDraft.key_points
+2-4 key points, one sentence each: the facts a guess must state to solve the puzzle. Together they are the core of the truth; don't list details
+
+## PuzzleCheck.ok
+true if the puzzle is sound and fair: the truth explains every strange detail of the scenario, the key points can be reached step by step with yes/no questions, and nothing depends on trivia only the author knows
+
+## PuzzleCheck.problem
+If it isn't sound, what's wrong (a sentence or two); empty if it is

@@ -7,7 +7,7 @@ from conftest import FakeEngine, InvalidKeyError
 
 import story.shells.client as client_module
 from story.core import GENRE_AUTO, GENRE_NONE, Reply, StoryCore
-from story.core.session import Status
+from story.core import Status
 from story.shells.client import LocalClient, PremiseForm, View, status_line
 from story.shells.connection import Connection
 from story.shells.room_client import RoomClient
@@ -58,6 +58,9 @@ class RecordingView(View):
 
     def prepare_choices(self, choices, timed):
         self.record("prepare_choices", choices, timed)
+
+    def mark_choice(self, index):
+        self.record("mark_choice", index)
 
     def show_choices(self, choices):
         self.record("show_choices", choices)
@@ -315,3 +318,26 @@ async def test_premise_request_fails_instead_of_waiting_forever_when_the_room_is
     await client.listen()
     with pytest.raises(ConnectionError):
         await asyncio.wait_for(request, 2)  # 沒修好時會一直等：逾時就是失敗
+
+
+async def test_input_modes_switch_what_typing_does():
+    """海龜湯：選「猜湯底」只切換方式（標出來、換提示），接著打的字用 /guess 送出；「放棄」不用打字，直接送出。"""
+    from story.core.soup.game import INPUTS
+
+    view = RecordingView()
+    client = LocalClient(view)
+    sent = []
+
+    async def send(text, echo=""):
+        sent.append((text, echo))
+
+    client.send = send
+    client.actor, client.inputs = "阿明", list(INPUTS)
+    await client.act("他死了嗎")
+    assert sent[-1] == ("/ask 他死了嗎", "提問：他死了嗎")  # 沒選就是提問
+    await client.act("2")
+    assert len(sent) == 1 and ("mark_choice", 1) in view.calls and view.calls[-1] == ("set_hint", INPUTS[1].hint)
+    await client.act("母親錄的語音")
+    assert sent[-1] == ("/guess 母親錄的語音", "猜湯底：母親錄的語音")
+    await client.act("放棄")
+    assert sent[-1] == ("/give_up", "放棄")

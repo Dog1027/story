@@ -14,7 +14,8 @@ ConditionKind = Literal["body", "mind"]
 TimeSpan = Literal["instant", "moment", "while", "hours", "night", "days"]
 TimeOfDay = Literal["dawn", "morning", "noon", "afternoon", "dusk", "evening", "late_night"]
 Level = Literal["healthy", "minor", "injured", "serious", "dying", "dead"]  # 身體的整體狀態，由好到壞
-CODES = {"severity": Severity, "kind": ConditionKind, "time_span": TimeSpan, "time_of_day": TimeOfDay, "level": Level}
+SoupAnswer = Literal["yes", "no", "irrelevant", "partly", "not_question"]  # 海龜湯：裁判對提問的回答
+CODES = {"severity": Severity, "kind": ConditionKind, "time_span": TimeSpan, "time_of_day": TimeOfDay, "level": Level, "soup_answer": SoupAnswer}
 VOCAB = {category: prompts.table(body) for category, body in prompts.sections("vocab").items()}  # {類別: {代號: 詞}}
 for _category, _codes in CODES.items():
     if missing := set(get_args(_codes)) - set(VOCAB.get(_category, {})):

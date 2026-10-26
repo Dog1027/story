@@ -80,7 +80,7 @@ class RoomClient(Client):
         if not self.actor and self.waiting:
             self.view.set_hint(UI["hint_waiting"].format(names=UI["list_sep"].join(self.waiting)))
         elif self.actor and acted:
-            self.view.set_hint(UI["hint_others_acted"].format(names=UI["list_sep"].join(acted)))
+            self.view.set_hint(UI["hint_others_acted"].format(names=UI["list_sep"].join(acted), hint=self.input_hint()))
         else:
             super().refresh_hint()
 

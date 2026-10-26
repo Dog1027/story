@@ -18,9 +18,10 @@
   {"type": "joined"} 或 {"type": "rejected", "reason": "..."}
   {"type": "replaced"}                    同一個瀏覽器（同名、同 token）從別的分頁或重新連線進來了：這條連線被取代，接著會關閉
   {"type": "lobby", "view": "lobby", "title": "大廳", "you": "阿明", "choices": [...], "hint": "...", "clear": true,
-   "rooms": [{"title": "小華 的房間", "host": "小華", "members": [...], "state": "open", "choice": "2"}, ...],
+   "rooms": [{"title": "小華 的房間", "host": "小華", "members": [...], "state": "open", "game": "", "choice": "2"}, ...],
    "people": [{"name": "阿明", "room": "", "playing": false}, ...], "max_rooms": 10, "seats": 4}
-      大廳的畫面：所有房間（state 是 open 等人中、full 已滿、playing 遊戲中；choice 是加入它要送的選項，不能加入時是空的）、
+      大廳的畫面：所有房間（state 是 open 等人中、full 已滿、playing 遊戲中，game 是遊戲中的玩法 story 或 soup；
+      choice 是加入它要送的選項，不能加入時是空的）、
       所有在線的人與他們在哪裡（room 是房主的名字，在大廳時是空的）、可以選的、輸入框的提示；clear 時先清空畫面（剛進來或剛離開房間）
       房間的等人畫面也是 "type": "lobby"，"view": "room"，見 room.py
   {"type": "notice", "text": "..."}
@@ -30,7 +31,7 @@
 import asyncio
 from collections.abc import Callable
 
-from story.core import MAX_PLAYERS, StoryCore, RateLimit, new_client, pick_choice, ui_text
+from story.core import MAX_PLAYERS, Game, RateLimit, SoupCore, StoryCore, new_client, pick_choice, ui_text
 from story.shells.players import SAVES_DIR, InvalidName, check_name
 from story.shells.connection import Connection
 from story.shells.room import Room
@@ -40,15 +41,16 @@ MAX_ROOMS = 10  # 同時最多幾個房間：大家共用一把 key，房間太�
 AI_PER_MINUTE = 15  # 所有房間加起來，每分鐘最多呼叫幾次 AI（免費方案 flash-lite 的上限；付費方案可以調高）
 
 
-def team_save(players: list[str]):
-    """一組人的存檔與紀錄：同一組人（不管順序）再開房間時可以接著玩。名字只有文字、數字、底線、連字號，可以直接當檔名。"""
-    team = "+".join(sorted(players))
+def team_save(players: list[str], game: str = "story"):
+    """一組人的存檔與紀錄：同一組人（不管順序）再開房間時可以接著玩。冒險與海龜湯各一份。
+    名字只有文字、數字、底線、連字號，可以直接當檔名。"""
+    team = "+".join(sorted(players)) + ("" if game == "story" else f".{game}")
     return SAVES_DIR / f"team-{team}.json", SAVES_DIR / f"team-{team}.log.jsonl"
 
 
 class Lobby:
-    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None]], StoryCore]):
-        """make_core(玩家, on_queue) 建立一局的核心，見 Room。"""
+    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None], str], Game]):
+        """make_core(玩家, on_queue, 玩法) 建立一局的核心，見 Room。"""
         self.make_core = make_core
         self.people: dict[str, Connection] = {}  # 在線的人（大廳這一端的連線）
         self.where: dict[str, Room | None] = {}  # 每個人在哪個房間；None 是在大廳
@@ -65,9 +67,10 @@ class Lobby:
         SAVES_DIR.mkdir(exist_ok=True)
         limit, client = RateLimit(AI_PER_MINUTE), new_client(api_key)
 
-        def make_core(players: list[str], on_queue: Callable[[bool], None]) -> StoryCore:
-            save_path, log_path = team_save(players)
-            return StoryCore(api_key, players, save_path=save_path, log_path=log_path, client=limit.wrap(client, on_queue))
+        def make_core(players: list[str], on_queue: Callable[[bool], None], game: str) -> Game:
+            save_path, log_path = team_save(players, game)
+            kind = SoupCore if game == "soup" else StoryCore
+            return kind(api_key, players, save_path=save_path, log_path=log_path, client=limit.wrap(client, on_queue))
 
         return Lobby(make_core)
 
@@ -222,7 +225,10 @@ class Lobby:
 
     def _room_card(self, room: Room, choice: str) -> dict:
         state = "playing" if room.playing else "full" if len(room.online) >= MAX_PLAYERS else "open"
-        return {"title": UI["room_title"].format(host=room.host), "host": room.host, "members": room.online, "state": state, "choice": choice}
+        return {
+            "title": UI["room_title"].format(host=room.host), "host": room.host, "members": room.online,
+            "state": state, "game": room.game if room.playing else "", "choice": choice,
+        }
 
     async def _show_rooms(self, clear_for: str = "") -> None:
         """把大廳的畫面送給在大廳的人：所有房間（還在等人、還沒滿的才能加入）與所有在線的人。內容沒變就不重送，畫面才不會一直閃。"""

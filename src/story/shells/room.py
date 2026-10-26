@@ -30,11 +30,12 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import replace
 
-from story.core import MAX_PLAYERS, Reply, StoryCore, pick_choice, ui_text
+from story.core import MAX_PLAYERS, Game, Reply, pick_choice, ui_text
 from story.shells.connection import Connection
 
 UI = ui_text("shells")  # story/ui/語言/shells.md
-START, LEAVE = UI["start_game"], UI["leave_room"]  # 等人的畫面裡的選項
+GAMES = {UI["start_story"]: "story", UI["start_soup"]: "soup"}  # 房主在等人的畫面選要玩哪一種：冒險、海龜湯
+LEAVE = UI["leave_room"]
 READY_WAIT = 90  # 等大家看完劇情最多幾秒，超過就直接開始倒數
 TIMEOUT_GRACE = 1  # 倒數結束後多等一下，抵銷網路延遲
 PROGRESS_POLL = 0.1  # 呼叫 AI 時每隔幾秒看一次進度與 AI 寫到哪裡
@@ -47,12 +48,14 @@ class Member:
 
 
 class Room:
-    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None]], StoryCore]):
-        """make_core(玩家, on_queue) 建立這一局的核心；on_queue(是否排隊中) 讓 AI 呼叫排隊時畫面顯示「排隊中」。"""
+    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None], str], Game]):
+        """make_core(玩家, on_queue, 玩法) 建立這一局的核心：玩法是 story（冒險）或 soup（海龜湯）；
+        on_queue(是否排隊中) 讓 AI 呼叫排隊時畫面顯示「排隊中」。"""
         self.make_core = make_core
+        self.game = ""  # 這一局的玩法（大廳的房間卡片顯示用）
         self.members: dict[str, Member] = {}  # 依進來的順序；遊戲中斷線的人會保留，可以重新連線
         self.host = ""
-        self.core: StoryCore | None = None
+        self.core: Game | None = None
         self.host_reply: Reply | None = None  # 正在等房主回答的畫面（存檔、前提、確認重來），換房主時重送
         self.lock = asyncio.Lock()  # 一次只處理一則輸入，核心不會被同時呼叫
         self.ready: set[str] = set()  # 已經看完這回合劇情的人
@@ -167,18 +170,19 @@ class Room:
             if answer:
                 await self._safe_write(self.members[name], {"type": "premise", "reply": reply.to_dict()})
         else:
-            starting = self.core.phase == "ask_premise" and not text.startswith("/")
-            if starting:
-                await self._broadcast({"type": "new_story", "premise": text})
+            starting = self.core.phase in ("ask_premise", "ask_puzzle") and not text.startswith("/")  # 開局：要呼叫 AI
+            if starting:  # 冒險先讓大家看到故事前提；海龜湯的湯面要等抽好題目
+                await self._broadcast({"type": "new_story", "premise": text if self.core.phase == "ask_premise" else ""})
             await self._route(await self._call(lambda: self.core.send(text), busy=starting))
 
     async def _on_lobby(self, name: str, text: str) -> None:
         if name != self.host:
             await self._send_notice(name, UI["wait_host_start"].format(host=self.host))
             return
-        if pick_choice(text, self._lobby_choices(name)) != START:
+        game = GAMES.get(pick_choice(text, self._lobby_choices(name)) or "")
+        if game is None:
             return
-        self.core = self.make_core(self.online, self._set_queued)
+        self.game, self.core = game, self.make_core(self.online, self._set_queued, game)
         await self._route(self.core.start())
 
     def _set_queued(self, queued: bool) -> None:
@@ -240,7 +244,7 @@ class Room:
     async def _route(self, reply: Reply, only: str = "") -> None:
         """把核心的回覆送給該收到的人。有新劇情時送給所有人，否則只送給 only（送出輸入的人）。"""
         phase = reply.phase
-        if phase in ("ask_continue", "ask_premise", "confirm_restart"):
+        if phase in ("ask_continue", "ask_premise", "ask_puzzle", "confirm_restart"):
             self.host_reply = reply
             self._stop_countdown()
             await self._send_reply(self.host, reply)
@@ -318,7 +322,7 @@ class Room:
                 await self._safe_write(member, message)
 
     def _lobby_choices(self, name: str) -> list[str]:
-        return [START, LEAVE] if name == self.host else [LEAVE]
+        return [*GAMES, LEAVE] if name == self.host else [LEAVE]
 
     async def _broadcast_lobby(self, clear_for: str = "") -> None:
         """等人的畫面：房間裡有誰、房主能開始、大家都能離開。clear_for 是剛進來的人，他的畫面要先清空。"""

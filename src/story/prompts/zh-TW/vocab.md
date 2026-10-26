@@ -42,3 +42,11 @@ injured: 受傷
 serious: 重傷
 dying: 瀕死
 dead: 死亡
+
+## soup_answer
+<!-- 海龜湯：裁判對一個提問的回答 -->
+yes: 是
+no: 不是
+irrelevant: 無關
+partly: 是也不是
+not_question: 不是是非題

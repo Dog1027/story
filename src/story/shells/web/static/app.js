@@ -135,6 +135,10 @@ const handlers = {
       renderChoices(choices);
     }
   },
+  mark_choice({ index }) { // 海龜湯：標出目前選的輸入方式（提問、猜湯底），接下來打的字就用這個方式送出
+    choicesList.querySelectorAll(".choice").forEach((b, i) => b.classList.toggle("selected", i === index));
+    focusInput();
+  },
   hint({ placeholder }) {
     if (!state.waitingEnter) input.placeholder = placeholder;
   },
@@ -354,7 +358,8 @@ function lobbyPanel({ title, you, choices, rooms, people, max_rooms, seats }) {
   for (const room of rooms) {
     const card = tag("li", `room-card ${room.state}`);
     const top = tag("div", "room-top");
-    top.append(tag("strong", "", room.title), tag("span", `room-state ${room.state}`, t(`room_state_${room.state}`, { count: room.members.length, max: seats })));
+    const game = room.game ? t(`game_${room.game}`) : "";
+    top.append(tag("strong", "", room.title), tag("span", `room-state ${room.state}`, t(`room_state_${room.state}`, { count: room.members.length, max: seats, game })));
     const members = tag("div", "room-members");
     room.members.forEach((m) => {
       const who = tag("span", "member", m);
@@ -406,7 +411,8 @@ function roomPanel({ title, host, you, members, seats, choices }) {
     list.append(seat);
   }
   const actions = tag("div", "room-actions");
-  choices.forEach((label, i) => actions.append(actionButton(label, String(i + 1), i === 0 && choices.length > 1)));
+  // 最後一個是「離開房間」，其他的（開始冒險、開始海龜湯）都是主要的按鈕
+  choices.forEach((label, i) => actions.append(actionButton(label, String(i + 1), i < choices.length - 1)));
   panel.append(head, list, actions);
   return panel;
 }

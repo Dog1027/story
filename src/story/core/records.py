@@ -6,6 +6,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Literal
 
+from pydantic import BaseModel
+
 from story.core import prompts
 from story.core.models import Character, GameState, word
 from story.core.prompting import PREMISE
@@ -18,7 +20,7 @@ SAVE_PATH = Path("save.json")
 DEFAULT_PREMISE = PREMISE["default"]  # 沒有題材包可以抽、玩家也沒輸入時用的前提
 
 
-def save(state: GameState, path: Path = SAVE_PATH) -> None:
+def save(state: BaseModel, path: Path = SAVE_PATH) -> None:
     """先寫到同資料夾的暫存檔，寫完再一次換上去。任何時候讀到的都是完整的存檔，
     不會因為背景壓縮記憶時剛好在存檔、或寫到一半程式被關掉，而讀到空檔案或壞掉的檔案。"""
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
@@ -31,10 +33,11 @@ def save(state: GameState, path: Path = SAVE_PATH) -> None:
         raise
 
 
-def load(path: Path = SAVE_PATH) -> GameState | None:
+def load(path: Path = SAVE_PATH, kind: type[BaseModel] = GameState):
+    """讀存檔；沒有就回傳 None。kind 是存檔的格式（冒險是 GameState，海龜湯是 SoupState）。"""
     if not path.exists():
         return None
-    return GameState.model_validate_json(path.read_text(encoding="utf-8"))
+    return kind.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def memory_text(state: GameState) -> str:

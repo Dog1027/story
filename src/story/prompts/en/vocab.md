@@ -42,3 +42,11 @@ injured: injured
 serious: badly hurt
 dying: dying
 dead: dead
+
+## soup_answer
+<!-- Turtle soup: the judge's answer to one question -->
+yes: Yes
+no: No
+irrelevant: Irrelevant
+partly: Yes and no
+not_question: Not a yes/no question

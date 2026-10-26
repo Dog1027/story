@@ -86,8 +86,12 @@ The End
 ↑↓ to choose, or write your action
 
 ## hint_others_acted
-<!-- Web: you haven't acted yet, but others have. Variable: {names} -->
-{names} acted. ↑↓ to choose, or write your action
+<!-- Web: you haven't acted yet, but others have. Variables: {names}, {hint} (the usual hint) -->
+{names} acted. {hint}
+
+## input_echo
+<!-- 有輸入方式時（海龜湯），故事區顯示的自己的行動。變數：{label} 方式（提問、猜湯底）、{text} -->
+{label}: {text}
 
 ## hint_waiting
 <!-- Web: you've already acted. Variable: {names} -->
@@ -152,9 +156,13 @@ Lost the connection to the game room. Please reload the page.
 <!-- Variable: {host} -->
 Waiting for {host} (the host) to start…
 
-## start_game
-<!-- The host's choice in the lobby -->
-Start game
+## start_story
+<!-- The host's choice in the room: play an adventure -->
+Start an adventure
+
+## start_soup
+<!-- The host's choice in the room: play turtle soup -->
+Start turtle soup
 
 ## room_name_taken
 That name is already taken. Please choose another.
@@ -176,11 +184,11 @@ The room is full (at most {max} players).
 {name} went offline.
 
 ## host_setting_up
-The host is setting up the story. Please wait.
+The host is setting up the game. Please wait.
 
 ## wait_host_story
 <!-- Variable: {host} -->
-Waiting for {host} (the host) to set up the story.
+Waiting for {host} (the host) to set up the game.
 
 ## wait_host_start
 <!-- Variable: {host} -->

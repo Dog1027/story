@@ -141,6 +141,9 @@ class WebView(View):
     def show_choices(self, choices: list[str]) -> None:
         self.post("choices", choices=choices)
 
+    def mark_choice(self, index: int) -> None:
+        self.post("mark_choice", index=index)
+
     def set_hint(self, placeholder: str) -> None:
         self.post("hint", placeholder=placeholder)
 

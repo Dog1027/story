@@ -2,7 +2,7 @@
 
 English | [繁體中文](README.zh-TW.md)
 
-An AI text adventure you can play in the terminal or the browser, alone or online with friends. Gemini writes the story as you go, and every choice you make shapes where it leads.
+An AI text adventure you can play in the terminal or the browser, alone or online with friends. Gemini writes the story as you go, and every choice you make shapes where it leads. The web version also has turtle soup: a lateral thinking puzzle game with the AI as the judge.
 
 The design principle is **the AI tells the story, the program keeps the memory and the rules**: each turn the AI only *proposes* what happens and how your condition changes, and the program checks it before anything goes into the game state. So the AI can't kill you off with one sentence or forget what's in your bag. In return, reckless choices bring real wounds, and wounds that pile up to a fatal level will kill you.
 
@@ -16,6 +16,7 @@ The design principle is **the AI tells the story, the program keeps the memory a
 - **Genre packs**: Wuxia, Cthulhu, Ghost Story, Monsters & Aliens, and Cyberpunk, each with its own writing guide, opening ideas, and twist ideas. One is picked automatically to fit your premise, or you choose. You can write your own genre pack without touching code; see [docs/genres.md](docs/genres.md) (in Chinese)
 - **Random openings**: a new story starts from an opening drawn from the genre packs; press "Another one" to draw again, or "Inspire me" to have the AI invent a new one
 - **Play alone or together**: every game is a team of 1 to 4 characters, each played by one person with their own conditions, inventory, and choices. Alone, the story speaks to you as "you"; with friends, the turn advances once everyone has acted. On the web, everyone joins the web page from their own phone or computer, opening rooms or joining friends' rooms in the lobby; several rooms can play at once
+- **Turtle soup** (web): the AI is the judge and gives everyone a strange scenario. Each round everyone asks a yes/no question or guesses the truth at the same time, and everyone sees every question and answer. State every key point to solve it; if several people do it in the same round, they win together. Puzzles come from a puzzle bank, or the AI writes one
 
 ## Getting started
 
@@ -61,12 +62,21 @@ The web version calls the AI with the host's API key (entered the first time you
 
 - Enter a name when you join (unique on the whole server); your name is your character in the story. Your browser remembers it, so next time you go straight in; use "Change name" in the ⋯ menu to pick another
 - You start in the lobby: open a new room, or join a room that's still waiting for players. Playing alone is just a room of your own. Several rooms can play at once, so different groups can team up separately (at most 10 rooms, 4 players per room)
-- Whoever opens the room is the host, who chooses "Start game", the premise, whether to continue a save, and whether to start over. Once the host sends the premise, everyone sees it, and you all enter the story together when the AI finishes the opening
+- Whoever opens the room is the host, who chooses the game (an adventure or turtle soup), the premise or where the puzzle comes from, whether to continue a save, and whether to start over. In an adventure, once the host sends the premise everyone sees it, and you all enter the story together when the AI finishes the opening
 - In the game everyone sees their own choices and can act in any order; the input box hint shows who has acted and who you are waiting for, and the turn advances once everyone has acted. In timed mode the room runs a single countdown, which starts only after everyone has finished reading
 - If you disconnect, come back with the same name and you go straight back to your room. Coming back from the same browser (a refresh, or a phone that kept the old connection open in the background) takes over your seat right away, and the old tab leaves. If everyone else has acted and you're still away, your character "steps away" for that turn
 - If the host leaves, the next person in the room becomes host
 - When the story ends you return to the room's waiting screen and can play again, or choose "Leave room" to go back to the lobby (you can also type `/leave` during a game). A room closes when nobody is left in it
 - All rooms share one API key: the free tier allows 15 AI calls per minute, so with many rooms calls queue up, and the screen shows "queued"
+
+### Turtle soup
+
+The host chooses "Start turtle soup" in the room, then draws a puzzle from the bank or has the AI write one (an AI puzzle is checked first; if it isn't sound, one is drawn from the bank instead).
+
+- Everyone sees the scenario first. Each round, everyone chooses "Ask" or "Guess" and types (typing without choosing is a question), or chooses "Give up"
+- Once everyone has acted, the judge (the AI) answers every question that round at once: "Yes", "No", "Irrelevant" or "Yes and no"; for guesses it tells everyone how many key points were stated, but not which ones
+- State every key point to solve it; if several people do it in the same round, they win together. When everyone gives up in the same round, the truth is revealed
+- The status bar shows how many questions each person asked and the most key points they've stated; "What the program remembers" in the ⋯ menu shows the scenario and every question so far
 
 > ⚠ The web server accepts connections from other computers on the same network. There's no HTTPS yet, so traffic is sent in plain text, and names have no password: anyone who knows the names can continue that team's save. Only use it on a network you trust.
 
@@ -104,6 +114,7 @@ src/story/
 ├── prompts/    What the AI is told (markdown), one folder per language; edit without touching code
 ├── ui/         What players see (markdown), one folder per language
 ├── genres/     Genre packs, one folder per language
+├── puzzles/    Turtle soup puzzles, one folder per language, one file per puzzle
 └── shells/     Shells
     ├── client.py   The flow shared by interfaces for human players; LocalClient plays on this computer
     ├── room_client.py  The same flow for the web: RoomClient joins the lobby and rooms
@@ -133,6 +144,7 @@ Common settings are constants at the top of each file, or separate text files:
 - **How the AI writes** (writing rules, narration length, pacing reminders, the epilogue…): the markdown files in `src/story/prompts/en/`. Start with [src/story/prompts/README.md](src/story/prompts/README.md) (in Chinese), which maps "what you want to change → where"
 - **Interface text**: the markdown files in `src/story/ui/en/`
 - **Genre packs**: `src/story/genres/en/`; see [docs/genres.md](docs/genres.md) for how to write one
+- **Turtle soup puzzles**: `src/story/puzzles/en/`, one file per puzzle with the sections `title`, `surface` (the scenario), `truth`, and `key_points` (2-4, one per line). Personal puzzles go in `~/.config/story/puzzles/en/`
 - **Terminal color theme and typing speed**: `src/story/shells/textual/style.py`. Condition colors are derived from the theme's success, warning, and error colors
 - **Web colors, fonts, and typing speed**: the color settings at the top of `src/story/shells/web/static/style.css`, and the constants at the top of `app.js`
 

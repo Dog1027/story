@@ -309,7 +309,7 @@ async def test_story_does_not_jump_when_choices_appear(monkeypatch):
 
 
 async def test_status_lists_conditions_and_warns_only_when_in_danger():
-    from story.core.session import Status
+    from story.core import Status
 
     app = StoryApp()
     async with app.run_test(size=SIZE) as pilot:
@@ -360,7 +360,7 @@ def test_every_builtin_theme_gives_valid_status_colors():
 
 async def test_status_chips_are_never_split_on_narrow_screens():
     """狀態很多、畫面很窄（手機）時：狀態移到第二排並換行，但「⚠ 重傷」這類小區塊不會被拆到兩行。"""
-    from story.core.session import Status
+    from story.core import Status
 
     me = [Status(conditions=[("右臂撕裂傷", "severe"), ("小腿挫傷", "moderate"), ("恐懼", "moderate"), ("失眠", "light")], warning="serious")]
     for width in (100, 40):

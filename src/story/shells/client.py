@@ -16,7 +16,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
-from story.core import GENRE_AUTO, GENRE_NONE, ChangeGroups, Ending, Reply, Status, StoryCore, ui_text, word
+from story.core import GENRE_AUTO, GENRE_NONE, ChangeGroups, Ending, InputMode, Reply, Status, StoryCore, pick_choice, ui_text, word
 from story import settings
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 
@@ -127,6 +127,9 @@ class View:
     def show_choices(self, choices: list[str]) -> None:
         """顯示選項（prepare_choices 放好的就是讓它出現）。"""
         raise NotImplementedError
+
+    def mark_choice(self, index: int) -> None:
+        """標出目前選的輸入方式（海龜湯的「提問」「猜湯底」，見 Reply.inputs）；-1 是取消標記。不需要的介面可以不做。"""
 
     def set_hint(self, placeholder: str) -> None:
         """輸入框的提示，例如網頁版行動完之後的「等待 小華 行動…」。"""
@@ -266,6 +269,8 @@ class Client:
         self.view = view
         self.actor = ""  # 自己這回合還沒行動時是自己的名字，行動完是空的
         self.choices: list[str] = []
+        self.inputs: list[InputMode] = []  # 輸入的方式（海龜湯）：有的話，選項是切換方式，打的字用目前的方式送出
+        self.input_mode = 0  # 目前選的方式（inputs 的索引）
         self.draft = ""  # 已經交給介面、還在串流中的劇情
         self.busy = False
         self.timed = False
@@ -339,7 +344,26 @@ class Client:
 
     async def act(self, text: str) -> None:
         """玩家的行動：選項編號或自由輸入。先在故事區顯示行動，再送出。"""
-        await self.send(text, echo=self.echo_for(text))
+        if self.inputs and self.actor:
+            await self.act_with_inputs(text)
+        else:
+            await self.send(text, echo=self.echo_for(text))
+
+    async def act_with_inputs(self, text: str) -> None:
+        """有輸入方式時（海龜湯）：選了要打字的方式就切換過去，等玩家打字；不用打字的直接送出；打的字用目前的方式送出。"""
+        labels = [m.label for m in self.inputs]
+        if (picked := pick_choice(text, labels)) is not None:
+            index = labels.index(picked)
+            mode = self.inputs[index]
+            if not mode.needs_text:
+                await self.send(mode.command, echo=mode.label)
+                return
+            self.input_mode = index
+            self.view.mark_choice(index)
+            self.refresh_hint()
+            return
+        mode = self.inputs[self.input_mode]
+        await self.send(f"{mode.command} {text}", echo=UI["input_echo"].format(label=mode.label, text=text))
 
     async def command(self, text: str) -> None:
         """指令（/state、/restart 等），不顯示在故事區。"""
@@ -396,6 +420,8 @@ class Client:
             self.timed = reply.timed
             self.view.set_status(status_line(*self.shown, self.timed))
         self.actor = reply.actor
+        if reply.inputs != self.inputs or reply.narration:  # 新的一回合：回到第一個方式（提問）
+            self.inputs, self.input_mode = list(reply.inputs), 0
         if reply.phase != "playing":
             self.view.stop_timer()
         if reply.info:
@@ -411,8 +437,8 @@ class Client:
             await self.send("1" if keep else "2")
         elif reply.phase == "ask_premise":
             await self.ask_premise(reply)
-        elif reply.phase == "confirm_restart":
-            sure = await self.view.ask_confirm(reply.notice, *reply.choices)  # 核心給的「確定」「取消」
+        elif reply.phase in ("confirm_restart", "ask_puzzle"):
+            sure = await self.view.ask_confirm(reply.notice, *reply.choices)  # 核心給的兩個選項：確定／取消、題庫／AI 出題
             await self.send("1" if sure else "2")
         elif reply.phase in ("playing", "ending"):
             await self.show_turn(reply)
@@ -471,7 +497,7 @@ class Client:
     async def show_ending(self, ending: Ending) -> None:
         """一段一段來：先讀完最後的劇情，按 Enter 才出現尾聲，再按一次才看總結。"""
         if ending.epilogue:
-            await self.view.wait_enter(UI["wait_epilogue"])
+            await self.view.wait_enter(ending.reveal or UI["wait_epilogue"])
             self.view.show_ending_title(ending.title)
             await self.narrate(ending.epilogue)
         else:
@@ -498,7 +524,13 @@ class Client:
         self.view.set_status(status_line(turn, characters, self.timed))
 
     def refresh_hint(self) -> None:
-        self.view.set_hint(UI["hint_input"])
+        self.view.set_hint(self.input_hint())
+
+    def input_hint(self) -> str:
+        """輸入框平常的提示；有輸入方式時是目前這個方式的說明。"""
+        if self.inputs and self.actor and self.inputs[self.input_mode].hint:
+            return self.inputs[self.input_mode].hint
+        return UI["hint_input"]
 
 
 class LocalClient(Client):

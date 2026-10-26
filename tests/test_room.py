@@ -3,10 +3,10 @@
 import asyncio
 
 import pytest
-from conftest import FakeGroupEngine
+from conftest import PUZZLE, FakeGroupEngine, FakeJudge
 
 import story.shells.lobby as lobby_module
-from story.core import StoryCore, Reply
+from story.core import Reply, SoupCore, StoryCore
 from story.core.prompting import AWAY_ACTION
 from story.shells.lobby import Lobby
 from story.shells.connection import Connection
@@ -46,8 +46,12 @@ class Player:
 def make_lobby(isolated, engine=None) -> Lobby:
     """每局的核心都用同一個假 engine（lobby.engine），方便檢查 AI 收到了什麼。"""
     engine = engine or FakeGroupEngine()
-    lobby = Lobby(lambda players, on_queue: StoryCore(
-        "test", players, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine))
+    def make_core(players, on_queue, game="story"):
+        if game == "soup":
+            return SoupCore("test", players, save_path=isolated / "soup.json", judge=FakeJudge(), puzzles=[PUZZLE])
+        return StoryCore("test", players, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
+
+    lobby = Lobby(make_core)
     lobby.engine = engine
     return lobby
 
@@ -105,9 +109,9 @@ async def gather(lobby, *names: str) -> list[Player]:
 async def start_story(lobby) -> tuple[Player, Player]:
     host, guest = await gather(lobby, "阿明", "小華")
     await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["members"] == ["阿明", "小華"] and m["host"] == "阿明")
-    await host.send("1")  # 開始遊戲
+    await host.send("1")  # 開始冒險
     assert (await host.reply()).phase == "ask_premise"
-    await guest.expect(lambda m: m["type"] == "notice" and "房主正在設定故事" in m["text"])
+    await guest.expect(lambda m: m["type"] == "notice" and "房主正在準備這一局" in m["text"])
     await host.send("燈塔")
     return host, guest
 
@@ -192,7 +196,7 @@ async def test_the_same_browser_takes_over_its_old_connection(lobby):
     first = await join(lobby, "阿明", token="browser-1")
     await open_room(first)
     await first.expect(is_lobby("阿明 的房間"))
-    await first.send("1")  # 開始遊戲
+    await first.send("1")  # 開始冒險
     assert (await first.reply()).phase == "ask_premise"
     await first.send("燈塔")
     await first.reply(lambda r: bool(r.narration))
@@ -344,7 +348,7 @@ async def test_one_player_can_start_alone(lobby):
     host = await join(lobby, "阿明")
     await open_room(host)
     screen = await host.expect(is_lobby("阿明 的房間"))
-    assert screen["members"] == ["阿明"] and screen["choices"] == ["開始遊戲", "離開房間"]
+    assert screen["members"] == ["阿明"] and screen["choices"] == ["開始冒險", "開始海龜湯", "離開房間"]
     await host.send("1")
     assert (await host.reply()).phase == "ask_premise"
     await host.send("燈塔")
@@ -389,7 +393,7 @@ async def test_two_rooms_play_at_the_same_time(lobby):
     screen = await watcher.expect(lambda m: is_lobby()(m) and len(m["choices"]) == 3)
     assert screen["choices"][1:] == ["加入 阿明 的房間（1/4 人）", "加入 小華 的房間（1/4 人）"]
     for player, premise in ((a, "燈塔"), (b, "古堡")):
-        await player.send("1")  # 開始遊戲
+        await player.send("1")  # 開始冒險
         await player.reply(lambda r: r.phase == "ask_premise")
         await player.send(premise)
     for player in (a, b):
@@ -441,3 +445,27 @@ def test_rate_limit_queues_calls_beyond_the_limit_and_retries(monkeypatch):
         return "ok"
 
     assert limit.call(send) == "ok" and 12.5 in slept
+
+
+async def test_a_room_plays_turtle_soup_together(lobby):
+    """房主選海龜湯、從題庫抽一題；每回合大家同時提問或猜湯底，大家都看到每個人的問答；說中全部關鍵點就獲勝。"""
+    host, guest = await gather(lobby, "阿明", "小華")
+    await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["members"] == ["阿明", "小華"])
+    await host.send("2")  # 開始海龜湯
+    ask = await host.reply()
+    assert ask.phase == "ask_puzzle" and ask.choices == ["從題庫抽一題", "請 AI 出一題"]
+    await guest.expect(lambda m: m["type"] == "notice" and "房主正在準備這一局" in m["text"])
+    await host.send("1")
+    await guest.expect(lambda m: m["type"] == "new_story" and m["premise"] == "")  # 先清空畫面，湯面等抽好題目
+    mine, theirs = await host.reply(), await guest.reply()
+    assert "【空號】" in mine.narration and mine.narration == theirs.narration
+    assert theirs.actor == "小華" and [m.label for m in theirs.inputs] == ["提問", "猜湯底", "放棄"]
+    assert lobby.rooms[0].game == "soup"
+
+    await guest.send("/guess 全部都說出來")
+    await host.send("/ask 是電話嗎")
+    result = await guest.reply(lambda r: bool(r.narration))
+    assert "阿明 問：是電話嗎\n→ 是" in result.narration and "小華 說中了所有關鍵點" in result.narration
+    ended = await guest.reply(lambda r: r.phase == "ended")
+    assert ended.ending.title == "小華 解開了謎題" and ended.ending.epilogue == PUZZLE.truth
+    await host.expect(is_lobby("阿明 的房間"))  # 結束後回到等人的畫面，可以再選一次玩法
