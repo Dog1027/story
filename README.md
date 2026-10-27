@@ -55,7 +55,7 @@ src/story/
 └── shells/      Shells: client.py is the flow players see, lobby.py and room.py the rooms, web/ the server and page
 ```
 
-Layers stack from the inside out: the core doesn't know which games exist, games don't depend on each other or know about screens, and shells only handle display and input. Using any game works like calling an LLM: send in a line of text, get a reply back. Every file is described in [docs/files.md](docs/files.md), and plans are in [docs/roadmap.md](docs/roadmap.md) (both in Chinese).
+Layers stack from the inside out: the core doesn't know which games exist, games don't depend on each other or know about screens, and shells only handle display and input. Using any game works like calling an LLM: send in a line of text, get a reply back. The architecture is explained in [docs/architecture.md](docs/architecture.md), and plans are in [docs/roadmap.md](docs/roadmap.md) (both in Chinese).
 
 ## Customizing
 
@@ -75,8 +75,8 @@ All text is markdown, in each layer's own `prompts/<lang>/` (for the AI) and `ui
 
 | Command | What |
 |---|---|
-| `just test` | All tests (about 30 seconds); never calls Gemini or touches your saves |
+| `just test` | All tests (about 10 seconds); never calls Gemini or touches your saves |
 | `just prompts` | Preview the full prompts sent to the AI, without calling it |
 | `just eval` | Run fixed scenarios with the real AI and check pacing, the reveal, not deciding for the player, genre tone, and the turtle soup judge (`just eval soup`); results go to `eval_results/` |
 
-Each turn's AI proposals, what the program applied, and how long each call took are logged to `saves/team-<names>.<game>.log.jsonl`; the fields are described in [docs/files.md](docs/files.md). `just clean-logs` deletes only the logs, not saves.
+Each turn's AI proposals, what the program applied, and how long each call took are logged to `saves/team-<names>.<game>.log.jsonl`. `just clean-logs` deletes only the logs, not saves.

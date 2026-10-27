@@ -55,7 +55,7 @@ src/story/
 └── shells/      外殼：client.py 是玩家看到的流程，lobby.py 與 room.py 是房間，web/ 是伺服器與網頁
 ```
 
-由內往外一層一層疊：核心不知道有哪些玩法，玩法彼此不相依、也不知道畫面的存在，外殼只負責顯示和輸入。每種玩法用起來都像呼叫 LLM：送一句文字進去，拿回覆出來。每個檔案的說明見 [docs/files.md](docs/files.md)，待辦見 [docs/roadmap.md](docs/roadmap.md)。
+由內往外一層一層疊：核心不知道有哪些玩法，玩法彼此不相依、也不知道畫面的存在，外殼只負責顯示和輸入。每種玩法用起來都像呼叫 LLM：送一句文字進去，拿回覆出來。架構說明見 [docs/architecture.md](docs/architecture.md)，待辦見 [docs/roadmap.md](docs/roadmap.md)。
 
 ## 調整
 
@@ -75,8 +75,8 @@ src/story/
 
 | 指令 | 做什麼 |
 |---|---|
-| `just test` | 全部測試（約 30 秒），不會連到 Gemini，也不會動到你的存檔 |
+| `just test` | 全部測試（約 10 秒），不會連到 Gemini，也不會動到你的存檔 |
 | `just prompts` | 預覽送給 AI 的完整提示詞，不會呼叫 AI |
 | `just eval` | 用真的 AI 跑固定情境，檢查節奏、揭露真相、不替玩家做決定、文風、海龜湯的判斷（`just eval soup`）；結果存在 `eval_results/` |
 
-每回合 AI 提議了什麼、程式套用了什麼、每次呼叫花了多久，記在 `saves/team-名字.玩法.log.jsonl`，欄位說明見 [docs/files.md](docs/files.md)。`just clean-logs` 只刪紀錄，不動存檔。
+每回合 AI 提議了什麼、程式套用了什麼、每次呼叫花了多久，記在 `saves/team-名字.玩法.log.jsonl`。`just clean-logs` 只刪紀錄，不動存檔。
