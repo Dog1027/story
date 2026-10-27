@@ -20,7 +20,7 @@
   {"type": "lobby", "view": "lobby", "title": "大廳", "you": "阿明", "choices": [...], "hint": "...", "clear": true,
    "rooms": [{"title": "小華 的房間", "host": "小華", "members": [...], "state": "open", "game": "", "choice": "2"}, ...],
    "people": [{"name": "阿明", "room": "", "playing": false}, ...], "max_rooms": 10, "seats": 4}
-      大廳的畫面：所有房間（state 是 open 等人中、full 已滿、playing 遊戲中，game 是遊戲中的玩法 story 或 soup；
+      大廳的畫面：所有房間（state 是 open 等人中、full 已滿、playing 遊戲中，game 是遊戲中的玩法的名稱；
       choice 是加入它要送的選項，不能加入時是空的）、
       所有在線的人與他們在哪裡（room 是房主的名字，在大廳時是空的）、可以選的、輸入框的提示；clear 時先清空畫面（剛進來或剛離開房間）
       房間的等人畫面也是 "type": "lobby"，"view": "room"，見 room.py
@@ -43,10 +43,10 @@ MAX_ROOMS = 10  # 同時最多幾個房間：大家共用一把 key，房間太�
 AI_PER_MINUTE = 15  # 所有房間加起來，每分鐘最多呼叫幾次 AI（免費方案 flash-lite 的上限；付費方案可以調高）
 
 
-def team_save(players: list[str], game: str = "story"):
-    """一組人的存檔與紀錄：同一組人（不管順序）再開房間時可以接著玩。冒險與海龜湯各一份。
+def team_save(players: list[str], game: str):
+    """一組人的存檔與紀錄：同一組人（不管順序）再開房間時可以接著玩。每種玩法各一份，檔名後面是玩法的代號。
     名字只有文字、數字、底線、連字號，可以直接當檔名。"""
-    team = "+".join(sorted(players)) + ("" if game == "story" else f".{game}")
+    team = "+".join(sorted(players)) + f".{game}"
     return SAVES_DIR / f"team-{team}.json", SAVES_DIR / f"team-{team}.log.jsonl"
 
 

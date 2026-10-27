@@ -7,9 +7,8 @@ from typing import Literal
 from story.core.prompts import UI  # 給玩家看的文字（story/core/ui/語言/core.md）
 
 Phase = Literal[
-    "ask_continue",  # 找到存檔，問要不要繼續
-    "ask_premise",  # 冒險：等玩家輸入故事前提
-    "ask_puzzle",  # 海龜湯：選要從題庫抽一題還是請 AI 出一題（choices 是兩個選項，notice 是問句）
+    "ask_continue",  # 找到存檔，問要不要繼續（跟 confirm_restart 一樣：choices 是兩個選項，notice 是問句）
+    "setup",  # 開新局：有 choices 時是選一個（冒險以外，例如海龜湯的出題方式），沒有時是寫故事前提的表單（冒險）
     "playing",  # 遊戲中
     "confirm_restart",  # 確認是否放棄目前進度
     "ending",  # 剛結束，下一次輸入會整理結局（冒險會請 AI 寫尾聲）
@@ -39,12 +38,11 @@ def pick_choice(raw: str, options: list[str]) -> str | None:
 class Status:
     """狀態列上的一位玩家（冒險是他的角色）。背包不在這裡，變化在 changes，完整內容用 /state 看。"""
 
-    conditions: list[tuple[str, str]]  # 要列出的項目：(文字, 語氣的代號)。冒險是狀態與程度（身體在前、精神在後），海龜湯是提問數、說中幾點
+    items: list[tuple[str, str]]  # 要列出的項目：(文字, 語氣的代號)。冒險是狀態與程度（身體在前、精神在後；沒有狀態時是「良好」），海龜湯是提問數、說中幾點
     warning: str = ""  # 要警告玩家的整體狀態代號（serious、dying：再受傷就有生命危險）；不危險時是空字串
     name: str = ""  # 名字
     alive: bool = True  # 角色是否還活著
     warning_text: str = ""  # 警告顯示的詞，例如「重傷」
-    fine: str = ""  # conditions 是空的時候顯示的詞，例如「良好」
 
 
 @dataclass
@@ -81,10 +79,10 @@ class Reply:
     history: list[tuple[str, str]] = field(default_factory=list)  # resumed：之前的劇情，每回合 (劇情, 看完之後的行動，每人一行)
     history_trimmed: bool = False  # resumed：更早的劇情已經壓縮成摘要，history 從中間開始
     info: tuple[str, str] | None = None  # 要另外顯示的內容：(標題, 內容)，例如記憶、說明
-    premise_default: str = ""  # ask_premise：留白時使用的前提
-    genre: str = ""  # ask_premise：開新局會用的題材選擇（GENRE_AUTO、GENRE_NONE 或題材名稱）
-    genres: list[tuple[str, str]] = field(default_factory=list)  # ask_premise：可選的題材（名稱, 描述）
-    suggestion: str = ""  # ask_premise：/suggest 想出來的前提
+    premise_default: str = ""  # 故事前提的表單：留白時使用的前提
+    genre: str = ""  # 故事前提的表單：開新局會用的題材（genres 裡的一個值）
+    genres: list[tuple[str, str, str]] = field(default_factory=list)  # 故事前提的表單：題材選單（值, 顯示的字, 介紹）；空的時候不顯示選單
+    suggestion: str = ""  # 故事前提的表單：/suggest 想出來的前提
     ending: Ending | None = None  # ended：尾聲與旅程紀錄
     error: Literal["api"] | None = None  # 呼叫 AI 失敗（notice 是原因）：留在原本的階段，可以重試
     actor: str = ""  # 送出輸入的那位玩家（send_as、view 的對象；一個人玩就是他）這回合還沒行動時是他的名字，choices 是他的選項

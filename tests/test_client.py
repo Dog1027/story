@@ -7,7 +7,8 @@ from conftest import FakeEngine
 
 import story.shells.client as client_module
 from story.core import Reply
-from story.games import GENRE_AUTO, GENRE_NONE, StoryCore
+from story.games import StoryCore
+from story.games.adventure import GENRE_AUTO, GENRE_NONE
 from story.core import Status
 from story.shells.client import Client, PremiseForm, View, status_line
 from story.shells.connection import Connection
@@ -101,7 +102,7 @@ class RecordingView(View):
         return True
 
     async def ask_premise(self, form):
-        self.record("ask_premise", form.default)
+        self.record("setup", form.default)
         return form.finish(self.premise, self.timed)
 
     async def ask_ending(self, title, record):
@@ -162,7 +163,7 @@ def after(view: RecordingView, name: str) -> list[str]:
 async def test_new_story_shows_premise_then_the_opening(play):
     view = RecordingView()
     await play(view)
-    assert "ask_premise" in view.names()
+    assert "setup" in view.names()
     assert ("clear_story", "燈塔") in view.calls  # 先顯示前提，再等 AI 寫開場
     assert view.names().index("clear_story") < view.names().index("show_narration")
     assert ("show_choices", ["往上爬", "檢查鑰匙"]) in view.calls
@@ -200,14 +201,12 @@ async def test_ending_appears_one_part_at_a_time(play):
 
 
 def test_status_line_lists_conditions_and_the_core_warning():
-    fine = status_line(3, [Status(conditions=[("疲勞", "moderate"), ("恐懼", "light")])], timed=False)
+    fine = status_line(3, [Status(items=[("疲勞", "moderate"), ("恐懼", "light")])], timed=False)
     assert fine.mode == "一般模式" and not fine.named
     assert fine.characters[0].warning == "" and fine.characters[0].items == [("疲勞", "moderate"), ("恐懼", "light")]
-    danger = status_line(3, [Status(conditions=[("失血", "severe")], warning="dying", warning_text="瀕死")], timed=True)
+    danger = status_line(3, [Status(items=[("失血", "severe")], warning="dying", warning_text="瀕死")], timed=True)
     assert danger.characters[0].warning == "dying" and danger.characters[0].warning_text == "瀕死" and danger.mode == "限時模式"
-    empty = status_line(1, [Status(conditions=[], fine="良好")], timed=False)  # 顯示的詞由玩法給
-    assert empty.characters[0].items == [("良好", "healthy")]
-    group = status_line(2, [Status(conditions=[], name="阿明", alive=False), Status(conditions=[], name="小華")], timed=False)
+    group = status_line(2, [Status(items=[], name="阿明", alive=False), Status(items=[], name="小華")], timed=False)
     assert group.named and group.characters[0].name == "阿明" and not group.characters[0].alive
 
 
@@ -270,12 +269,13 @@ def premise_form(**replies):
         await asyncio.sleep(0)
         return replies[commands[-1].split()[0]]
 
-    reply = Reply(phase="ask_premise", premise_default="燈塔", genre="", genres=[("武俠", "江湖"), ("克蘇魯", "不可名狀")])
+    menu = [(GENRE_AUTO, "自動", "AI 挑"), (GENRE_NONE, "不套用", "照一般的方式"), ("武俠", "題材：武俠", "江湖"), ("克蘇魯", "題材：克蘇魯", "不可名狀")]
+    reply = Reply(phase="setup", premise_default="燈塔", genre="", genres=menu)  # 選單由玩法給
     return PremiseForm(reply, request), sent
 
 
 async def test_premise_form_keeps_what_the_player_typed():
-    form, sent = premise_form(**{"/genre": Reply(phase="ask_premise", premise_default="鏢局"), "/random": Reply(phase="ask_premise", premise_default="客棧")})
+    form, sent = premise_form(**{"/genre": Reply(phase="setup", premise_default="鏢局"), "/random": Reply(phase="setup", premise_default="客棧")})
     assert form.genre == GENRE_AUTO and [v for _, v in form.genre_options()][:3] == [GENRE_AUTO, GENRE_NONE, "武俠"]
     assert form.genre_hint("武俠") == "江湖"
     assert await form.change_genre("武俠", "燈塔") == "鏢局"  # 沒改過：換成新題材的開頭
@@ -287,7 +287,7 @@ async def test_premise_form_keeps_what_the_player_typed():
 
 
 async def test_premise_form_drops_results_overtaken_by_a_newer_action():
-    form, _ = premise_form(**{"/genre": Reply(phase="ask_premise", premise_default="新的")})
+    form, _ = premise_form(**{"/genre": Reply(phase="setup", premise_default="新的")})
     first = asyncio.create_task(form.change_genre("武俠", ""))
     second = asyncio.create_task(form.change_genre("克蘇魯", ""))
     assert await first is None and await second == "新的"
@@ -295,7 +295,7 @@ async def test_premise_form_drops_results_overtaken_by_a_newer_action():
 
 
 async def test_premise_form_suggest_errors_are_raised_for_the_interface_to_show():
-    form, _ = premise_form(**{"/suggest": Reply(phase="ask_premise", error="api", notice="額度用完了")})
+    form, _ = premise_form(**{"/suggest": Reply(phase="setup", error="api", notice="額度用完了")})
     with pytest.raises(RuntimeError, match="額度用完了"):
         await form.suggest("")
 

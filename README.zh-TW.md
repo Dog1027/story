@@ -42,7 +42,7 @@
 
 ### 操作
 
-直接點選項（或按數字），也可以自己打字寫行動。文字顯示中按 Enter 加速。`/help` 看所有指令，`/state` 看程式記住的東西，也可以用右上角的 ⋯ 選單。每回合自動存檔在 `saves/team-名字.json`。
+直接點選項（或按數字），也可以自己打字寫行動。文字顯示中按 Enter 加速。`/help` 看所有指令，`/state` 看程式記住的東西，也可以用右上角的 ⋯ 選單。每回合自動存檔在 `saves/team-名字.玩法.json`。
 
 ## 程式架構
 
@@ -79,4 +79,4 @@ src/story/
 | `just prompts` | 預覽送給 AI 的完整提示詞，不會呼叫 AI |
 | `just eval` | 用真的 AI 跑固定情境，檢查節奏、揭露真相、不替玩家做決定、文風、海龜湯的判斷（`just eval soup`）；結果存在 `eval_results/` |
 
-每回合 AI 提議了什麼、程式套用了什麼、每次呼叫花了多久，記在 `saves/team-名字.log.jsonl`，欄位說明見 [docs/files.md](docs/files.md)。`just clean-logs` 只刪紀錄，不動存檔。
+每回合 AI 提議了什麼、程式套用了什麼、每次呼叫花了多久，記在 `saves/team-名字.玩法.log.jsonl`，欄位說明見 [docs/files.md](docs/files.md)。`just clean-logs` 只刪紀錄，不動存檔。

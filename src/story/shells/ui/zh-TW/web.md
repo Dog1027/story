@@ -82,15 +82,8 @@ Story
 已滿 {count}/{max}
 
 ## room_state_playing
-<!-- 變數：{count}、{max}、{game}（玩法：game_story、game_soup） -->
+<!-- 變數：{count}、{max}、{game}（玩法的 title） -->
 遊戲中・{game}
-
-## game_story
-<!-- 玩法的名稱（房間卡片上） -->
-冒險
-
-## game_soup
-海龜湯
 
 ## join
 加入

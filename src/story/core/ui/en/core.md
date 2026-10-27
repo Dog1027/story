@@ -32,6 +32,8 @@ Play again
 <!-- Variables: {turn}, {premise} -->
 Found a save (turn {turn}): {premise}
 
+Continue?
+
 ## resumed
 <!-- Variable: {premise} -->
 Loaded save: {premise}

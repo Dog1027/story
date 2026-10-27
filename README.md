@@ -42,7 +42,7 @@ Open `http://<this computer's IP>:8080` (locally <http://localhost:8080>) on a p
 
 ### Controls
 
-Click a choice (or press its number), or type your own action. Press Enter to speed up text. `/help` lists commands and `/state` shows what the program remembers, or use the ⋯ menu. Every turn saves automatically to `saves/team-<names>.json`.
+Click a choice (or press its number), or type your own action. Press Enter to speed up text. `/help` lists commands and `/state` shows what the program remembers, or use the ⋯ menu. Every turn saves automatically to `saves/team-<names>.<game>.json`.
 
 ## How it's built
 
@@ -79,4 +79,4 @@ All text is markdown, in each layer's own `prompts/<lang>/` (for the AI) and `ui
 | `just prompts` | Preview the full prompts sent to the AI, without calling it |
 | `just eval` | Run fixed scenarios with the real AI and check pacing, the reveal, not deciding for the player, genre tone, and the turtle soup judge (`just eval soup`); results go to `eval_results/` |
 
-Each turn's AI proposals, what the program applied, and how long each call took are logged to `saves/team-<names>.log.jsonl`; the fields are described in [docs/files.md](docs/files.md). `just clean-logs` deletes only the logs, not saves.
+Each turn's AI proposals, what the program applied, and how long each call took are logged to `saves/team-<names>.<game>.log.jsonl`; the fields are described in [docs/files.md](docs/files.md). `just clean-logs` deletes only the logs, not saves.

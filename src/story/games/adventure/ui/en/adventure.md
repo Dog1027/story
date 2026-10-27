@@ -3,6 +3,10 @@ Text the adventure shows players: notices, /help, /state, the ending record, lab
 Same format as the prompts: each section starts with "## name"; the name is how the program finds it and must not change. {name} is a variable filled in by the program.
 -->
 
+## title
+<!-- The game's name: the host's choice in the room (start_game in shells) and room cards in the lobby -->
+adventure
+
 <!-- ---------- Lists and punctuation ---------- -->
 
 ## condition
@@ -22,6 +26,24 @@ Auto
 ## genre_none
 <!-- Special genre choice: no genre pack -->
 None
+
+<!-- ---------- The genre menu in the new story dialog ---------- -->
+
+## genre_option
+<!-- One item in the genre menu. Variable: {name} -->
+Genre: {name}
+
+## genre_auto_option
+Genre: Auto (picked from the premise)
+
+## genre_none_option
+Genre: None
+
+## genre_auto_hint
+Automatically picks a genre pack that fits the premise, or none if nothing fits.
+
+## genre_none_hint
+No genre pack; written the ordinary way.
 
 <!-- ---------- Notices ---------- -->
 

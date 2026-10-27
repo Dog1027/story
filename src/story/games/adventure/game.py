@@ -32,7 +32,7 @@ class StoryCore(TeamGame):
     """一局冒險：一支一到四位角色的隊伍，每位由一位玩家扮演（一個人玩就是只有一位）。
     所有還活著的角色都行動了才請 AI 寫這一回合。共用的流程見 TeamGame。"""
 
-    setup_phase = "ask_premise"
+    title = UI["title"]
     state_class = GameState
     timeout_action = TIMEOUT_ACTION
     away_action = AWAY_ACTION
@@ -113,13 +113,13 @@ class StoryCore(TeamGame):
         return self._turn_reply(before=None)
 
     def _ask_premise(self, suggestion: str = "", notice: str = "", error=None) -> Reply:
-        self._phase = "ask_premise"
+        self._phase = "setup"
         if not (self.suggested or self.drawn or self.last_premise):  # 第一次開新故事：隨機抽一個開頭
             self.drawn = self._draw_premise()
         return self._reply(
             premise_default=self._default_premise(),
             genre=self.genre,
-            genres=[(g.name, g.description) for g in self.engine.genres.values()],
+            genres=self._genre_menu(),
             suggestion=suggestion,
             notice=notice,
             error=error,
@@ -135,6 +135,15 @@ class StoryCore(TeamGame):
         if self.genre in self.engine.genres:
             return {"genre": self.genre}
         return {"genre_pending": self.genre == GENRE_AUTO and bool(self.engine.genres)}
+
+    def _genre_menu(self) -> list[tuple[str, str, str]]:
+        """新故事對話框的題材選單：(值, 顯示的字, 介紹)，自動、不套用在最前面；沒有題材包時不顯示選單。"""
+        if not self.engine.genres:
+            return []
+        return [
+            (GENRE_AUTO, UI["genre_auto_option"], UI["genre_auto_hint"]),
+            (GENRE_NONE, UI["genre_none_option"], UI["genre_none_hint"]),
+        ] + [(g.name, UI["genre_option"].format(name=g.name), g.description) for g in self.engine.genres.values()]
 
     def _default_premise(self) -> str:
         """留白時使用的前提：AI 想的 → 隨機抽的 → 上一局的（再玩一次）→ 預設的。"""
@@ -262,5 +271,5 @@ class StoryCore(TeamGame):
 def character_status(c: Character) -> Status:
     """給外殼顯示的一位角色的狀態（Reply.characters 裡的一項）。"""
     warning = warning_level(c) if c.alive else ""
-    return Status(conditions=condition_list(c), warning=warning, name=c.name, alive=c.alive,
-                  warning_text=word("level", warning) if warning else "", fine=word("level", "healthy"))
+    return Status(items=condition_list(c) or [(word("level", "healthy"), "healthy")], warning=warning, name=c.name,
+                  alive=c.alive, warning_text=word("level", warning) if warning else "")

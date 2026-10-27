@@ -82,15 +82,8 @@ Waiting {count}/{max}
 Full {count}/{max}
 
 ## room_state_playing
-<!-- Variables: {count}, {max}, {game} (game_story, game_soup) -->
+<!-- Variables: {count}, {max}, {game} (the game's title) -->
 Playing {game}
-
-## game_story
-<!-- The game's name (on room cards) -->
-adventure
-
-## game_soup
-turtle soup
 
 ## join
 Join

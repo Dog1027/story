@@ -29,7 +29,7 @@ INPUTS = [
 
 
 class SoupCore(TeamGame):
-    setup_phase = "ask_puzzle"
+    title = UI["title"]
     state_class = SoupState
     timeout_action = away_action = AWAY  # 沒有限時；斷線的人這回合算暫時離開
 
@@ -57,7 +57,7 @@ class SoupCore(TeamGame):
     # ---------- 開新局：出題 ----------
 
     def _new_game(self) -> Reply:
-        self._phase = "ask_puzzle"
+        self._phase = "setup"
         return self._reply(choices=PUZZLE_CHOICES, notice=UI["soup_ask_puzzle"])
 
     def _on_setup(self, raw: str) -> Reply:
@@ -194,7 +194,7 @@ class SoupCore(TeamGame):
             best = s.best(name)
             items = [(UI["soup_status_questions"].format(count=s.questions(name)), "muted")]
             items.append((UI["soup_status_best"].format(hit=best, total=total), "good" if best else "muted"))
-            characters.append(Status(conditions=items, name=name))
+            characters.append(Status(items=items, name=name))
         return {"turn": s.turn + 1 if not s.game_over else s.turn, "timed": False, "characters": characters}
 
     def _replay(self) -> dict:

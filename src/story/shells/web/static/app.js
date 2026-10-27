@@ -359,8 +359,7 @@ function lobbyPanel({ title, you, choices, rooms, people, max_rooms, seats }) {
   for (const room of rooms) {
     const card = tag("li", `room-card ${room.state}`);
     const top = tag("div", "room-top");
-    const game = room.game ? t(`game_${room.game}`) : "";
-    top.append(tag("strong", "", room.title), tag("span", `room-state ${room.state}`, t(`room_state_${room.state}`, { count: room.members.length, max: seats, game })));
+    top.append(tag("strong", "", room.title), tag("span", `room-state ${room.state}`, t(`room_state_${room.state}`, { count: room.members.length, max: seats, game: room.game })));
     const members = tag("div", "room-members");
     room.members.forEach((m) => {
       const who = tag("span", "member", m);

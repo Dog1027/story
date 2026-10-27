@@ -2,23 +2,25 @@
 
 房間由大廳（lobby.py）建立與關閉；玩家的連線、名字也由大廳管理，大廳把進到這個房間的人交給 add()，
 離開或斷線時呼叫 remove()，房間裡的訊息交給 handle()。
-房間持有一份 StoryCore：把每位玩家的輸入交給核心，再把回覆送給每位玩家（各自看到自己的選項）。
+房間持有一份核心（story.games 裡的一種玩法）：把每位玩家的輸入交給核心，再把回覆送給每位玩家（各自看到自己的選項）。
 
-流程：等人（房主按開始）→ 房主回答「繼續存檔／故事前提」→ 遊戲中（每個人各自行動，到齊才推進）
+流程：等人（房主選玩法）→ 房主回答「繼續存檔／開新局要問的」→ 遊戲中（每個人各自行動，到齊才推進）
 → 結局 → 回到等人的畫面。房主是第一位進來的人；房主離開時交給下一位在線的人。
 
 訊息是可以轉成 JSON 的 dict，經過 Connection（connection.py）傳送。
 玩家 → 房間
   {"type": "send", "text": "1"}           玩家的輸入：行動、指令，或房主回答對話框
-                                          房主在前提對話框送的指令可以加 "answer": true，要求回傳結果
+  {"type": "send", "text": "/suggest", "form": true, "answer": true}
+                                          開新局的對話框裡的操作（例如冒險的幫我想、換題材）：只交給核心，
+                                          不推給任何人；加 "answer": true 時把結果回給房主
   {"type": "ready"}                       新劇情顯示完了（大家都顯示完才開始限時倒數）
 房間 → 玩家
   {"type": "lobby", "view": "room", "title": "阿明 的房間", "host": "阿明", "you": "小華", "members": [...], "seats": 4,
    "choices": [...], "hint": "...", "clear": true}
                                           等人的畫面：房間裡的人（members，依進來的順序）、座位數、可以選的、輸入框的提示
   {"type": "reply", "reply": {...}}       核心的回覆（Reply.to_dict()，已換成這位玩家的選項）
-  {"type": "premise", "reply": {...}}     前提對話框的指令（幫我想、換一個、換題材）的結果，只回給要求 answer 的房主
-  {"type": "new_story", "premise": "..."}  新故事開始：清空畫面，先顯示故事前提
+  {"type": "premise", "reply": {...}}     開新局時的指令的結果，只回給要求 answer 的房主
+  {"type": "new_story", "premise": "..."}  新的一局開始：清空畫面，先顯示故事前提（選項的回答不顯示）
   {"type": "busy", "on": true, "progress": "規劃故事大綱"}   故事生成中（progress 變了會再送一次）
   {"type": "draft", "text": "..."}        AI 正在寫的劇情（串流中目前收到的全文，有新的字就再送一次）
   {"type": "waiting", "names": [...]}     這回合還沒行動的人
@@ -30,11 +32,13 @@ import asyncio
 from collections.abc import Callable
 
 from story.core import MAX_PLAYERS, Game, Reply, pick_choice
+from story.games import GAMES
 from story.shells.text import ui_text
 from story.shells.connection import Connection
 
 UI = ui_text("shells")  # story/shells/ui/語言/shells.md
-GAMES = {UI["start_story"]: "story", UI["start_soup"]: "soup"}  # 房主在等人的畫面選要玩哪一種：冒險、海龜湯
+TITLES = {code: game.title for code, game in GAMES.items()}  # 玩法的代號 → 名稱
+STARTS = {UI["start_game"].format(game=title): code for code, title in TITLES.items()}  # 房主在等人的畫面選要玩哪一種
 LEAVE = UI["leave_room"]
 READY_WAIT = 90  # 等大家看完劇情最多幾秒，超過就直接開始倒數
 TIMEOUT_GRACE = 1  # 倒數結束後多等一下，抵銷網路延遲
@@ -49,10 +53,10 @@ class Member:
 
 class Room:
     def __init__(self, make_core: Callable[[list[str], Callable[[bool], None], str], Game]):
-        """make_core(玩家, on_queue, 玩法) 建立這一局的核心：玩法是 story（冒險）或 soup（海龜湯）；
+        """make_core(玩家, on_queue, 玩法) 建立這一局的核心：玩法是 GAMES 的代號；
         on_queue(是否排隊中) 讓 AI 呼叫排隊時畫面顯示「排隊中」。"""
         self.make_core = make_core
-        self.game = ""  # 這一局的玩法（大廳的房間卡片顯示用）
+        self.game = ""  # 這一局的玩法的名稱（大廳的房間卡片顯示用）
         self.members: dict[str, Member] = {}  # 依進來的順序；遊戲中斷線的人會保留，可以重新連線
         self.host = ""
         self.core: Game | None = None
@@ -156,33 +160,35 @@ class Room:
             self.ready.add(name)
             await self._maybe_start_countdown()
         elif kind == "send":
-            await self._on_send(name, str(message.get("text", "")).strip(), bool(message.get("answer")))
+            text = str(message.get("text", "")).strip()
+            await self._on_send(name, text, form=bool(message.get("form")), answer=bool(message.get("answer")))
 
-    async def _on_send(self, name: str, text: str, answer: bool = False) -> None:
+    async def _on_send(self, name: str, text: str, form: bool = False, answer: bool = False) -> None:
         if self.core is None:
             await self._on_lobby(name, text)
         elif self.core.phase == "playing":
             await self._on_playing(name, text)
         elif name != self.host:
             await self._send_notice(name, UI["wait_host_story"].format(host=self.host))
-        elif text.startswith(("/suggest", "/random", "/timed", "/genre")):  # 前提對話框裡的操作，不用推給其他人
+        elif form and self.core.phase == "setup":  # 開新局的對話框裡的操作，不用推給其他人
             reply = await self._call(lambda: self.core.send(text))
             if answer:
                 await self._safe_write(self.members[name], {"type": "premise", "reply": reply.to_dict()})
         else:
-            starting = self.core.phase in ("ask_premise", "ask_puzzle") and not text.startswith("/")  # 開局：要呼叫 AI
-            if starting:  # 冒險先讓大家看到故事前提；海龜湯的湯面要等抽好題目
-                await self._broadcast({"type": "new_story", "premise": text if self.core.phase == "ask_premise" else ""})
+            starting = self.core.phase == "setup"  # 開局：要呼叫 AI
+            if starting:  # 寫的故事前提先讓大家看到；選項的回答（海龜湯的出題方式）不用，湯面要等抽好題目
+                premise = "" if self.host_reply and self.host_reply.choices else text
+                await self._broadcast({"type": "new_story", "premise": premise})
             await self._route(await self._call(lambda: self.core.send(text), busy=starting))
 
     async def _on_lobby(self, name: str, text: str) -> None:
         if name != self.host:
             await self._send_notice(name, UI["wait_host_start"].format(host=self.host))
             return
-        game = GAMES.get(pick_choice(text, self._lobby_choices(name)) or "")
+        game = STARTS.get(pick_choice(text, self._lobby_choices(name)) or "")
         if game is None:
             return
-        self.game, self.core = game, self.make_core(self.online, self._set_queued, game)
+        self.game, self.core = TITLES[game], self.make_core(self.online, self._set_queued, game)
         await self._route(self.core.start())
 
     def _set_queued(self, queued: bool) -> None:
@@ -242,7 +248,7 @@ class Room:
     async def _route(self, reply: Reply, only: str = "") -> None:
         """把核心的回覆送給該收到的人。有新劇情時送給所有人，否則只送給 only（送出輸入的人）。"""
         phase = reply.phase
-        if phase in ("ask_continue", "ask_premise", "ask_puzzle", "confirm_restart"):
+        if phase in ("ask_continue", "setup", "confirm_restart"):
             self.host_reply = reply
             self._stop_countdown()
             await self._send_reply(self.host, reply)
@@ -320,7 +326,7 @@ class Room:
                 await self._safe_write(member, message)
 
     def _lobby_choices(self, name: str) -> list[str]:
-        return [*GAMES, LEAVE] if name == self.host else [LEAVE]
+        return [*STARTS, LEAVE] if name == self.host else [LEAVE]
 
     async def _broadcast_lobby(self, clear_for: str = "") -> None:
         """等人的畫面：房間裡有誰、房主能開始、大家都能離開。clear_for 是剛進來的人，他的畫面要先清空。"""

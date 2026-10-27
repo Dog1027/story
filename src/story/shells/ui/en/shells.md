@@ -32,12 +32,6 @@ Writing the story{progress}…
 <!-- Variable: {progress}, e.g. "planning the outline" -->
 : {progress}
 
-## ask_continue
-<!-- The confirm box when a save is found. Variable: {notice} (found_save in core.md) -->
-{notice}
-
-Continue?
-
 ## wait_epilogue
 Press Enter for the epilogue
 
@@ -133,13 +127,9 @@ Lost the connection to the game room. Please reload the page.
 <!-- Variable: {host} -->
 Waiting for {host} (the host) to start…
 
-## start_story
-<!-- The host's choice in the room: play an adventure -->
-Start an adventure
-
-## start_soup
-<!-- The host's choice in the room: play turtle soup -->
-Start turtle soup
+## start_game
+<!-- The host's choice of game in the room. Variable: {game} (the game's title) -->
+Play {game}
 
 ## room_name_taken
 That name is already taken. Please choose another.

@@ -2,7 +2,8 @@
 
 from conftest import HERO, FakeEngine, beat, make_engine, solo
 
-from story.games import GENRE_AUTO, GENRE_NONE, StoryCore
+from story.games import StoryCore
+from story.games.adventure import GENRE_AUTO, GENRE_NONE
 from story.games.adventure.genres import BUILTIN_DIR, MAX_GUIDE, load_genres
 from story.games.adventure.records import DEFAULT_PREMISE
 
@@ -120,7 +121,8 @@ class GenreEngine(FakeEngine):
 def test_genre_command_and_new_story_fields(isolated):
     core = StoryCore("test", [HERO], engine=GenreEngine(), save_path=isolated / "save.json")
     reply = core.start()
-    assert reply.genre == GENRE_AUTO and reply.genres == [("武俠", "江湖恩怨")]
+    assert reply.genre == GENRE_AUTO and [v for v, _, _ in reply.genres] == [GENRE_AUTO, GENRE_NONE, "武俠"]
+    assert reply.genres[2] == ("武俠", "題材：武俠", "江湖恩怨")  # 題材選單：值、顯示的字、介紹
     assert "沒有「太空」這個題材" in core.send("/genre 太空").notice
     assert core.send("/genre 武俠").genre == "武俠"
     core.send("鏢局的故事")

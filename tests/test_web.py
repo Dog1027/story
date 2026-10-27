@@ -21,7 +21,7 @@ def fake_core(monkeypatch) -> list[str]:
         keys.append(api_key)
         return StoryCore(api_key, players, save_path=save_path, log_path=log_path, engine=FakeGroupEngine())
 
-    monkeypatch.setitem(lobby_module.GAMES, "story", make)
+    monkeypatch.setitem(lobby_module.GAMES, "adventure", make)
     return keys
 
 
@@ -89,7 +89,7 @@ async def test_playing_alone_in_own_room(isolated, fake_core):
         await browser.expect("changes", lambda m: m["name"] == "" and m["groups"][0][0] == "獲得")  # 一個人玩不寫名字
         status = (await browser.expect("status", lambda m: m["status"] and m["status"]["turn"] == 2))["status"]
         assert [c["name"] for c in status["characters"]] == ["阿明"]
-        assert (Path("saves") / "team-阿明.json").exists()  # 存檔跟著隊伍（一個人也是一隊）
+        assert (Path("saves") / "team-阿明.adventure.json").exists()  # 存檔跟著隊伍（一個人也是一隊）
 
 
 async def test_continuing_a_save_starts_from_a_clean_screen(isolated):

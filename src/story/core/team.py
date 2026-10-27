@@ -5,8 +5,8 @@
 不屬於某位玩家的輸入（時間到、對話框的回答、/state）用 send()。view(名字) 取得某位玩家眼中的畫面。
 
 這裡管：玩家名單、找到存檔時問要不要繼續、收集每個人的行動（推進失敗時全部撤回）、確認重新開始、再玩一次、
-view()、waiting()、失敗時的回覆、組回覆。子類別管：開新局要問什麼（setup_phase）、一回合怎麼推進、
-結局、狀態列、/help，以及存檔的格式（state_class）。存檔要有 names、premise、turn、game_over。
+view()、waiting()、失敗時的回覆、組回覆。子類別管：開新局要問什麼（setup 階段）、一回合怎麼推進、
+結局、狀態列、/help，以及玩法的名稱（title）與存檔的格式（state_class）。存檔要有 names、premise、turn、game_over。
 """
 
 from dataclasses import replace
@@ -26,7 +26,7 @@ FAILURES = (errors.APIError, RuntimeError)  # 呼叫 AI 失敗：留在原本的
 
 
 class TeamGame:
-    setup_phase: Phase  # 開新局時等玩家回答的階段（冒險是 ask_premise，海龜湯是 ask_puzzle）
+    title: str  # 玩法的名稱（冒險、海龜湯），外殼顯示用
     state_class: type[BaseModel]  # 存檔的格式
     timeout_action: str  # 限時模式時間到，代替還沒行動的人的行動（/timeout）
     away_action: str  # 暫時離開（網頁版斷線時由房間送出 /away），代替這個人的行動
@@ -38,7 +38,7 @@ class TeamGame:
         self._players = names
         self.save_path = save_path
         self.state = None  # 這一局的狀態（state_class）；還沒開始時是 None
-        self._phase: Phase = self.setup_phase
+        self._phase: Phase = "setup"
         self.pending: dict[str, str] = {}  # 這一回合已經送出的行動
         self._as: str | None = None  # send_as() 指定的玩家
 
@@ -96,7 +96,7 @@ class TeamGame:
             return self._reply(info=(UI["memory_title"], self._memory()), **self._screen())
         handler = {
             "ask_continue": self._on_ask_continue,
-            self.setup_phase: self._on_setup,
+            "setup": self._on_setup,
             "playing": self._on_playing,
             "confirm_restart": self._on_confirm_restart,
             "ending": self._on_ending,
@@ -224,7 +224,7 @@ class TeamGame:
         return retry_screen(error="api", notice=notice)
 
     def _reply(self, **fields) -> Reply:
-        in_game = self.state is not None and self._phase != self.setup_phase  # 有一局在進行（等開新局時還沒有）
+        in_game = self.state is not None and self._phase != "setup"  # 有一局在進行（等開新局時還沒有）
         return Reply(phase=self._phase, **(self._status() if in_game else {"timed": self._next_timed()}), **fields)
 
     def _save(self) -> None:
@@ -233,11 +233,11 @@ class TeamGame:
     # ---------- 子類別提供 ----------
 
     def _new_game(self) -> Reply:
-        """開新局（沒有存檔、選了開新遊戲、確認重新開始、再玩一次）：回覆 setup_phase 的畫面。"""
+        """開新局（沒有存檔、選了開新遊戲、確認重新開始、再玩一次）：回覆 setup 階段的畫面。"""
         raise NotImplementedError
 
     def _on_setup(self, raw: str) -> Reply:
-        """setup_phase 時的輸入。"""
+        """setup 階段的輸入。"""
         raise NotImplementedError
 
     def _play_round(self, actions: dict[str, str]) -> Reply:

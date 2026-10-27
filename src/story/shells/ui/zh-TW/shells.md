@@ -32,12 +32,6 @@ Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
 <!-- 變數：{progress}，例如「規劃故事大綱」 -->
 ：{progress}
 
-## ask_continue
-<!-- 找到存檔時的確認框。變數：{notice}（core.md 的 found_save） -->
-{notice}
-
-要繼續嗎？
-
 ## wait_epilogue
 按 Enter 看尾聲
 
@@ -133,13 +127,9 @@ Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
 <!-- 變數：{host} -->
 等房主 {host} 開始遊戲…
 
-## start_story
-<!-- 房主在等人的畫面裡的選項：玩冒險 -->
-開始冒險
-
-## start_soup
-<!-- 房主在等人的畫面裡的選項：玩海龜湯 -->
-開始海龜湯
+## start_game
+<!-- 房主在等人的畫面裡選玩法的選項。變數：{game}（玩法的 title） -->
+開始{game}
 
 ## room_name_taken
 這個名字已經有人在用了，請換一個名字。

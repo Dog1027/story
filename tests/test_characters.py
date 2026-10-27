@@ -261,7 +261,7 @@ def test_resume_team_save(engine, isolated):
     assert reply.history == [("兩人在燈塔醒來。", "阿明：阿明往上爬\n小華：小華往上爬")]  # 好幾位角色：行動每人一行，寫名字
 
     others = StoryCore("test", ["阿明", "小美"], save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
-    assert others.start().phase == "ask_premise"  # 玩家不同就開新局
+    assert others.start().phase == "setup"  # 玩家不同就開新局
 
 
 def test_resume_ignores_player_order(engine, isolated):

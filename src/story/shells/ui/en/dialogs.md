@@ -49,22 +49,6 @@ e.g. Alex
 ## premise_title
 A new story
 
-## genre_option
-<!-- One item in the genre menu. Variable: {name} -->
-Genre: {name}
-
-## genre_auto_option
-Genre: Auto (picked from the premise)
-
-## genre_none_option
-Genre: None
-
-## genre_auto_hint
-Automatically picks a genre pack that fits the premise, or none if nothing fits.
-
-## genre_none_hint
-No genre pack; written the ordinary way.
-
 ## premise_hint
 Premise: edit it directly, or press "Another one" or "Inspire me"
 

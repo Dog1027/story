@@ -32,7 +32,7 @@ def new_game(core, *inputs):
 
 def test_first_reply_asks_for_premise(core):
     reply = core.start()
-    assert reply.phase == "ask_premise"
+    assert reply.phase == "setup"
     assert reply.premise_default == DEFAULT_PREMISE
 
 
@@ -70,7 +70,7 @@ def test_timed_toggle(core):
 def test_unknown_command_while_asking_premise(core):
     core.start()
     reply = core.send("/xyz")
-    assert reply.phase == "ask_premise" and "沒有 /xyz" in reply.notice
+    assert reply.phase == "setup" and "沒有 /xyz" in reply.notice
 
 
 # ---------- 遊戲中 ----------
@@ -80,7 +80,7 @@ def test_choosing_by_number_and_reply_fields(core):
     new_game(core)
     reply = core.send("1")
     assert reply.narration == "你選擇了「往上爬」。"
-    assert reply.turn == 2 and reply.characters[0].conditions == [("小腿挫傷", "moderate")]
+    assert reply.turn == 2 and reply.characters[0].items == [("小腿挫傷", "moderate")]
     assert reply.changes == [(HERO, [("新增", [("小腿挫傷（中）", "moderate")]), ("獲得", [("油燈", "plain")])])]
 
 
@@ -124,7 +124,7 @@ def test_status_warns_only_when_the_next_wound_could_kill(core):
 
     new_game(core)
     fine = core.send("/state").characters[0]
-    assert fine.warning == "" and fine.conditions == [] and fine.fine == "良好"
+    assert fine.warning == "" and fine.items == [("良好", "healthy")]  # 沒有狀態時顯示的詞也由玩法給
     core.state.characters[0].conditions = [Condition(name="失血", kind="body", severity="severe")]
     reply = core.send("/state")
     assert reply.characters[0].warning == "serious" and reply.characters[0].warning_text == "重傷"
@@ -183,7 +183,7 @@ def test_restart_asks_for_confirmation(core):
     assert reply.phase == "playing" and reply.choices == ["往上爬", "檢查鑰匙"]
     core.send("/restart")
     reply = core.send("1")
-    assert reply.phase == "ask_premise" and reply.premise_default == DEFAULT_PREMISE
+    assert reply.phase == "setup" and reply.premise_default == DEFAULT_PREMISE
 
 
 def test_ending_epilogue_and_play_again(core):
@@ -195,7 +195,7 @@ def test_ending_epilogue_and_play_again(core):
     assert reply.phase == "ended"
     assert reply.ending.title == "燈塔守望者" and "共 3 回合" in reply.ending.record
     reply = core.send("1")
-    assert reply.phase == "ask_premise"
+    assert reply.phase == "setup"
 
 
 def test_resume_from_save(engine, isolated):
@@ -219,7 +219,7 @@ def test_finished_save_starts_new_story(engine, isolated):
     new_game(core)
     core.send("1")
     core.send("2")
-    assert StoryCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json").start().phase == "ask_premise"
+    assert StoryCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json").start().phase == "setup"
 
 
 def test_new_game_from_continue_prompt_reuses_premise(engine, isolated):

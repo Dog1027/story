@@ -49,22 +49,6 @@
 ## premise_title
 新的故事
 
-## genre_option
-<!-- 題材選單裡的一項。變數：{name} -->
-題材：{name}
-
-## genre_auto_option
-題材：自動（依故事前提挑選）
-
-## genre_none_option
-題材：不套用
-
-## genre_auto_hint
-依故事前提自動挑一個題材包，都不適合就不套用。
-
-## genre_none_hint
-不套用題材，照一般的方式寫。
-
 ## premise_hint
 故事前提：可以直接修改，或按「換一個」「幫我想」
 

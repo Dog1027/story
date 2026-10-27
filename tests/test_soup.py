@@ -20,7 +20,7 @@ def soup(isolated, players=("阿明",), judge=None, puzzles=(PUZZLE,)) -> SoupCo
 
 def started(isolated, **kw) -> tuple[SoupCore, object]:
     core = soup(isolated, **kw)
-    assert core.start().phase == "ask_puzzle"
+    assert core.start().phase == "setup"
     return core, core.send("1")  # 從題庫抽一題
 
 
@@ -28,19 +28,19 @@ def test_one_player_asks_then_solves_it(isolated):
     core, reply = started(isolated)
     assert reply.phase == "playing" and "【空號】" in reply.narration and "他每晚撥同一個空號。" in reply.narration
     assert reply.choices == ["提問", "猜湯底", "放棄"] and [m.command for m in reply.inputs] == ["/ask", "/guess", "/give_up"]
-    assert reply.characters[0].conditions == [("問 0", "muted"), ("說中 0/3", "muted")] and reply.turn == 1
+    assert reply.characters[0].items == [("問 0", "muted"), ("說中 0/3", "muted")] and reply.turn == 1
 
     reply = core.send("/ask 他死了嗎")
     assert reply.narration == "你 問：他死了嗎\n→ 是" and reply.phase == "playing"  # 一個人玩寫「你」
     reply = core.send("/guess 跟母親有關")
-    assert "說中 1/3 個關鍵點" in reply.narration and reply.characters[0].conditions[1] == ("說中 1/3", "good")
+    assert "說中 1/3 個關鍵點" in reply.narration and reply.characters[0].items[1] == ("說中 1/3", "good")
     reply = core.send("/guess 全部說出來")
     assert reply.phase == "ending" and "說中了所有關鍵點" in reply.narration
     ended = core.send("")
     assert ended.phase == "ended" and ended.ending.title == "你 解開了謎題" and ended.ending.epilogue == "那是母親錄的語音。"
     assert ended.ending.reveal == "按 Enter 看湯底"
     assert "共 3 回合，問了 1 個問題，猜了 2 次" in ended.ending.record and "- 母親過世了" in ended.ending.record
-    assert core.send("1").phase == "ask_puzzle"  # 再玩一次
+    assert core.send("1").phase == "setup"  # 再玩一次
 
 
 def test_typing_without_choosing_is_a_question_and_choices_switch_the_way(isolated):

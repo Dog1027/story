@@ -17,31 +17,18 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from story.core import ChangeGroups, Ending, InputMode, Reply, Status, pick_choice
-from story.games import GENRE_AUTO, GENRE_NONE
 from story.shells.connection import Connection
 from story.shells.lobby import Lobby
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 from story.shells.text import ui_text
 
 # 介面的對話框也會用到的規則（名字怎樣才能用），一律從這裡取用
-__all__ = ["MAX_NAME_LEN", "CharacterLine", "Client", "PremiseForm", "StatusLine", "View", "status_line"]
+__all__ = ["MAX_NAME_LEN", "Client", "PremiseForm", "StatusLine", "View", "status_line"]
 
 UI = ui_text("shells")  # 外殼共用的文字（story/shells/ui/語言/shells.md）
-DIALOGS = ui_text("dialogs")  # 對話框的文字（story/shells/ui/語言/dialogs.md）
 
 
 # ---------- 給介面的顯示資料：只說內容與程度，不說顏色與排版 ----------
-
-
-@dataclass
-class CharacterLine:
-    """狀態列上一位角色（只有一位角色時不顯示名字，見 StatusLine.named）。"""
-
-    name: str
-    alive: bool
-    warning: str  # 整體狀態的代號（serious、dying）：要醒目地警告；平常是空字串
-    warning_text: str  # 警告顯示的詞，例如「重傷」
-    items: list[tuple[str, str]]  # (文字, 語氣)：每個狀態的名稱與程度的代號，不分身體與精神；沒有狀態時是 [("良好", "healthy")]
 
 
 @dataclass
@@ -49,14 +36,8 @@ class StatusLine:
     turn: int
     mode: str  # 「限時模式」或「一般模式」，跟回合寫在同一排
     timed: bool
-    characters: list[CharacterLine] = field(default_factory=list)
+    characters: list[Status] = field(default_factory=list)  # 每位角色一列；要不要警告、顯示的詞都由玩法給
     named: bool = False  # 好幾位角色：每位角色一列，列出名字
-
-
-def character_line(status: Status) -> CharacterLine:
-    # 哪些程度要警告是遊戲規則，由玩法判斷（status.warning），顯示的詞也由玩法給
-    items = list(status.conditions) or ([(status.fine, "healthy")] if status.fine else [])
-    return CharacterLine(status.name, status.alive, status.warning, status.warning_text, items)
 
 
 def status_line(turn: int, characters: list[Status], timed: bool) -> StatusLine | None:
@@ -64,7 +45,7 @@ def status_line(turn: int, characters: list[Status], timed: bool) -> StatusLine 
     if not characters:
         return None
     mode = UI["mode_timed" if timed else "mode_normal"]
-    return StatusLine(turn, mode, timed, [character_line(s) for s in characters], named=len(characters) > 1)
+    return StatusLine(turn, mode, timed, list(characters), named=len(characters) > 1)
 
 
 # ---------- 介面要實作的方法 ----------
@@ -197,28 +178,20 @@ class PremiseForm:
     def __init__(self, reply: Reply, request: Callable[..., Awaitable[Reply]]):
         self.default = reply.premise_default  # 目前預設的開頭：文字框留白、或玩家沒改過時用它
         self.timed = reply.timed
-        self.genres = dict(reply.genres)  # 可選的題材：名稱 → 描述；沒有題材包時是空的，介面不顯示題材選單
-        known = (GENRE_AUTO, GENRE_NONE, *self.genres)
-        self.genre = reply.genre if not self.genres or reply.genre in known else GENRE_AUTO
+        self.genres = [(value, label) for value, label, _ in reply.genres]  # 題材選單：沒有題材包時是空的，介面不顯示
+        self.hints = {value: hint for value, _, hint in reply.genres}
+        self.genre = reply.genre if not self.genres or reply.genre in self.hints else self.genres[0][0]
         self.request = request  # 送指令給核心，見 Client.ask_room()
         self.asking = asyncio.Lock()  # 一次只送一個：核心不能同時處理兩個請求
         self.latest = 0  # 最新一次操作的編號
 
     def genre_options(self) -> list[tuple[str, str]]:
-        """題材選單：(顯示的文字, 題材)。自動、不指定在最前面。"""
-        if not self.genres:
-            return []
-        return [(DIALOGS["genre_auto_option"], GENRE_AUTO), (DIALOGS["genre_none_option"], GENRE_NONE)] + [
-            (DIALOGS["genre_option"].format(name=name), name) for name in self.genres
-        ]
+        """題材選單：(顯示的文字, 題材)，順序由玩法決定。"""
+        return [(label, value) for value, label in self.genres]
 
     def genre_hint(self, choice: str) -> str:
         """選單下面的題材介紹。"""
-        if choice == GENRE_AUTO:
-            return DIALOGS["genre_auto_hint"]
-        if choice == GENRE_NONE:
-            return DIALOGS["genre_none_hint"]
-        return self.genres.get(choice, "")
+        return self.hints.get(choice, "")
 
     async def change_genre(self, choice: str, text: str) -> str | None:
         """換題材：隨機抽到的開頭也換成新題材的（玩家改過文字框就不換）。text 是文字框目前的內容。"""
@@ -365,9 +338,9 @@ class Client:
             self.view.show_action(echo)
         await self.deliver(text)
 
-    async def deliver(self, text: str) -> None:
-        """把一句輸入交給房間；回覆會由房間推回來。"""
-        await self.room.send({"type": "send", "text": text})
+    async def deliver(self, text: str, form: bool = False, answer: bool = False) -> None:
+        """把一句輸入交給房間；回覆會由房間推回來。form 是開新局的對話框裡的操作：只有 answer 時才回覆。"""
+        await self.room.send({"type": "send", "text": text, "form": form, "answer": answer})
 
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
@@ -423,15 +396,12 @@ class Client:
         elif reply.notice and reply.phase in ("playing", "ending", "ended") and not reply.narration:
             self.view.notify(reply.notice)
 
-        if reply.phase == "ask_continue":
-            yes, no = reply.choices  # 核心給的「繼續」「開新遊戲」
-            keep = await self.view.ask_confirm(UI["ask_continue"].format(notice=reply.notice), yes=yes, no=no)
-            await self.send("1" if keep else "2")
-        elif reply.phase == "ask_premise":
+        if reply.phase in ("ask_continue", "setup", "confirm_restart") and reply.choices:
+            # 核心給的問句與兩個選項：繼續／開新遊戲、確定／取消、海龜湯的題庫／AI 出題
+            yes = await self.view.ask_confirm(reply.notice, *reply.choices)
+            await self.send("1" if yes else "2")
+        elif reply.phase == "setup":
             await self.ask_premise(reply)
-        elif reply.phase in ("confirm_restart", "ask_puzzle"):
-            sure = await self.view.ask_confirm(reply.notice, *reply.choices)  # 核心給的兩個選項：確定／取消、題庫／AI 出題
-            await self.send("1" if sure else "2")
         elif reply.phase in ("playing", "ending"):
             await self.show_turn(reply)  # 結束的這一回合；接著房間會寫尾聲
         elif reply.phase == "ended":
@@ -445,7 +415,7 @@ class Client:
             return
         premise, want_timed, genre = answer
         for command in [f"/timed {'on' if want_timed else 'off'}"] * (want_timed != reply.timed) + [f"/genre {genre}"]:
-            await self.deliver(command)  # 前提對話框選好的模式與題材：回覆不需要顯示
+            await self.deliver(command, form=True)  # 前提對話框選好的模式與題材：回覆不需要顯示
         self.clear_story(premise)
         await self.send(premise)
 
@@ -595,7 +565,7 @@ class Client:
         """前提對話框的操作（換題材、換一個、幫我想）：依序送出指令，只有最後一個要求房間回覆（answer），收到的一定是這一個的結果。"""
         self.premise_answer = asyncio.get_running_loop().create_future()
         for i, command in enumerate(commands):
-            await self.room.send({"type": "send", "text": command, "answer": i == len(commands) - 1})
+            await self.deliver(command, form=True, answer=i == len(commands) - 1)
         try:
             return await self.premise_answer
         finally:

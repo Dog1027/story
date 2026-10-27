@@ -32,6 +32,8 @@
 <!-- 變數：{turn}、{premise} -->
 找到存檔（第 {turn} 回合）：{premise}
 
+要繼續嗎？
+
 ## resumed
 <!-- 變數：{premise} -->
 讀取存檔：{premise}
