@@ -1,5 +1,5 @@
 <!--
-Dialog text, shared by the terminal version (story/shells/textual/dialogs.py) and the web version (story/shells/web/static/app.js).
+Dialog text for the web version (story/shells/web/static/app.js) and the shared layer (story/shells/client.py).
 Same format as core.md. For the web, the server sends this file together with web.md to the browser.
 -->
 

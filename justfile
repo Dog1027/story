@@ -4,14 +4,6 @@
 default:
     @just --list --unsorted
 
-# 終端機版
-play:
-    uv run story
-
-# 純文字版
-plain:
-    uv run story --plain
-
 # 網頁伺服器：大家進大廳開房間，一個人玩或和朋友組隊都可以（開放區網連線）
 serve port="8080":
     uv run story-web --host 0.0.0.0 --port {{port}}

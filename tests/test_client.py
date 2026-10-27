@@ -1,25 +1,27 @@
-"""外殼共用層：用一個只記錄呼叫的假介面，確認「什麼時候顯示什麼」的流程。不需要 Textual，任何介面都適用。"""
+"""外殼共用層：用一個只記錄呼叫的假介面，確認「什麼時候顯示什麼」的流程。房間與大廳是真的，核心用真的 StoryCore，engine 用假的。"""
 
 import asyncio
 
 import pytest
-from conftest import FakeEngine, InvalidKeyError
+from conftest import FakeEngine
 
 import story.shells.client as client_module
 from story.core import Reply
 from story.games import GENRE_AUTO, GENRE_NONE, StoryCore
 from story.core import Status
-from story.shells.client import LocalClient, PremiseForm, View, status_line
+from story.shells.client import PremiseForm, View, status_line
 from story.shells.connection import Connection
+from story.shells.lobby import Lobby
 from story.shells.room_client import RoomClient
 
 
 class RecordingView(View):
     """記下 Client 呼叫了哪些方法；對話框照預先排好的答案回答。"""
 
-    def __init__(self, premise="燈塔", timed=False, keys=(), play_again=False):
+    def __init__(self, premise="燈塔", timed=False, play_again=False):
         self.calls: list[tuple] = []
-        self.premise, self.timed, self.keys, self.play_again = premise, timed, list(keys), play_again
+        self.premise, self.timed, self.play_again = premise, timed, play_again
+        self.lobby_view = ""  # 最後一次大廳畫面的 view：lobby（大廳）或 room（房間的等人畫面）
 
     def names(self) -> list[str]:
         return [c[0] for c in self.calls]
@@ -74,6 +76,7 @@ class RecordingView(View):
 
     def show_lobby(self, screen):
         self.record("show_lobby", screen)
+        self.lobby_view = screen["view"]
 
     def set_busy(self, busy):
         self.record("set_busy", busy)
@@ -107,22 +110,48 @@ class RecordingView(View):
         return self.play_again
 
     async def ask_name(self, hint, error):
-        return None
-
-    async def ask_api_key(self, reason):
-        self.record("ask_api_key", reason)
-        return (self.keys.pop(0), False) if self.keys else None
+        return "阿明"
 
     def exit(self):
         self.record("exit")
 
 
+async def until(condition, timeout: float = 3.0) -> None:
+    """等到 condition() 成立（房間的回覆是非同步推來的）。"""
+    async def wait():
+        while not condition():
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(wait(), timeout)
+
+
 @pytest.fixture
-def engine(monkeypatch):
-    engine = FakeEngine()
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=engine, **kw))
-    monkeypatch.setenv("GEMINI_API_KEY", "test")
-    return engine
+async def play(isolated):
+    """連進真的大廳（核心用假的 engine）、開一個自己的房間、開始冒險，等開場顯示完。回傳 RoomClient。"""
+    lobbies, tasks = [], []
+
+    async def start(view: "RecordingView", engine=None) -> RoomClient:
+        engine = engine or FakeEngine()
+        lobby = Lobby(lambda players, on_queue, game: StoryCore(
+            "test", players, save_path=isolated / "save.json", log_path=isolated / "log.jsonl", engine=engine))
+        lobbies.append(lobby)
+        client = RoomClient(view, lobby)
+        tasks.append(asyncio.create_task(client.run()))
+        await until(lambda: view.lobby_view == "lobby")
+        await client.act("1")  # 開一個新房間
+        await until(lambda: view.lobby_view == "room")
+        await client.act("1")  # 開始冒險
+        await until(lambda: ("show_choices", ["往上爬", "檢查鑰匙"]) in view.calls and "set_status" in view.names())
+        if view.timed:
+            await until(lambda: "start_timer" in view.names())
+        await asyncio.sleep(0.05)  # 房間接著推來的訊息（還在等誰）也處理完
+        return client
+
+    yield start
+    for task in tasks:
+        task.cancel()
+    for lobby in lobbies:
+        await lobby.stop()
 
 
 def after(view: RecordingView, name: str) -> list[str]:
@@ -131,55 +160,44 @@ def after(view: RecordingView, name: str) -> list[str]:
     return names[len(names) - names[::-1].index(name) :]
 
 
-async def test_new_story_shows_premise_then_the_opening(engine):
+async def test_new_story_shows_premise_then_the_opening(play):
     view = RecordingView()
-    client = LocalClient(view)
-    await client.run()
+    await play(view)
     assert "ask_premise" in view.names()
     assert ("clear_story", "燈塔") in view.calls  # 先顯示前提，再等 AI 寫開場
     assert view.names().index("clear_story") < view.names().index("show_narration")
     assert ("show_choices", ["往上爬", "檢查鑰匙"]) in view.calls
 
 
-async def test_a_turn_reveals_choices_and_status_only_after_the_narration(engine):
+async def test_a_turn_reveals_choices_and_status_only_after_the_narration(play):
     view = RecordingView(timed=True)
-    client = LocalClient(view)
-    await client.run()
+    client = await play(view)
     view.calls.clear()
     await client.act("1")
+    await until(lambda: "start_timer" in view.names())
     assert ("show_action", "你選擇了「往上爬」。") not in view.calls and ("show_action", "往上爬") in view.calls
     order = [n for n in view.names() if n in ("show_action", "prepare_choices", "show_narration", "show_changes", "show_choices", "set_status", "start_timer")]
-    # 送出時先收起選項、顯示行動；劇情顯示完才出現變化、選項、狀態，最後才開始倒數
+    # 送出時先收起選項、顯示行動；劇情顯示完才出現變化、選項、狀態，大家看完才開始倒數
     assert order == ["show_choices", "show_action", "prepare_choices", "show_narration", "show_changes", "show_choices", "set_status", "start_timer"]
     assert ("prepare_choices", ["點亮油燈", "躲起來"], True) in view.calls  # 限時：介面可以先空出倒數條
     status = [c[1] for c in view.calls if c[0] == "set_status"][-1]
     assert status.turn == 2 and status.mode == "限時模式"
-    assert status.characters[0].items == [("小腿挫傷", "moderate")]
+    assert status.characters[0].items == [["小腿挫傷", "moderate"]]  # 經過房間的 JSON：tuple 變成 list
 
 
-async def test_ending_appears_one_part_at_a_time(engine):
+async def test_ending_appears_one_part_at_a_time(play):
     view = RecordingView()
-    client = LocalClient(view)
-    await client.run()
+    client = await play(view)
     await client.act("1")
+    await until(lambda: ("show_choices", ["點亮油燈", "躲起來"]) in view.calls)
     view.calls.clear()
     await client.act("2")  # 第 3 回合故事結束
+    await until(lambda: "exit" in view.names())
     order = after(view, "show_action")
     expected = ["wait_enter", "show_ending_title", "show_narration", "wait_enter", "ask_ending", "exit"]
     assert [n for n in order if n in expected][-6:] == expected
     hints = [c[1] for c in view.calls if c[0] == "wait_enter"]
     assert hints == ["按 Enter 看尾聲", "按 Enter 查看結局"]
-
-
-async def test_invalid_key_asks_for_a_new_one_and_retries(engine):
-    view = RecordingView(keys=["新的 key"])
-    client = LocalClient(view)
-    await client.run()
-    engine.fail_with = InvalidKeyError()
-    await client.act("1")
-    assert any(c[0] == "ask_api_key" and "無效" in c[1] for c in view.calls)
-    assert engine.keys == ["新的 key"] and client.core.phase == "playing"
-    assert ("show_choices", ["點亮油燈", "躲起來"]) in view.calls  # 換了 key 之後重送成功
 
 
 def test_status_line_lists_conditions_and_the_core_warning():
@@ -215,15 +233,12 @@ class StreamingEngine(FakeEngine):
         state.current_narration = text
 
 
-async def test_narration_is_shown_while_the_ai_is_still_writing(monkeypatch):
-    engine = StreamingEngine()
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=engine, **kw))
-    monkeypatch.setenv("GEMINI_API_KEY", "test")
+async def test_narration_is_shown_while_the_ai_is_still_writing(play):
     view = RecordingView()
-    client = LocalClient(view)
-    await client.run()
+    client = await play(view, StreamingEngine())
     view.calls.clear()
     await client.act("1")
+    await until(lambda: ("show_narration", "風雨中，你推開了燈塔的門。") in view.calls)
     names = view.names()
     assert names.index("start_narration") < names.index("prepare_choices")  # 回覆到之前就開始顯示
     extended = [c[1] for c in view.calls if c[0] == "extend_narration"]
@@ -232,22 +247,19 @@ async def test_narration_is_shown_while_the_ai_is_still_writing(monkeypatch):
     assert names.count("start_narration") == 1 and "show_busy" not in names[names.index("start_narration"):]
 
 
-async def test_half_written_narration_is_taken_back_when_the_turn_fails(monkeypatch):
-    engine = StreamingEngine(fail=True)
-    monkeypatch.setattr(client_module, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=engine, **kw))
-    monkeypatch.setenv("GEMINI_API_KEY", "test")
+async def test_half_written_narration_is_taken_back_when_the_turn_fails(play):
     view = RecordingView()
-    client = LocalClient(view)
-    await client.run()
+    client = await play(view, StreamingEngine(fail=True))
     view.calls.clear()
     await client.act("1")
+    await until(lambda: "discard_narration" in view.names() and "notify" in view.names())
     names = view.names()
     assert "start_narration" in names and "discard_narration" in names and "show_narration" not in names
     assert any(c[0] == "notify" and c[2] for c in view.calls)  # 出錯的通知
     assert client.draft == ""
 
 
-# ---------- 新故事的對話框（兩種介面共用的規則） ----------
+# ---------- 新故事的對話框的規則 ----------
 
 
 def premise_form(**replies):
@@ -289,7 +301,7 @@ async def test_premise_form_suggest_errors_are_raised_for_the_interface_to_show(
         await form.suggest("")
 
 
-# ---------- 網頁版的共用層（RoomClient） ----------
+# ---------- RoomClient 與房間的連線 ----------
 
 
 async def test_room_hint_stops_waiting_once_the_story_ends():
@@ -326,7 +338,7 @@ async def test_input_modes_switch_what_typing_does():
     from story.games.soup.game import INPUTS
 
     view = RecordingView()
-    client = LocalClient(view)
+    client = RoomClient(view, lobby=None)
     sent = []
 
     async def send(text, echo=""):

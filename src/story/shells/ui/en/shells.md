@@ -1,6 +1,6 @@
 <!--
 Text shared by the shells: the shared layer (story/shells/client.py), the web lobby and rooms (lobby.py, room.py), name checks (players.py),
-the web server (web/__init__.py), and the plain-text shell (plain.py). Same format as core.md.
+and the web server (web/__init__.py). Same format as core.md.
 -->
 
 <!-- ---------- First-launch setup (story/setup.py) ---------- -->
@@ -15,24 +15,6 @@ A Gemini API key is needed; get one free at https://aistudio.google.com/apikey. 
 ## setup_key_prompt
 Gemini API key (hidden while typing; press Enter to skip for now): 
 
-## setup_name
-What's your character's name? (You can change it later in ~/.config/story/config.toml)
-
-## setup_name_prompt
-<!-- Press Enter to use default_name -->
-Name (press Enter for "Hero"): 
-
-## default_name
-<!-- The character's name in the terminal version when no name is set -->
-Hero
-
-## setup_theme
-Choose a color theme for the terminal version (you can change it in the game with F2):
-
-## setup_theme_prompt
-<!-- Variable: {default} is the theme used if you just press Enter -->
-Enter a number (or press Enter for {default}): 
-
 <!-- ---------- Shared layer ---------- -->
 
 ## mode_timed
@@ -41,14 +23,6 @@ Timed mode
 
 ## mode_normal
 Normal mode
-
-
-## ask_missing_key
-No Gemini API key found.
-
-## ask_new_key
-The API key is invalid or lacks permission. Please enter it again.
-
 
 ## busy
 <!-- Shown while waiting for the AI. Variable: {progress} (busy_progress, or blank) -->
@@ -145,7 +119,6 @@ queued (everyone shares one API key)
 
 <!-- ---------- Notices in a room ---------- -->
 
-
 ## room_lost
 Lost the connection to the game room.
 
@@ -198,7 +171,6 @@ Waiting for {host} (the host) to set up the game.
 <!-- Variable: {host} -->
 Waiting for {host} (the host) to start the game.
 
-
 ## host_only_restart
 Only the host can start over.
 
@@ -229,23 +201,12 @@ Play Story in the browser
 ## server_host_help
 Address to listen on; 0.0.0.0 lets other computers connect (default: this computer only)
 
-
 ## server_no_key
 The web server calls the AI with the host's API key: run uv run story-web once in a terminal to enter it, or set the GEMINI_API_KEY environment variable.
 
 ## server_open_warning
 ⚠ Other computers can connect. There's no HTTPS yet, so traffic (names, the story) is sent in plain text and names have no password; only use this on a network you trust.
 
-
-
 ## server_started
 <!-- Variables: {host}, {port} -->
 Server running at http://{host}:{port}  Press Ctrl+C to stop.
-
-<!-- ---------- Plain-text shell ---------- -->
-
-## plain_ask_key
-Gemini API key (hidden while typing): 
-
-## plain_bye
-Saved. See you next time.

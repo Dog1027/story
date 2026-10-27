@@ -2,15 +2,11 @@
 
     language = "en"          # 語言：zh-TW（預設）或 en
     api_key = "…"            # Gemini API key
-    name = "阿明"            # 一個人玩時的角色名字（網頁版每個人進來時自己輸入）
 
-    [terminal]               # 只有終端機版用的設定
-    theme = "tokyo-night"    # 配色主題（網頁版的外觀由每個人在瀏覽器裡選）
-
-程式裡用「區塊.名稱」指一項設定，例如 get("terminal.theme")。
+程式裡用「區塊.名稱」指一項設定，例如 get("api_key")；有區塊的設定寫在 [區塊] 底下。
 
 環境變數優先於這個檔案：STORY_LANG 蓋過 language，GEMINI_API_KEY（或 GOOGLE_API_KEY）蓋過 api_key，
-所以臨時換語言或 key 時不用改檔案。遊戲裡選擇儲存 API key、換配色主題時，程式會改寫這個檔案（手寫的註解會不見）。
+所以臨時換語言或 key 時不用改檔案。第一次啟動時輸入的語言與 API key 會寫進這個檔案（手寫的註解會不見）。
 核心、玩法與外殼都會讀它；個人的題材包與海龜湯題目也放在同一個資料夾（~/.config/story/genres/語言/、puzzles/語言/）。
 """
 
@@ -22,12 +18,11 @@ from pathlib import Path
 CONFIG_DIR = Path.home() / ".config" / "story"
 CONFIG_PATH = CONFIG_DIR / "config.toml"
 KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
-OLD_FILES = {"api_key": "api_key", "terminal.theme": "theme"}  # 以前每個設定各存一個檔案，讀取時搬進 config.toml
-OLD_KEYS = {"theme": "terminal.theme"}  # 改過名字的設定，讀取時換成新的名字
+OLD_FILES = {"api_key": "api_key"}  # 以前每個設定各存一個檔案，讀取時搬進 config.toml
 
 
 def load() -> dict:
-    """讀取設定檔，攤平成 {"區塊.名稱": 值}；沒有就是空的。舊的 api_key、theme 檔案與舊的設定名稱會先換成現在的。"""
+    """讀取設定檔，攤平成 {"區塊.名稱": 值}；沒有就是空的。舊的 api_key 檔案會先搬進來。"""
     try:
         data = _flatten(tomllib.loads(CONFIG_PATH.read_text(encoding="utf-8")))
     except FileNotFoundError:
@@ -76,11 +71,6 @@ def _migrate(data: dict) -> bool:
             data[key] = value
         old.unlink()
         changed = True
-    for old, new in OLD_KEYS.items():
-        if old in data:
-            value = data.pop(old)
-            data.setdefault(new, value)
-            changed = True
     return changed
 
 

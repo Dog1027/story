@@ -1,6 +1,6 @@
 <!--
 外殼共用的文字：共用層（story/shells/client.py）、網頁版的大廳與房間（lobby.py、room.py）、名字檢查（players.py）、
-網頁伺服器（web/__init__.py）與純文字版（plain.py）。格式同 core.md。
+與網頁伺服器（web/__init__.py）。格式同 core.md。
 -->
 
 <!-- ---------- 第一次啟動時的設定（story/setup.py） ---------- -->
@@ -15,24 +15,6 @@
 ## setup_key_prompt
 Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
 
-## setup_name
-你的角色叫什麼名字？（之後可以在 ~/.config/story/config.toml 改）
-
-## setup_name_prompt
-<!-- 直接按 Enter 用 default_name -->
-名字（直接按 Enter 用「主角」）：
-
-## default_name
-<!-- 終端機版沒有設定名字時，角色的名字 -->
-主角
-
-## setup_theme
-選擇終端機版的配色主題（之後可以在遊戲裡按 F2 換）：
-
-## setup_theme_prompt
-<!-- 變數：{default} 是直接按 Enter 時用的主題 -->
-輸入編號（直接按 Enter 用 {default}）：
-
 <!-- ---------- 共用層 ---------- -->
 
 ## mode_timed
@@ -41,14 +23,6 @@ Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
 
 ## mode_normal
 一般模式
-
-
-## ask_missing_key
-找不到 Gemini API key。
-
-## ask_new_key
-API key 無效或沒有權限，請重新輸入。
-
 
 ## busy
 <!-- 等 AI 時的提示。變數：{progress}（busy_progress，或空白） -->
@@ -145,7 +119,6 @@ API key 無效或沒有權限，請重新輸入。
 
 <!-- ---------- 房間裡的通知 ---------- -->
 
-
 ## room_lost
 和遊戲房間的連線中斷了。
 
@@ -198,7 +171,6 @@ API key 無效或沒有權限，請重新輸入。
 <!-- 變數：{host} -->
 等房主 {host} 開始遊戲。
 
-
 ## host_only_restart
 只有房主能重新開始。
 
@@ -229,23 +201,12 @@ API key 無效或沒有權限，請重新輸入。
 ## server_host_help
 監聽位址；0.0.0.0 代表開放其他電腦連線（預設只有本機）
 
-
 ## server_no_key
 網頁伺服器呼叫 AI 用架站者的 API key：請先在終端機裡執行一次 uv run story-web 輸入 key，或設定環境變數 GEMINI_API_KEY。
 
 ## server_open_warning
 ⚠ 已開放其他電腦連線。目前沒有 HTTPS，連線內容（名字、劇情）以明文傳送，名字也沒有密碼保護，只建議在信任的網路使用。
 
-
-
 ## server_started
 <!-- 變數：{host}、{port} -->
 伺服器已啟動：http://{host}:{port}　按 Ctrl+C 結束。
-
-<!-- ---------- 純文字版 ---------- -->
-
-## plain_ask_key
-Gemini API key（輸入時不會顯示）：
-
-## plain_bye
-已存檔，下次見。

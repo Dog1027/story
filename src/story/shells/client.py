@@ -1,14 +1,13 @@
-"""外殼共用層：跟真人玩家互動的流程，終端機、網頁等介面都用這一層。
+"""外殼共用層：跟真人玩家互動的流程，網頁版的介面用這一層。
 
 分工：
 - 核心（story.core）與玩法（story.games）：遊戲規則、AI、存檔。送文字進去、拿 Reply 出來，沒有時間感，也不知道畫面的存在。
 - 這一層（Client）：「什麼時候顯示什麼」。依回覆的階段跳出哪個對話框、打完字才顯示選項、
-  大家看完才倒數、結局一段一段出現……終端機版用 LocalClient（自己的核心），網頁版用 room_client.py 的
-  RoomClient（連進大廳與房間），兩者只差在把輸入交給誰、回覆從哪裡來。
-- 介面（View 的實作，例如 Textual 的 StoryApp）：只負責「長什麼樣子」，把 View 的每個方法畫出來，
-  再把玩家的輸入交給 Client（act、command、timeout）。
+  大家看完才倒數、結局一段一段出現……網頁版用 room_client.py 的 RoomClient（連進大廳與房間）。
+- 介面（View 的實作，網頁版的 WebView）：只負責「長什麼樣子」，把 View 的每個方法畫出來，
+  再把玩家的輸入交給 Client（act、command）。
 
-新功能盡量改在這一層；只有新的畫面元素才需要在每個介面各加一點顯示程式。
+新功能盡量改在這一層；只有新的畫面元素才需要在介面加一點顯示程式。
 判斷標準：改變遊戲結果或事實 → 核心；改變真人看到的順序、時機、流程 → 這一層；改變長相 → 介面。
 """
 
@@ -19,17 +18,13 @@ from dataclasses import dataclass, field
 from story.core import ChangeGroups, Ending, InputMode, Reply, Status, pick_choice
 from story.games import GENRE_AUTO, GENRE_NONE, StoryCore
 from story.shells.text import ui_text
-from story import settings
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 
-# 介面的對話框也會用到的規則（名字怎樣才能用、key 存在哪裡），一律從這裡取用
-CONFIG_PATH = settings.CONFIG_PATH
-__all__ = ["CONFIG_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "LocalClient", "PremiseForm", "StatusLine", "View", "status_line"]
+# 介面的對話框也會用到的規則（名字怎樣才能用），一律從這裡取用
+__all__ = ["MAX_NAME_LEN", "CharacterLine", "Client", "PremiseForm", "StatusLine", "View", "status_line"]
 
 UI = ui_text("shells")  # 外殼共用的文字（story/shells/ui/語言/shells.md）
-DIALOGS = ui_text("dialogs")  # 兩種介面都有的對話框的文字（story/shells/ui/語言/dialogs.md）
-BUSY_DELAY = 0.15  # 核心超過這麼久還沒回覆才顯示「故事生成中」，很快的回覆就不閃一下
-DRAFT_POLL = 0.1  # 等核心時每隔幾秒看一次 AI 寫到哪裡（串流），有新的字就先顯示
+DIALOGS = ui_text("dialogs")  # 對話框的文字（story/shells/ui/語言/dialogs.md）
 
 
 # ---------- 給介面的顯示資料：只說內容與程度，不說顏色與排版 ----------
@@ -152,7 +147,7 @@ class View:
         """顯示等待的提示（文字用 client.busy_text()，會隨進度改變）。"""
         raise NotImplementedError
 
-    # 限時模式：介面負責倒數，時間到呼叫 client.timeout()
+    # 限時模式：房間負責計時，時間到由房間送出；介面只顯示倒數
     def start_timer(self, seconds: int) -> None:
         raise NotImplementedError
 
@@ -185,10 +180,6 @@ class View:
         """問名字，回傳玩家輸入的文字（取消時 None）。error 是上一次不能用的原因，第一次是空字串；hint 空白時用介面自己的說明。"""
         raise NotImplementedError
 
-    async def ask_api_key(self, reason: str) -> tuple[str, bool] | None:
-        """終端機版：key 無效或沒有時問玩家。回傳 (key, 要不要存起來)。"""
-        raise NotImplementedError
-
     def exit(self) -> None:
         raise NotImplementedError
 
@@ -197,7 +188,7 @@ class View:
 
 
 class PremiseForm:
-    """新故事對話框的規則，終端機版與網頁版共用：介面只負責畫出來，把玩家的操作交給這裡，照回傳的文字更新文字框。
+    """新故事對話框的規則：介面只負責畫出來，把玩家的操作交給這裡，照回傳的文字更新文字框。
     回傳 None 時文字框保持原樣（玩家改過了，或這個結果已經被後來的操作取代）。"""
 
     def __init__(self, reply: Reply, request: Callable[..., Awaitable[Reply]]):
@@ -266,8 +257,8 @@ class PremiseForm:
 
 
 class Client:
-    """跟真人玩家互動的流程，終端機版（LocalClient）與網頁版（RoomClient，room_client.py）共用：
-    一回合怎麼出現、結局怎麼一段一段出現、狀態列、輸入框的提示。兩邊不一樣的地方（把輸入交給誰、回覆從哪裡來）是下面的掛勾。"""
+    """跟真人玩家互動的流程：一回合怎麼出現、結局怎麼一段一段出現、狀態列、輸入框的提示。
+    把輸入交給誰、回覆從哪裡來是下面的掛勾，由網頁版的 RoomClient（room_client.py）實作。"""
 
     def __init__(self, view: View):
         self.view = view
@@ -308,9 +299,6 @@ class Client:
     def progress(self) -> str:
         """等待時目前在做什麼（例如「規劃故事大綱」）。"""
         raise NotImplementedError
-
-    async def timeout(self) -> None:
-        """介面的倒數到了。"""
 
     async def narration_read(self, reply: Reply) -> None:
         """限時的一回合顯示完了：開始倒數（或告訴房間看完了）。"""
@@ -539,93 +527,3 @@ class Client:
         if self.inputs and self.actor and self.inputs[self.input_mode].hint:
             return self.inputs[self.input_mode].hint
         return UI["hint_input"]
-
-
-class LocalClient(Client):
-    """終端機版：自己有一個核心（一個人玩，一人隊伍），在背景執行緒呼叫它。"""
-
-    def __init__(self, view: View):
-        super().__init__(view)
-        self.core: StoryCore | None = None
-
-    @property
-    def connected(self) -> bool:
-        return self.core is not None
-
-    async def run(self) -> None:
-        key = settings.api_key() or await self.ask_api_key(UI["ask_missing_key"])
-        if key is None:
-            self.view.exit()
-            return
-        self.core = StoryCore(key, [settings.get("name") or UI["default_name"]])
-        await self.handle(self.core.start())
-
-    async def ask_api_key(self, reason: str) -> str | None:
-        result = await self.view.ask_api_key(reason)
-        if result is None:
-            return None
-        key, keep = result
-        if keep:
-            settings.put("api_key", key)
-        return key
-
-    async def deliver(self, text: str) -> None:
-        reply = await self.ask_core(text)
-        if reply is not None:
-            await self.handle(reply)
-
-    async def deliver_quietly(self, text: str) -> None:
-        await asyncio.to_thread(self.core.send, text)
-
-    async def premise_request(self, *commands: str) -> Reply:
-        def ask() -> Reply:
-            for command in commands:
-                answer = self.core.send(command)
-            return answer
-
-        return await asyncio.to_thread(ask)
-
-    def echo_for(self, text: str) -> str:
-        return self.core.action_for(text) or ""
-
-    def progress(self) -> str:
-        return self.core.progress if self.core else ""
-
-    async def timeout(self) -> None:
-        if self.core is not None:
-            await self.send("/timeout", echo=self.core.action_for("/timeout") or "")
-
-    async def narration_read(self, reply: Reply) -> None:
-        self.view.start_timer(reply.time_limit)
-
-    async def story_over(self) -> None:
-        await self.send("")  # 讓核心接著寫尾聲
-
-    async def play_again(self) -> None:
-        await self.send("1")
-
-    async def ask_core(self, text: str) -> Reply | None:
-        """在背景執行緒呼叫核心；超過一下子才顯示等待提示。key 無效時請玩家換一個再重送。"""
-        self.set_busy(True)
-        try:
-            while True:
-                task = asyncio.create_task(asyncio.to_thread(self.core.send, text))
-                waited = 0.0
-                while not task.done():
-                    await asyncio.wait({task}, timeout=DRAFT_POLL)
-                    waited += DRAFT_POLL
-                    self.follow_draft(self.core.draft)
-                    if waited >= BUSY_DELAY and not self.draft:
-                        self.view.show_busy()
-                reply = await task
-                if reply.error != "api_key":
-                    return reply
-                settings.put("api_key", None)
-                self.set_busy(False)
-                key = await self.ask_api_key(UI["ask_new_key"])
-                if key is None:
-                    return reply
-                self.core.set_api_key(key)
-                self.set_busy(True)
-        finally:
-            self.set_busy(False)

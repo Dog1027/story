@@ -1,24 +1,6 @@
-"""純文字外殼，以及所有外殼都要遵守的架構規則。網頁版的測試在 test_web.py。"""
+"""所有外殼都要遵守的架構規則。網頁版的測試在 test_web.py。"""
 
 import re
-
-from conftest import FakeEngine
-
-import story.shells.plain as plain
-from story.games import StoryCore
-
-
-def test_plain_shell_plays_a_whole_story(monkeypatch, capsys):
-    monkeypatch.setenv("GEMINI_API_KEY", "test")
-    monkeypatch.setattr(plain, "StoryCore", lambda api_key, players, **kw: StoryCore(api_key, players, engine=FakeEngine(), **kw))
-    inputs = iter(["", "1", "2", "", "/quit"])
-    monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
-    plain.main()
-    out = capsys.readouterr().out
-    assert "你在燈塔醒來。" in out
-    assert "回合 2｜狀態 小腿挫傷（中）" in out
-    assert "─── 燈塔守望者 ───" in out
-    assert "已存檔，下次見。" in out
 
 
 def test_shells_only_use_the_public_core_interface():
@@ -72,16 +54,14 @@ def test_layers_only_depend_outward():
 
 
 def test_interfaces_go_through_the_shared_client_layer():
-    """介面（Textual、網頁的 View）只負責長相：不自己建立核心、不直接連房間、不呼叫核心的方法，流程一律交給共用層（client.py）。
-    這樣新增其他介面時，流程不用再寫一次。網頁伺服器（web/__init__.py）負責開房間與連線，不算介面。"""
+    """介面（網頁的 View）只負責長相：不自己建立核心、不直接連房間、不呼叫核心的方法，流程一律交給共用層（client.py）。
+    網頁伺服器（web/__init__.py）負責開房間與連線，不算介面。"""
     from pathlib import Path
 
-    import story.shells.textual
     import story.shells.web.view
 
     problems = []
-    interfaces = [*Path(story.shells.textual.__file__).parent.rglob("*.py"), Path(story.shells.web.view.__file__)]
-    for path in sorted(interfaces):
+    for path in [Path(story.shells.web.view.__file__)]:
         source = path.read_text(encoding="utf-8")
         for name in ("StoryCore", "Connection", "story.shells.room", "story.shells.players"):
             if name in source:
