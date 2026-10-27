@@ -45,7 +45,7 @@ Send
 Your name
 
 ## name_hint
-Your name is your character in the story. Come back with the same names as the same group to pick up where you left off.
+Your browser remembers this name. Open a room with the same group and names to continue your last save.
 
 ## name_placeholder
 e.g. Alex
