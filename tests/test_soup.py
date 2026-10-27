@@ -117,7 +117,9 @@ def test_continuing_a_saved_soup_shows_the_scenario_and_earlier_rounds(isolated)
     found = again.start()
     assert found.phase == "ask_continue" and "空號" in found.notice
     reply = again.send("1")
-    assert reply.resumed and "【空號】" in reply.narration and reply.history == [("你 問：他死了嗎\n→ 是", "")]
+    assert reply.resumed and reply.narration == "你 問：他死了嗎\n→ 是"  # 最近一回合在最後
+    (surface, _), = reply.history  # 湯面在最前面
+    assert "【空號】" in surface
     assert "第 1 回" in again.send("/state").info[1]
 
 

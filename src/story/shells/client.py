@@ -162,6 +162,9 @@ class View:
     def notify(self, text: str, error: bool = False, lasting: bool = False) -> None:
         raise NotImplementedError
 
+    def show_activity(self, text: str) -> None:
+        """簡短、不擋住劇情的動態（例如網頁版「小華 已行動」），一下子就消失。不需要的介面可以不做。"""
+
     def show_info(self, title: str, body: str) -> None:
         raise NotImplementedError
 
@@ -465,13 +468,17 @@ class Client:
         """有新劇情時先顯示劇情，顯示完才出現變化、選項與更新狀態列，避免先劇透。"""
         if reply.narration:
             self.view.stop_timer()
-            if reply.resumed:  # 讀檔、重新連線：從乾淨的畫面接著顯示（網頁版前面還留著房間或大廳的等人畫面）
+            if reply.resumed:  # 讀檔、重新連線：從乾淨的畫面一次顯示之前的劇情與目前這一段，都看過了，不用再打字
                 self.clear_story()
                 self.show_history(reply)
-            self.choices = list(reply.choices)
-            self.view.prepare_choices(self.choices, timed=bool(reply.time_limit))
-            self.refresh_hint()
-            await self.narrate(reply.narration)
+                self.view.show_past_narration(reply.narration)
+                self.choices = list(reply.choices)  # 清空畫面會清掉選項，所以放在清空之後
+                self.refresh_hint()
+            else:
+                self.choices = list(reply.choices)
+                self.view.prepare_choices(self.choices, timed=bool(reply.time_limit))
+                self.refresh_hint()
+                await self.narrate(reply.narration)
             for name, groups in reply.changes:
                 self.view.show_changes(groups, name if len(reply.characters) > 1 else "")  # 一個人玩不用寫名字
             self.view.show_choices(self.choices)

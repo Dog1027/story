@@ -127,7 +127,10 @@ class RoomClient(Client):
             self.view.notify(UI["room_disconnected"], error=True, lasting=True)
 
     def update_waiting(self, names: list[str]) -> None:
-        """這回合還沒行動的人變了：更新提示（不重建選項，畫面才不會閃）。"""
+        """這回合還沒行動的人變了：有人剛行動就簡短地通知一下，並更新提示（不重建選項，畫面才不會閃）。"""
+        if set(names) < set(self.waiting):  # 名單變短：有人剛行動（新回合時名單會變回全部的人）
+            if acted := [n for n in self.waiting if n not in names and n != self.my_name]:
+                self.view.show_activity(UI["acted"].format(names=UI["list_sep"].join(acted)))
         self.waiting = names
         self.refresh_hint()
 

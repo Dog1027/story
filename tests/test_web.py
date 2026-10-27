@@ -105,12 +105,12 @@ async def test_continuing_a_save_starts_from_a_clean_screen(isolated):
         await browser.expect("lobby", lambda m: m["screen"]["view"] == "room")
         await browser.send("act", text="1")  # 開始冒險：找到存檔
         await browser.answer((await browser.expect("confirm"))["id"], True)
-        await browser.expect("narration_start")
+        await browser.expect("choices", lambda m: m["choices"])
         kinds = [m["t"] for m in browser.seen]
         after = kinds[kinds.index("confirm"):]
-        past = next(m for m in browser.seen if m["t"] == "past_narration")
-        assert past["text"] == "兩人在燈塔醒來。"
-        assert "clear" in after and after.index("clear") < after.index("past_narration") < after.index("narration_start")  # 先清空，再顯示之前的劇情
+        past = [m["text"] for m in browser.seen if m["t"] == "past_narration"]
+        assert past == ["兩人在燈塔醒來。", "阿明阿明往上爬"]  # 之前的劇情與目前這一段，都直接顯示，不再打字
+        assert "clear" in after and after.index("clear") < after.index("past_narration") and "narration_start" not in after
 
 
 async def test_name_problems_are_shown_and_asked_again(isolated):
@@ -178,3 +178,6 @@ async def test_friends_join_the_same_room(isolated):
         await guest.expect("choices", lambda m: m["choices"] == ["小華往上爬", "小華躲起來"])
         status = (await guest.expect("status", lambda m: m["status"]))["status"]
         assert status["named"] and [c["name"] for c in status["characters"]] == ["阿明", "小華"]
+        await guest.send("act", text="2")
+        await host.expect("activity", lambda m: m["text"] == "小華 已行動")  # 別人行動了：短暫的通知，不擋住劇情
+        assert not any(m["t"] == "activity" for m in guest.seen)  # 自己行動不會通知自己

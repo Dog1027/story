@@ -203,7 +203,9 @@ class SoupCore(TeamGame):
         return {"turn": s.turn + 1 if not s.game_over else s.turn, "timed": False, "characters": characters}
 
     def _replay(self) -> dict:
-        return {"narration": self._surface(), "resumed": True, "history": [(self._round_text(r), "") for r in self.state.rounds]}
+        """湯面在最前面，之前的每一回合依序接在後面，最近一回合是目前這一段。"""
+        texts = [self._surface()] + [self._round_text(r) for r in self.state.rounds]
+        return {"narration": texts[-1], "resumed": True, "history": [(t, "") for t in texts[:-1]]}
 
     def _help(self) -> str:
         return UI["soup_help"]

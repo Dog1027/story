@@ -157,6 +157,7 @@ const handlers = {
   timer({ seconds }) { startTimer(seconds); },
   stop_timer() { stopTimer(); },
   notify({ text, error, lasting }) { toast(text, { error, lasting }); },
+  activity({ text }) { activity(text); },
   info({ title, body }) { infoSheet(title, body); },
   fatal({ text }) { add("div", "fatal", text); setBusy(true); input.placeholder = text; },
   confirm({ id, question, yes, no }) {
@@ -717,6 +718,17 @@ function toast(text, { error = false, lasting = false, title = "" } = {}) {
   el.append(text);
   $("toasts").append(el);
   setTimeout(() => el.remove(), lasting ? 30000 : error ? 8000 : 3500);
+}
+
+// 別人的動態（例如「小華 已行動」）：在右上角、狀態列下面短暫出現，不擋住劇情與選項
+function activity(text) {
+  const box = $("activity");
+  box.style.top = `${$("top").getBoundingClientRect().bottom + 8}px`;
+  const el = tag("div", "activity-item", text);
+  box.append(el);
+  while (box.children.length > 3) box.firstChild.remove();
+  setTimeout(() => el.classList.add("leaving"), 2200);
+  setTimeout(() => el.remove(), 2600);
 }
 
 // ---------- 選單 ----------

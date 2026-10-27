@@ -93,6 +93,10 @@ The End
 <!-- 有輸入方式時（海龜湯），故事區顯示的自己的行動。變數：{label} 方式（提問、猜湯底）、{text} -->
 {label}: {text}
 
+## acted
+<!-- Web: someone else just acted (briefly shown at the top right). Variable: {names} -->
+{names} acted
+
 ## hint_waiting
 <!-- Web: you've already acted. Variable: {names} -->
 Waiting for {names}…

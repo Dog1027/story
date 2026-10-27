@@ -243,6 +243,14 @@ button { cursor: pointer; }
 }
 .toast { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 10px 14px; animation: fade-in 0.25s ease-out; }
 .toast.error { border-color: var(--sev-3); }
+.activity { /* 別人的動態：右上角、狀態列下面（top 由 app.js 依狀態列的高度設定），短暫出現 */
+  position: fixed; z-index: 30; right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 6px; justify-items: end; pointer-events: none;
+}
+.activity-item {
+  font-size: 13px; padding: 4px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--ink);
+  box-shadow: 0 2px 8px rgba(20, 30, 45, 0.12); animation: fade-in 0.2s ease-out; transition: opacity 0.4s;
+}
+.activity-item.leaving { opacity: 0; }
 .toast.error b { color: var(--sev-3); display: block; }
 
 .exit-screen { text-align: center; color: var(--muted); padding-top: 20vh; }

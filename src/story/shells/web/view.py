@@ -182,6 +182,9 @@ class WebView(View):
     def notify(self, text: str, error: bool = False, lasting: bool = False) -> None:
         self.post("notify", text=text, error=error, lasting=lasting)
 
+    def show_activity(self, text: str) -> None:
+        self.post("activity", text=text)
+
     def show_info(self, title: str, body: str) -> None:
         self.post("info", title=title, body=body)
 
