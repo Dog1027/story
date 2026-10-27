@@ -138,11 +138,6 @@ class FakeEngine:
     def __init__(self):
         self.fail_with: Exception | None = None  # 下一次 act() 要拋出的錯誤
         self.compacted = 0
-        self.keys: list[str] = []
-
-    def set_api_key(self, key):
-        self.keys.append(key)
-        self.fail_with = None
 
     def suggest_premise(self, avoid="", genre=""):
         return "你是月球礦坑的夜班工程師。"
@@ -189,9 +184,6 @@ class FakeGroupEngine:
     def __init__(self):
         self.rounds: list[dict] = []
         self.fail_with: Exception | None = None
-
-    def set_api_key(self, key):
-        self.fail_with = None
 
     def needs_compaction(self, state):
         return False
@@ -263,6 +255,3 @@ class FakeJudge:
         if isinstance(self.puzzle, Exception):
             raise self.puzzle
         return self.puzzle
-
-    def set_api_key(self, key):
-        pass

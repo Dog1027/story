@@ -2,8 +2,7 @@
 
 外面看起來就像呼叫一個 LLM：`reply = core.send("往上爬")`（好幾位角色時是 `core.send_as("阿明", "往上爬")`）。
 記憶、規則、存檔都藏在這裡；隊伍、存檔接續、收集行動這些每種玩法共用的流程在 story/core/team.py。
-回覆和 LLM 的 API 一樣是「文字＋附帶資料」：只會印文字的外殼直接顯示 `reply.text`；
-想做狀態列、倒數、選項按鈕的外殼，再去讀其他欄位。
+回覆是劇情加上附帶資料（選項、狀態列、倒數……），外殼照欄位畫出來。
 
 API key、玩家名字、倒數計時、打字效果屬於外殼，不在這裡處理。
 """
@@ -12,9 +11,7 @@ import random
 import threading
 from pathlib import Path
 
-from story.core.ai import LOG_PATH
-from story.core.reply import ChangeGroups, Ending, Reply, Status, join, pick_choice
-from story.core.saves import SAVE_PATH
+from story.core.reply import Ending, Reply, Status, join, pick_choice
 from story.core.team import FAILURES, PLAY_AGAIN_CHOICES, TeamGame
 from story.games.adventure.engine import Engine
 from story.games.adventure.models import Character, GameState, word
@@ -45,8 +42,8 @@ class StoryCore(TeamGame):
         api_key: str,
         players: list[str],
         *,
-        save_path: Path = SAVE_PATH,
-        log_path: Path = LOG_PATH,
+        save_path: Path,
+        log_path: Path | None = None,
         engine: Engine | None = None,
         client=None,
     ):
@@ -60,9 +57,6 @@ class StoryCore(TeamGame):
         self.suggested = ""  # /suggest 想出來的前提，留白送出時優先使用
         self.drawn = ""  # 從題材包的開頭靈感隨機抽到的前提；再玩一次時不抽，延續上一局的前提
         self._compaction: threading.Thread | None = None
-
-    def set_api_key(self, api_key: str) -> None:
-        self.engine.set_api_key(api_key)
 
     @property
     def progress(self) -> str:
@@ -240,9 +234,6 @@ class StoryCore(TeamGame):
     def _memory(self) -> str:
         return memory_text(self.state)
 
-    def _render(self, reply: Reply) -> str:
-        return render_text(reply)
-
     # ---------- 背景壓縮記憶 ----------
 
     def _start_compaction(self) -> None:
@@ -273,72 +264,3 @@ def character_status(c: Character) -> Status:
     warning = warning_level(c) if c.alive else ""
     return Status(conditions=condition_list(c), warning=warning, name=c.name, alive=c.alive,
                   warning_text=word("level", warning) if warning else "", fine=word("level", "healthy"))
-
-
-# ---------- 純文字版的回覆 ----------
-
-
-def conditions_text(status: Status) -> str:
-    """狀態直接列出，不分身體與精神；危險時先警告。背包的變化會寫在每回合的變化裡，完整內容用 /state 看。"""
-    items = join(UI["condition"].format(name=n, severity=word("severity", v)) for n, v in status.conditions) or word("level", "healthy")
-    return UI["text_warning"].format(level=word("level", status.warning), conditions=items) if status.warning else items
-
-
-def status_line(turn: int, status: Status, timed: bool) -> str:
-    return UI["text_status"].format(turn=turn, timed=UI["text_status_timed"] if timed else "", conditions=conditions_text(status))
-
-
-def character_line(status: Status) -> str:
-    return UI["text_character_line"].format(name=status.name, conditions=conditions_text(status) if status.alive else UI["text_fallen"])
-
-
-def changes_line(groups: ChangeGroups) -> str:
-    return UI["text_changes_sep"].join(UI["text_changes"].format(label=label, items=join(text for text, _ in items)) for label, items in groups)
-
-
-def render_text(reply: Reply) -> str:
-    """把回覆組成一段完整的純文字。只有一位角色時不列名字，也不說輪到誰。"""
-    several = len(reply.characters) > 1
-    parts: list[str] = []
-    if reply.notice:
-        parts.append(UI["text_notice"].format(notice=reply.notice))
-    if reply.info:
-        title, body = reply.info
-        parts.append(UI["text_info"].format(title=title, body=body))
-    if reply.phase == "ask_premise":
-        if reply.suggestion:
-            parts.append(UI["text_suggested"])
-        mode = UI["text_mode_timed" if reply.timed else "text_mode_normal"]
-        parts.append(UI["text_new_story"].format(mode=mode, genre=genre_label(reply.genre), premise=reply.premise_default))
-        if reply.genres:
-            choices = [GENRE_AUTO, GENRE_NONE, *(name for name, _ in reply.genres)]
-            parts.append(UI["text_genres"].format(genres=join(genre_label(g) for g in choices)))
-    if reply.history_trimmed:
-        parts.append(UI["text_history_trimmed"])
-    for narration, action in reply.history:
-        parts.append(narration)
-        parts.append(UI["text_action"].format(action=action))
-    if reply.narration:
-        parts.append(reply.narration)
-    for name, groups in reply.changes:
-        parts.append(UI["text_named_changes"].format(name=name, changes=changes_line(groups)) if several else changes_line(groups))
-    if reply.ending:
-        e = reply.ending
-        parts.append(UI["text_ending_title"].format(title=e.title or UI["text_story_over"]))
-        if e.epilogue:
-            parts.append(e.epilogue)
-        parts.append(e.record)
-    if reply.characters and reply.phase in ("playing", "ending") and reply.narration:
-        if several:  # 每位角色一行
-            parts.append("\n".join(character_line(st) for st in reply.characters) + ("\n" + UI["text_mode_timed"] if reply.timed else ""))
-        else:
-            parts.append(status_line(reply.turn, reply.characters[0], reply.timed))
-    if reply.phase == "ending":
-        parts.append(UI["text_send_for_epilogue"])
-    if reply.actor and several:
-        parts.append(UI["text_actor"].format(name=reply.actor))
-    if reply.choices:
-        parts.append("\n".join(f"{i}. {c}" for i, c in enumerate(reply.choices, 1)))
-    if reply.time_limit:
-        parts.append(UI["text_time_limit"].format(seconds=reply.time_limit))
-    return "\n\n".join(parts)

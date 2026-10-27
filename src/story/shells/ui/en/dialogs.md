@@ -8,12 +8,6 @@ Same format as core.md. For the web, the server sends this file together with we
 ## leave
 Leave
 
-## ok
-OK
-
-## cancel
-Cancel
-
 ## close
 Close
 

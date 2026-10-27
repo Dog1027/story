@@ -1,5 +1,5 @@
 <!--
-Text the adventure shows players: notices, /help, /state, the ending record, labels for changes between turns, genre pack problems, and the whole plain-text output.
+Text the adventure shows players: notices, /help, /state, the ending record, labels for changes between turns, and genre pack problems.
 Same format as the prompts: each section starts with "## name"; the name is how the program finds it and must not change. {name} is a variable filled in by the program.
 -->
 
@@ -173,78 +173,6 @@ Along the way:
 ## record_event
 <!-- Variable: {event} -->
 • {event}
-
-<!-- ---------- Plain-text output ---------- -->
-
-## text_suggested
-Here's an opening. Send an empty line to start with it, or edit it and send.
-
-## text_new_story
-<!-- Variables: {mode} (text_mode_timed or text_mode_normal), {genre}, {premise} -->
-A new story ({mode}, genre: {genre}). Type a premise, or send an empty line to use:
-{premise}
-(/random for another, /suggest to let the AI think of one, /timed to toggle timed mode, /genre to choose a genre)
-
-## text_mode_timed
-timed mode
-
-## text_mode_normal
-normal mode
-
-## text_genres
-<!-- Variable: {genres} -->
-Genres: {genres}
-
-## text_story_over
-The End
-
-## text_status
-<!-- Variables: {turn}, {timed} (text_status_timed or blank), {conditions} -->
-Turn {turn}{timed} | Condition: {conditions}
-
-## text_status_timed
- (timed mode)
-
-## text_warning
-<!-- The warning when in danger. Variables: {level}, {conditions} -->
-⚠ {level}  {conditions}
-
-## text_character_line
-<!-- One character, when there are several. Variables: {name}, {conditions} -->
-{name} | {conditions}
-
-## text_history_trimmed
-(Earlier parts of the story were condensed into a summary; see /state)
-
-## text_action
-<!-- In the plain-text version when loading a save: one action in the earlier story. Variable: {action} -->
-› {action}
-
-## text_fallen
-fallen
-
-## text_changes
-<!-- One group of changes. Variables: {label}, {items} -->
-{label}: {items}
-
-## text_changes_sep
-<!-- Separator between groups of changes -->
-   
-
-## text_named_changes
-<!-- One character's changes, when there are several. Variables: {name}, {changes} -->
-{name}  {changes}
-
-## text_send_for_epilogue
-(The story is over. Send anything to see the epilogue.)
-
-## text_actor
-<!-- Variable: {name} -->
-{name}'s turn:
-
-## text_time_limit
-<!-- Variable: {seconds} -->
-({seconds} seconds)
 
 <!-- ---------- Genre pack format problems (for people writing genre packs) ---------- -->
 

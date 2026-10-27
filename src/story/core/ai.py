@@ -18,7 +18,6 @@ from story.core.prompts import UI  # 給玩家看的錯誤訊息（story/core/ui
 MODEL = "gemini-3.5-flash-lite"
 REQUEST_TIMEOUT = 40  # 一次 AI 請求最多等幾秒；Gemini 偶爾卡住一兩分鐘，重送通常比較快
 REQUEST_ATTEMPTS = 3  # 逾時或伺服器忙（429、5xx）時最多送幾次（含第一次）
-LOG_PATH = Path("story_log.jsonl")  # 每回合的狀態變化紀錄
 
 
 def new_client(api_key: str | None) -> genai.Client:
@@ -85,14 +84,11 @@ class AICaller:
     """所有 AI 呼叫都經過這裡：記下種類、花了幾秒與 Gemini 回報的 token 用量（送出、命中快取、輸出、思考），
     寫進每回合的紀錄，方便查等待時間花在哪裡。"""
 
-    def __init__(self, api_key: str | None, client, log_path: Path):
+    def __init__(self, api_key: str | None, client, log_path: Path | None):
         self.client = client or new_client(api_key)
-        self.log_path = log_path  # 網頁版每一隊各自一份紀錄
+        self.log_path = log_path  # 每一隊各自一份紀錄；None 時不寫（例如 just prompts）
         self.calls: list[dict] = []  # 上次寫紀錄之後的 AI 呼叫（寫進紀錄後清空）
         self.draft = ""  # AI 正在寫的劇情（串流中目前收到的部分），外殼可以先顯示；沒有在寫時是空字串
-
-    def set_api_key(self, api_key: str) -> None:
-        self.client = new_client(api_key)
 
     def generate(self, kind: str, **request):
         """一次拿完整結果的呼叫。"""
@@ -144,6 +140,8 @@ class AICaller:
     def write_log(self, record: dict) -> None:
         """寫一行紀錄，附上這段期間的 AI 呼叫。"""
         record["calls"], self.calls = self.calls, []
+        if self.log_path is None:
+            return
         try:
             with self.log_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")

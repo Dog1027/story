@@ -71,7 +71,6 @@ class Reply:
     phase: Phase
     turn: int = 0  # 目前是第幾回合；還沒開始時是 0
     timed: bool = False  # 目前是否為限時模式（遊戲中是這一局的模式，等前提時是開新局會用的模式）
-    text: str = ""  # 完整的純文字，只會印文字的外殼直接顯示這個就好
     narration: str = ""  # 這次產生（或讀檔重新顯示）的劇情；沒有新劇情時是空字串
     choices: list[str] = field(default_factory=list)
     characters: list[Status] = field(default_factory=list)  # 每位玩家的狀態（一個人玩只有一位）
@@ -87,7 +86,7 @@ class Reply:
     genres: list[tuple[str, str]] = field(default_factory=list)  # ask_premise：可選的題材（名稱, 描述）
     suggestion: str = ""  # ask_premise：/suggest 想出來的前提
     ending: Ending | None = None  # ended：尾聲與旅程紀錄
-    error: Literal["api_key", "api"] | None = None  # api_key：key 無效，外殼換 key 後可以重送同一句
+    error: Literal["api"] | None = None  # 呼叫 AI 失敗（notice 是原因）：留在原本的階段，可以重試
     actor: str = ""  # 送出輸入的那位玩家（send_as、view 的對象；一個人玩就是他）這回合還沒行動時是他的名字，choices 是他的選項
     inputs: list[InputMode] = field(default_factory=list)  # 有的話，choices 是輸入的方式（見 InputMode），不是行動
 

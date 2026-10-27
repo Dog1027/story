@@ -214,9 +214,9 @@ def test_failed_round_lets_everyone_choose_again(core, engine):
     act(core, "1")
     engine.fail_with = InvalidKeyError()
     reply = act(core, "2")
-    assert reply.error == "api_key" and core.waiting() == NAMES  # 撤回所有人的行動，大家重新選
+    assert reply.error == "api" and core.waiting() == NAMES  # 撤回所有人的行動，大家重新選
     assert core.state.turn == 1  # 已從存檔還原
-    core.set_api_key("新的 key")
+    engine.fail_with = None
     act(core, "2")
     act(core, "2")
     assert engine.rounds == [{"阿明": "阿明躲起來", "小華": "小華躲起來"}]

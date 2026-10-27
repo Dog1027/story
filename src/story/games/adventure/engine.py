@@ -7,7 +7,7 @@ from pathlib import Path
 
 from google.genai import types
 
-from story.core.ai import LOG_PATH, MODEL, AICaller, StopStream, partial_bool, partial_string
+from story.core.ai import MODEL, AICaller, StopStream, partial_bool, partial_string
 from story.games.adventure.genres import Genre, load_genres
 from story.games.adventure.models import Epilogue, GameState, GenrePick, StoryArc, StoryBeat, Turn
 from story.games.adventure.prompting import MEMORY, SYSTEM_PROMPT, TURN, PromptBuilder, clock_text, format_actions
@@ -38,7 +38,7 @@ class Engine(AICaller):
         self,
         api_key: str | None = None,
         client=None,
-        log_path: Path = LOG_PATH,
+        log_path: Path | None = None,
         genres: dict[str, Genre] | None = None,
     ):
         super().__init__(api_key, client, log_path)

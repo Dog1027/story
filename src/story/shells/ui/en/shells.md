@@ -174,9 +174,6 @@ Waiting for {host} (the host) to start the game.
 ## host_only_restart
 Only the host can start over.
 
-## server_key_invalid
-The server's Gemini API key is invalid or lacks permission. Please tell whoever runs the server.
-
 <!-- ---------- Names ---------- -->
 
 ## name_empty
@@ -202,7 +199,7 @@ Play Story in the browser
 Address to listen on; 0.0.0.0 lets other computers connect (default: this computer only)
 
 ## server_no_key
-The web server calls the AI with the host's API key: run uv run story-web once in a terminal to enter it, or set the GEMINI_API_KEY environment variable.
+The web server calls the AI with the host's API key: run uv run story once in a terminal to enter it, or set the GEMINI_API_KEY environment variable.
 
 ## server_open_warning
 ⚠ Other computers can connect. There's no HTTPS yet, so traffic (names, the story) is sent in plain text and names have no password; only use this on a network you trust.

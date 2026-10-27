@@ -1,5 +1,5 @@
 <!--
-冒險給玩家看的文字：通知、/help、/state、結局紀錄、回合變化的標籤、題材包的格式問題，以及純文字版的整段輸出。
+冒險給玩家看的文字：通知、/help、/state、結局紀錄、回合變化的標籤、題材包的格式問題。
 格式跟提示詞一樣：每段以「## 名稱」開頭，名稱是程式找段落用的，不能改；{名稱} 是程式填入的變數。
 -->
 
@@ -173,78 +173,6 @@ AI 沒有想出開頭，請再試一次。
 ## record_event
 <!-- 變數：{event} -->
 ・{event}
-
-<!-- ---------- 純文字版的輸出 ---------- -->
-
-## text_suggested
-想到一個開頭了，直接送出空白就用它開始，也可以自己修改後送出。
-
-## text_new_story
-<!-- 變數：{mode}（text_mode_timed 或 text_mode_normal）、{genre}、{premise} -->
-新的故事（{mode}，題材：{genre}）。輸入故事前提，或直接送出空白使用：
-{premise}
-（/random 換一個，/suggest 讓 AI 幫你想，/timed 切換限時模式，/genre 選擇題材）
-
-## text_mode_timed
-限時模式
-
-## text_mode_normal
-一般模式
-
-## text_genres
-<!-- 變數：{genres} -->
-可選的題材：{genres}
-
-## text_story_over
-故事結束
-
-## text_status
-<!-- 變數：{turn}、{timed}（text_status_timed 或空白）、{conditions} -->
-回合 {turn}{timed}｜狀態 {conditions}
-
-## text_status_timed
-（限時模式）
-
-## text_warning
-<!-- 危險時的警告。變數：{level}、{conditions} -->
-⚠ {level}　{conditions}
-
-## text_character_line
-<!-- 有好幾位角色時的一位角色。變數：{name}、{conditions} -->
-{name}｜{conditions}
-
-## text_history_trimmed
-（更早的劇情已經整理成摘要，用 /state 可以看）
-
-## text_action
-<!-- 純文字版讀檔時，之前的劇情裡的一次行動。變數：{action} -->
-› {action}
-
-## text_fallen
-已倒下
-
-## text_changes
-<!-- 一組變化。變數：{label}、{items} -->
-{label} {items}
-
-## text_changes_sep
-<!-- 幾組變化之間的分隔 -->
-　
-
-## text_named_changes
-<!-- 有好幾位角色時，一位角色的變化。變數：{name}、{changes} -->
-{name}　{changes}
-
-## text_send_for_epilogue
-（故事結束了。送出任何文字查看尾聲。）
-
-## text_actor
-<!-- 變數：{name} -->
-輪到 {name} 行動：
-
-## text_time_limit
-<!-- 變數：{seconds} -->
-（限時 {seconds} 秒）
 
 <!-- ---------- 題材包的格式問題（寫題材包的人看的） ---------- -->
 

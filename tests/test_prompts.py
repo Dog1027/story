@@ -85,7 +85,7 @@ def test_every_ui_text_used_in_the_code_exists():
     used = set()
     for path in [*src.rglob("*.py"), src / "shells/web/static/app.js", src / "shells/web/static/index.html"]:
         code = path.read_text(encoding="utf-8")
-        used |= set(re.findall(r"\b(?:UI|DIALOGS|TERMINAL)\[[\"'](\w+)[\"']\]", code))
+        used |= set(re.findall(r"\b(?:UI|DIALOGS)\[[\"'](\w+)[\"']\]", code))
         used |= set(re.findall(r"\bt\(\"(\w+)\"", code)) | set(re.findall(r"\bT\.(\w+)", code))
         used |= set(re.findall(r"\{\{([a-z_]+)\}\}", code)) - {"texts"}
     assert used and not used - texts, sorted(used - texts)

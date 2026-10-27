@@ -34,7 +34,6 @@ def test_first_reply_asks_for_premise(core):
     reply = core.start()
     assert reply.phase == "ask_premise"
     assert reply.premise_default == DEFAULT_PREMISE
-    assert DEFAULT_PREMISE in reply.text
 
 
 def test_blank_premise_uses_default(core):
@@ -83,7 +82,6 @@ def test_choosing_by_number_and_reply_fields(core):
     assert reply.narration == "你選擇了「往上爬」。"
     assert reply.turn == 2 and reply.characters[0].conditions == [("小腿挫傷", "moderate")]
     assert reply.changes == [(HERO, [("新增", [("小腿挫傷（中）", "moderate")]), ("獲得", [("油燈", "plain")])])]
-    assert "回合 2｜狀態 小腿挫傷（中）" in reply.text
 
 
 def test_free_text_action(core, engine):
@@ -161,11 +159,10 @@ def test_invalid_key_keeps_state_and_can_retry(core, engine, isolated):
     new_game(core)
     engine.fail_with = InvalidKeyError()
     reply = core.send("1")
-    assert reply.error == "api_key" and reply.phase == "playing"
+    assert reply.error == "api" and reply.phase == "playing" and "架站的人" in reply.notice  # 玩家沒辦法換伺服器的 key
     assert core.state.turn == 1  # 改了一半的狀態已從存檔還原
-    core.set_api_key("新的 key")
+    engine.fail_with = None
     assert core.send("1").narration == "你選擇了「往上爬」。"
-    assert engine.keys == ["新的 key"]
 
 
 def test_other_api_error(core, engine):
@@ -193,7 +190,7 @@ def test_ending_epilogue_and_play_again(core):
     new_game(core)
     core.send("1")
     reply = core.send("2")
-    assert reply.phase == "ending" and "送出任何文字查看尾聲" in reply.text
+    assert reply.phase == "ending"
     reply = core.send("")
     assert reply.phase == "ended"
     assert reply.ending.title == "燈塔守望者" and "共 3 回合" in reply.ending.record
@@ -214,7 +211,6 @@ def test_resume_from_save(engine, isolated):
     assert reply.choices == ["點亮油燈", "躲起來"]
     (opening, action), = reply.history  # 之前的劇情也一起送回來；一個人玩，行動前面不寫名字
     assert opening and action == "往上爬" and not reply.history_trimmed
-    assert reply.text.index(opening) < reply.text.index("› 往上爬") < reply.text.index("你選擇了「往上爬」。")  # 純文字版也看得到
     assert not second.send("1").resumed
 
 

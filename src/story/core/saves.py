@@ -6,10 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-SAVE_PATH = Path("save.json")
-
-
-def save(state: BaseModel, path: Path = SAVE_PATH) -> None:
+def save(state: BaseModel, path: Path) -> None:
     """先寫到同資料夾的暫存檔，寫完再一次換上去。任何時候讀到的都是完整的存檔，
     不會因為背景壓縮記憶時剛好在存檔、或寫到一半程式被關掉，而讀到空檔案或壞掉的檔案。"""
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")

@@ -10,9 +10,10 @@ wheels/
 .venv
 
 # Game saves
+saves/
+# 以前終端機版的存檔與紀錄
 save.json
 story_log.jsonl
-saves/
 .*.tmp
 
 # just start 的背景伺服器

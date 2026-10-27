@@ -28,7 +28,6 @@
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import replace
 
 from story.core import MAX_PLAYERS, Game, Reply, pick_choice
 from story.shells.text import ui_text
@@ -236,8 +235,6 @@ class Room:
         finally:
             if busy:
                 await self._broadcast({"type": "busy", "on": False})
-        if reply.error == "api_key":  # 玩家沒辦法換伺服器的 key
-            reply = replace(reply, error="api", notice=UI["server_key_invalid"])
         return reply
 
     # ---------- 回覆 ----------

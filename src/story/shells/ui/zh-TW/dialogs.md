@@ -8,12 +8,6 @@
 ## leave
 離開
 
-## ok
-確定
-
-## cancel
-取消
-
 ## close
 關閉
 

@@ -6,7 +6,7 @@
 
 這裡管：玩家名單、找到存檔時問要不要繼續、收集每個人的行動（推進失敗時全部撤回）、確認重新開始、再玩一次、
 view()、waiting()、失敗時的回覆、組回覆。子類別管：開新局要問什麼（setup_phase）、一回合怎麼推進、
-結局、狀態列、純文字版的樣子、/help，以及存檔的格式（state_class）。存檔要有 names、premise、turn、game_over。
+結局、狀態列、/help，以及存檔的格式（state_class）。存檔要有 names、premise、turn、game_over。
 """
 
 from dataclasses import replace
@@ -63,9 +63,6 @@ class TeamGame:
     def draft(self) -> str:
         """send() 執行中時，AI 正在寫的劇情（串流中目前收到的部分）；外殼可以在另一個執行緒讀取。"""
         return ""
-
-    def set_api_key(self, api_key: str) -> None:
-        raise NotImplementedError
 
     def start(self) -> Reply:
         """第一個回覆：同一組玩家有沒結束的存檔就問要不要繼續，否則開新局。"""
@@ -131,7 +128,6 @@ class TeamGame:
             mine = replace(reply, actor="", choices=[] if reply.actor else reply.choices)
         else:
             mine = replace(reply, **self._screen_for(name if name in self.waiting() else None))
-        mine.text = self._render(mine)
         return mine
 
     def waiting(self) -> list[str]:
@@ -223,16 +219,13 @@ class TeamGame:
         return {"actor": actor or "", "choices": self._choices(actor) if actor else [], "time_limit": self._time_limit()}
 
     def _failed(self, e: Exception, retry_screen, hint: str = "") -> Reply:
-        """AI 呼叫失敗：留在原本的階段，讓外殼決定要不要換 key 後重送。"""
-        if is_key_error(e):
-            return retry_screen(error="api_key", notice=UI["key_invalid"])
-        return retry_screen(error="api", notice=UI["failed"].format(hint=hint, error=str(e)[:300]))
+        """AI 呼叫失敗：留在原本的階段，玩家可以重試。"""
+        notice = UI["key_invalid"] if is_key_error(e) else UI["failed"].format(hint=hint, error=str(e)[:300])
+        return retry_screen(error="api", notice=notice)
 
     def _reply(self, **fields) -> Reply:
         in_game = self.state is not None and self._phase != self.setup_phase  # 有一局在進行（等開新局時還沒有）
-        reply = Reply(phase=self._phase, **(self._status() if in_game else {"timed": self._next_timed()}), **fields)
-        reply.text = self._render(reply)
-        return reply
+        return Reply(phase=self._phase, **(self._status() if in_game else {"timed": self._next_timed()}), **fields)
 
     def _save(self) -> None:
         save(self.state, self.save_path)
@@ -295,9 +288,5 @@ class TeamGame:
 
     def _memory(self) -> str:
         """/state 顯示的內容。"""
-        raise NotImplementedError
-
-    def _render(self, reply: Reply) -> str:
-        """純文字版的整段回覆（Reply.text）。"""
         raise NotImplementedError
 

@@ -70,8 +70,7 @@ src/story/
 │       ├── puzzles/     題庫，每種語言一個資料夾，一題一個檔案
 │       └── samples/     評估用的猜測（just eval soup）
 └── shells/              外殼：只透過 story.core 與 story.games 的公開介面溝通
-    ├── client.py        外殼共用層：跟真人互動的流程
-    ├── room_client.py   外殼共用層的網頁版：RoomClient 連進大廳與房間
+    ├── client.py        外殼共用層：跟真人互動的流程，每個分頁一個 Client 連進大廳與房間
     ├── text.py          讀外殼的介面文字（ui_text）
     ├── ui/              外殼的介面文字：shells.md、dialogs.md、web.md
     ├── web/             網頁介面：伺服器、WebView、瀏覽器頁面（static/），流程交給 client.py
@@ -81,7 +80,7 @@ src/story/
     └── players.py       網頁版的玩家
 ```
 
-**相依的方向只有一個，由外往內**：介面 → 共用層（`client.py`、`room_client.py`）→ 玩法（`story.games`）→ 核心（`story.core`）。
+**相依的方向只有一個，由外往內**：介面 → 共用層（`client.py`）→ 大廳與房間 → 玩法（`story.games`）→ 核心（`story.core`）。
 
 - 核心不 import 任何玩法與外殼
 - 每種玩法只 import 核心與自己，玩法之間互不 import，也不 import 外殼
@@ -105,7 +104,7 @@ src/story/
 
 ### `__init__.py`：程式進入點
 
-`web()`：`uv run story-web`（定義在 `pyproject.toml` 的 `[project.scripts]`），網頁版（大廳與房間，見 `shells/web/`）。先做第一次啟動的設定（`setup.py`），再 import 核心與玩法：語言在 import 時就決定了。`--setup-only` 只做第一次的設定就結束，`just start` 在背景啟動前用。
+`main()`：`uv run story`（定義在 `pyproject.toml` 的 `[project.scripts]`），網頁版（大廳與房間，見 `shells/web/`）。先做第一次啟動的設定（`setup.py`），再 import 核心與玩法：語言在 import 時就決定了。`--setup-only` 只做第一次的設定就結束，`just start` 在背景啟動前用。
 
 ### `settings.py`：玩家的設定檔
 
@@ -128,21 +127,19 @@ src/story/
 
 每一種玩法對外只有一個入口：冒險是 `StoryCore`（`games/adventure/game.py`），海龜湯是 `SoupCore`（`games/soup/game.py`）。輸入一律是文字，回覆和 LLM 的 API 一樣是「文字＋附帶資料」（`Reply`，在 `reply.py`），每種玩法的回覆格式一樣，外殼不用知道現在玩的是哪一種。下面用冒險當例子。
 
-每種玩法共用的流程在 `team.py` 的 `TeamGame`，`StoryCore` 與 `SoupCore` 是它的子類別：玩家名單、找到存檔時問要不要繼續、收集每個人的行動（推進失敗時全部撤回）、確認重新開始、再玩一次、`send()`／`send_as()`／`view()`／`waiting()`、失敗時的回覆、組回覆。子類別只提供不一樣的地方：開新局要問什麼（`setup_phase`：冒險問前提、海龜湯問怎麼出題）、一回合怎麼推進（`_play_round()`）、結局、狀態列、純文字版的樣子、`/help`、存檔的格式（`state_class`），以及時間到、暫時離開時代替玩家的行動（`timeout_action`、`away_action`）。
+每種玩法共用的流程在 `team.py` 的 `TeamGame`，`StoryCore` 與 `SoupCore` 是它的子類別：玩家名單、找到存檔時問要不要繼續、收集每個人的行動（推進失敗時全部撤回）、確認重新開始、再玩一次、`send()`／`send_as()`／`view()`／`waiting()`、失敗時的回覆、組回覆。子類別只提供不一樣的地方：開新局要問什麼（`setup_phase`：冒險問前提、海龜湯問怎麼出題）、一回合怎麼推進（`_play_round()`）、結局、狀態列、`/help`、存檔的格式（`state_class`），以及時間到、暫時離開時代替玩家的行動（`timeout_action`、`away_action`）。
 
 一局遊戲是一支一到四人的隊伍，冒險裡每人扮演一位角色；一個人玩就是只有一位的隊伍。
 
 **建立與使用**
 
 ```python
-core = StoryCore(api_key="…", players=["阿明"])  # 網頁版另外傳 save_path、log_path、共用的 client
+core = StoryCore(api_key="…", players=["阿明"], save_path=…, log_path=…)  # 網頁版另外傳共用的 client
 reply = core.start()                     # 第一個回覆：有存檔就問要不要繼續，否則請你輸入前提
 reply = core.send("往上爬")               # 只有一位角色時，send() 就是他的行動
 reply = core.send_as("阿明", "往上爬")     # 好幾位角色時，遊戲中的行動要說是誰的
-print(reply.text)                        # 只會印文字的外殼，這樣就能完整地玩
 
 core.action_for("2")                     # → "躲起來"：這句輸入代表的行動，讓外殼送出前先顯示
-core.set_api_key("…")                    # key 失效時換一個
 core.progress                            # send() 執行中目前在做什麼，例如「規劃故事大綱」（可在另一個執行緒讀）
 core.draft                               # send() 執行中 AI 正在寫的劇情（串流中目前收到的部分，可在另一個執行緒讀）
 core.phase                               # 目前的遊戲階段（唯讀），和最近一次回覆的 reply.phase 相同
@@ -171,7 +168,6 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 |---|---|
 | `phase` | 目前階段：`ask_continue`（找到存檔）、`ask_premise`（冒險：等前提）、`ask_puzzle`（海龜湯：從題庫抽或請 AI 出題，`notice` 是問句、`choices` 是兩個選項）、`playing`、`confirm_restart`、`ending`（剛結束，下一句會整理結局；冒險會寫尾聲）、`ended` |
 | `timed` | 目前是否為限時模式（遊戲中是這一局的模式，等前提時是開新局會用的模式） |
-| `text` | 完整的純文字 |
 | `narration` | 這次產生（或讀檔重新顯示）的劇情；沒有新劇情時是空字串 |
 | `choices` | 選項 |
 | `actor` | 送出輸入的那位玩家（`send_as()`、`view()` 的對象），這回合還沒行動時才有；`choices` 是他的選項 |
@@ -186,7 +182,7 @@ core.phase                               # 目前的遊戲階段（唯讀），�
 | `premise_default`、`suggestion`、`genres` | 等前提時：留白會用的前提、`/suggest` 想出來的前提、可選的題材 |
 | `ending` | 結束時：結局名稱、尾聲（海龜湯是湯底）、旅程紀錄，以及顯示尾聲前的提示（`reveal`，空的時候外殼用「按 Enter 看尾聲」） |
 | `inputs` | 輸入的方式（`InputMode`，海龜湯的「提問」「猜湯底」「放棄」）：有的話，`choices` 是切換方式，不是行動本身。選了要打字的方式，接下來打的字用它的 `command`（例如 `/guess`）送出；不用打字的直接送出 |
-| `error` | `api_key`：key 無效，外殼換 key（`core.set_api_key()`）後可以重送同一句；`api`：其他錯誤 |
+| `error` | `api`：呼叫 AI 失敗（key 無效、逾時……），`notice` 是原因；留在原本的階段，可以重試 |
 
 **輸入**
 
@@ -336,7 +332,7 @@ AI 只「提議」變化，套不套用、套用多少由這裡決定。都是�
 
 #### `game.py`：`StoryCore`
 
-冒險的入口，用法見上面的 `core/team.py`。開新局先問前提（`ask_premise`：`/suggest`、`/timed`、`/genre`），每回合所有還活著的角色都行動了才請 `Engine` 寫；回合結束後在背景執行緒壓縮記憶，下一次呼叫 LLM 前會先等它完成；`render_text()` 負責組出純文字，`character_status()` 是狀態列上的一位角色。
+冒險的入口，用法見上面的 `core/team.py`。開新局先問前提（`ask_premise`：`/suggest`、`/timed`、`/genre`），每回合所有還活著的角色都行動了才請 `Engine` 寫；回合結束後在背景執行緒壓縮記憶，下一次呼叫 LLM 前會先等它完成；`character_status()` 是狀態列上的一位角色。
 
 #### `genres.py`：題材包
 
@@ -376,7 +372,7 @@ engine 用題材的方式：玩家選「自動」時，開局先用 `pick_genre(
 | `vocab.md` | 遊戲詞彙：程度、類別、經過的時間、時段、整體狀態的代號各對應到這個語言的哪個詞 |
 | `eval.md` | 評估（`just eval`）的評審標準，不會出現在遊戲裡 |
 
-給玩家看的文字在 `games/adventure/ui/語言/adventure.md`：通知、`/help`、`/state`、結局紀錄、回合變化的標籤、純文字版的整段輸出、題材包格式問題。
+給玩家看的文字在 `games/adventure/ui/語言/adventure.md`：通知、`/help`、`/state`、結局紀錄、回合變化的標籤、題材包格式問題。
 
 `story/evals.py`（`just eval`）用同一組範例情境讓 AI 真的寫一回合，再由程式（字數、選項個數、有沒有結束、傷勢總分）與評審（另一次 AI 呼叫，標準在 `eval.md`）檢查：開場不說破真相、第二幕不會太早寫出結局、第三幕揭露真相、不替玩家做決定、魯莽的行動要付出代價、瀕死還冒險會死、各題材包的文風；`soup` 情境檢查海龜湯的裁判：真的玩過的猜測（`games/soup/samples/語言.md` 的 `soup_cases`）各自說中幾個關鍵點要在範圍內，不完整的猜測不能給滿分。`judge` 情境只檢查評審本身：給它故意寫壞的劇情（替玩家說話、寫成結局、說破真相、只暗示不揭露、武俠出現手機），它要判不通過，沒問題的要判通過，其他情境的「通過」才可信。每個情境跑幾次（預設 3 次）統計通過的比例，每次的劇情與評審理由存到 `eval_results/`。免費方案每分鐘只能呼叫 15 次，所以呼叫會排隊，全部跑完約六、七分鐘；付費方案可以用 `--rpm` 調快。
 
@@ -407,21 +403,20 @@ AI 當裁判、大家一起猜的情境猜謎。共用的流程在核心的 `Tea
 
 ### `shells/client.py`：外殼共用層
 
-跟真人玩家互動的流程。核心只管「送文字進去、拿 `Reply` 出來」，沒有時間感；這一層負責「什麼時候顯示什麼」，介面（`View`，網頁版是 `WebView`）只負責「長什麼樣子」。
+跟真人玩家互動的流程，每個瀏覽器分頁一個 `Client`。核心只管「送文字進去、拿 `Reply` 出來」，沒有時間感；這一層負責「什麼時候顯示什麼」，介面（`View`，網頁版是 `WebView`）只負責「長什麼樣子」。
 
 | 名稱 | 做什麼 |
 |---|---|
 | `View` | 介面要實作的方法：故事區（`start_narration()`、`extend_narration()`、`finish_narration()`、`discard_narration()`：劇情邊收邊顯示；`show_action()`、`show_changes()`、`show_past_narration()`（讀檔時之前的劇情，不打字）、`wait_enter()`…）、選項與提示（`prepare_choices()`、`show_choices()`、`set_hint()`）、狀態列（`set_status()`）、大廳與房間的等人畫面（`show_lobby()`）、等待與倒數（`set_busy()`、`show_busy()`、`start_timer()`）、通知與對話框（`notify()`、`show_activity()`（網頁版右上角短暫出現的「小華 已行動」）、`ask_premise()`、`ask_confirm()`、`ask_ending()`、`ask_name()`…） |
-| `Client` | 兩種玩法共用的流程。子類別決定輸入交給誰：`run()`（開始）、`deliver()`（把一句輸入交給房間）、`echo_for()`（送出前先顯示的行動）、`progress()` 等掛勾 |
-| `RoomClient`（`room_client.py`） | 網頁版：連進大廳、問名字、收大廳與房間推來的訊息；輸入送給房間，由房間呼叫核心 |
+| `Client` | 一個瀏覽器分頁的流程，兩種玩法共用：`run()` 連進大廳、問名字，接著收大廳與房間推來的訊息（`listen()`；回覆依序排進 `process_inbox()`）；輸入送給房間（`deliver()`），由房間呼叫核心。`echo_for()` 是送出前先顯示的行動，`ask_room()` 是前提對話框的操作 |
 | `act()`、`command()` | 介面把玩家的輸入交給這裡：行動（先顯示在故事區）、指令。回覆有 `inputs` 時（海龜湯），選項是切換輸入的方式（`View.mark_choice()` 標出來、提示換成那個方式的說明），打的字用目前的方式送出 |
 | `send()` | 把一句文字送給房間；回覆、進度與寫到一半的劇情由房間推回來 |
 | `follow_draft()`、`narrate()` | 串流：AI 寫的劇情有新的字就交給介面（網頁版是房間轉來的 `draft` 訊息）；回覆到了再接著顯示完。這回合失敗時收回寫到一半的劇情 |
 | `handle()` | 依 `reply.phase` 決定要跳出哪個對話框、顯示劇情或結局 |
 | `show_turn()` | 先放好選項（看不見）→ 劇情 → 變化 → 選項出現 → 更新狀態列 → 開始倒數（網頁版改成告訴房間看完了） |
 | `show_ending()` | 按 Enter → 尾聲 → 按 Enter → 結局對話框（一段一段來，先讀完最後的劇情） |
-| `refresh_hint()`、`RoomClient.update_waiting()` | 輸入框的提示：網頁版行動完之後提示還在等誰，還沒行動時提示誰已經行動了（不用通知，才不會蓋住劇情） |
-| `RoomClient.show_lobby()` | 大廳或房間的等人畫面：內容（房間、在線的人、座位、選項、輸入框提示）都由大廳與房間決定，介面把選項畫成按鈕，下方的選項區不再列一次（輸入框打編號一樣能選）。剛進來或剛離開房間時先清空畫面 |
+| `refresh_hint()`、`update_waiting()` | 輸入框的提示：網頁版行動完之後提示還在等誰，還沒行動時提示誰已經行動了（不用通知，才不會蓋住劇情） |
+| `show_lobby()` | 大廳或房間的等人畫面：內容（房間、在線的人、座位、選項、輸入框提示）都由大廳與房間決定，介面把選項畫成按鈕，下方的選項區不再列一次（輸入框打編號一樣能選）。剛進來或剛離開房間時先清空畫面 |
 | `PremiseForm` | 新故事對話框的規則：題材選單（自動、不指定在最前面）與題材介紹、換題材時玩家沒改過文字框才換上新題材的開頭、「換一個」（`/random`）與「幫我想」（`/suggest`）一定換、被後來的操作取代的結果不用、留白就用預設的開頭。介面只負責畫出來，把操作與文字框的內容交給它，照回傳的文字更新 |
 | `status_line()` | 把 `Status` 轉成狀態列要顯示的內容（`StatusLine`）：直接列出每個狀態與程度、核心判斷的警告（`Status.warning`）、沒有狀態時是「良好」，只說程度不說顏色；`named` 是要不要顯示名字（有好幾位角色時）。背包不放在狀態列（完整內容用 `/state` 看） |
 
@@ -429,19 +424,19 @@ AI 當裁判、大家一起猜的情境猜謎。共用的流程在核心的 `Tea
 
 ### `shells/web/`：網頁版
 
-瀏覽器打開就能玩，手機和電腦用同一個頁面（`uv run story-web`）。伺服器用 aiohttp，對每個瀏覽器分頁建立一個共用層的 `RoomClient`，介面是 `WebView`：共用層的每個呼叫變成一則 JSON 訊息，經由 WebSocket 送到瀏覽器，瀏覽器只負責畫出來。流程在共用層（`client.py`），所以改流程時不用改網頁。
+瀏覽器打開就能玩，手機和電腦用同一個頁面（`uv run story`）。伺服器用 aiohttp，對每個瀏覽器分頁建立一個共用層的 `Client`，介面是 `WebView`：共用層的每個呼叫變成一則 JSON 訊息，經由 WebSocket 送到瀏覽器，瀏覽器只負責畫出來。流程在共用層（`client.py`），所以改流程時不用改網頁。
 
 | 檔案／名稱 | 做什麼 |
 |---|---|
 | `__init__.py`：`make_app()` | 網頁伺服器：首頁、靜態檔、WebSocket（`/ws`）。首頁是 `index.html` 換上這個語言的文字（`render_page()`：雙大括號包起來的名稱換成 `web.md`、`dialogs.md` 的文字，再把整份字串表放進頁面給 `app.js` 用）。限制同時在線人數（`MAX_SESSIONS`），滿了就顯示提示。大廳跟著伺服器一起關閉。頁面與 JS、CSS 都要求瀏覽器每次確認有沒有更新（`Cache-Control: no-cache`），`index.html` 引用時也帶版本號（`?v=`），更新後不會用到快取的舊檔 |
-| `__init__.py`：`main()` | `uv run story-web` 的進入點；參數 `--host`、`--port`。用設定檔的 API key 建立大廳（`Lobby.for_server()`） |
+| `__init__.py`：`main()` | `uv run story` 的進入點；參數 `--host`、`--port`。用設定檔的 API key 建立大廳（`Lobby.for_server()`） |
 | `view.py`：`WebView` | 實作共用層的 `View`。要等玩家的（劇情顯示完、按 Enter、對話框）帶一個 `id`，等瀏覽器回覆；前提對話框開著時，瀏覽器把玩家的操作（換題材、換一個、幫我想）連同文字框的內容送過來，交給共用層的 `PremiseForm`，再把要顯示的開頭送回去。訊息格式寫在檔案開頭 |
 | `static/index.html`、`style.css` | 頁面與外觀：上方狀態列（第幾回、限時模式、每位角色的狀態）、中間故事、下方選項按鈕與輸入框；手機上對話框從下方滑出，要打字的（名字、故事前提）改從上方出現，鍵盤才不會蓋住。跟著系統的淺色／深色，也可以在選單裡切換（存在這個瀏覽器） |
 | `static/app.js` | 把訊息畫出來：記住上次的名字（下次直接用它進去，不能用時才問；選單的「換名字」忘掉它）與瀏覽器的識別碼、大廳（房間與在線的人，手機上是兩個分頁、寬螢幕左右並排）與房間的座位、打字效果（劇情邊收邊打；點故事區或按 Enter 加速、再按一次全部顯示）、往上捲時不自動跟隨、選項（點擊，或在輸入框用 ↑↓ 選擇）、倒數條（只負責顯示，時間到由房間處理）、對話框排隊、通知。手機上不會自動把焦點移到輸入框，不然鍵盤會一直跳出來 |
 
 **手機**：用一般的網頁輸入框打字（中文選字正常）、原生的捲動、字級 16px 以上（手機不會自動放大畫面）。
 
-**大廳與房間**：每個分頁的 `RoomClient` 都連進同一個大廳（`lobby.py`），輸入名字後開房間或加入別人的房間，每個房間各自玩一局（`room.py`）。呼叫 AI 用架站者的 API key，玩家不用輸入。同時在線的人數上限（`MAX_SESSIONS`）是每個房間都坐滿的人數。
+**大廳與房間**：每個分頁的 `Client` 都連進同一個大廳（`lobby.py`），輸入名字後開房間或加入別人的房間，每個房間各自玩一局（`room.py`）。呼叫 AI 用架站者的 API key，玩家不用輸入。同時在線的人數上限（`MAX_SESSIONS`）是每個房間都坐滿的人數。
 
 預設只監聽 `127.0.0.1`。`--host 0.0.0.0`（`just serve`、`just start`）會開放其他電腦連線，但目前沒有 HTTPS，連線內容以明文傳送。
 
@@ -522,7 +517,7 @@ uv run pytest                  # 全部（約 30 秒）
 
 | 檔案 | 用途 |
 |---|---|
-| `pyproject.toml` | 專案設定：相依套件（`google-genai`、`pydantic`、`aiohttp`）、開發用套件（`pytest`、`pytest-asyncio`）、執行指令 `story-web`、pytest 設定 |
+| `pyproject.toml` | 專案設定：相依套件（`google-genai`、`pydantic`、`aiohttp`）、開發用套件（`pytest`、`pytest-asyncio`）、執行指令 `story`、pytest 設定 |
 | `uv.lock` | `uv` 鎖定的套件版本，確保每台電腦裝到一樣的版本 |
 | `.python-version` | 使用的 Python 版本（3.14） |
 | `.gitignore` | 不進版本控制的檔案：虛擬環境、存檔、紀錄檔等 |
@@ -538,6 +533,6 @@ uv run pytest                  # 全部（約 30 秒）
 | `server.log` | `just start` 在背景啟動的伺服器的畫面輸出 |
 | `~/.config/story/config.toml` | 設定：語言、API key（在家目錄，不在專案裡） |
 
-這些檔案會產生在執行 `uv run story-web` 時所在的資料夾。
+這些檔案會產生在執行 `uv run story` 時所在的資料夾。
 
 紀錄每一行的 `calls` 列出這段期間的每次 AI 呼叫：種類（`kind`：`genre` 挑題材、`arc` 規劃大綱、`turn` 劇情、`rewrite` 太早寫出結局時重寫、`death` 傷重倒下、`epilogue` 尾聲、`suggest` 幫我想、`compaction` 記憶壓縮；海龜湯是 `judge` 裁判、`puzzle` 出題、`puzzle_check` 檢查題目）、花了幾秒（`seconds`），以及 Gemini 回報的 token 用量：送出（`prompt`）、其中命中快取（`cached`）、輸出（`output`）、思考（`thinking`）。覺得等很久時，可以從這裡看時間花在哪裡。紀錄只會一直往後加，一局 30 回合約 50 KB；`just clean-logs` 只刪紀錄，不會動到存檔。

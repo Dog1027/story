@@ -9,7 +9,7 @@ from difflib import SequenceMatcher
 
 from google.genai import types
 
-from story.core.ai import LOG_PATH, MODEL, AICaller
+from story.core.ai import MODEL, AICaller
 from story.games.soup.models import Judgement, Move, Puzzle, PuzzleCheck, PuzzleDraft, SoupState, code, word
 from story.games.soup.puzzles import MAX_POINTS, MIN_POINTS
 from story.games.soup.text import TEXT, UI
@@ -46,7 +46,7 @@ def quoted(quote: str, guess: str) -> bool:
 
 
 class SoupJudge(AICaller):
-    def __init__(self, api_key: str | None = None, client=None, log_path: Path = LOG_PATH):
+    def __init__(self, api_key: str | None = None, client=None, log_path: Path | None = None):
         super().__init__(api_key, client, log_path)
         self.stage = ""  # 出題時目前在做什麼，外殼顯示在等待畫面上
 

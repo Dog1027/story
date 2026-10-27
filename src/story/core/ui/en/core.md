@@ -1,5 +1,5 @@
 <!--
-Text the core shows players that every game uses: choices, notices, errors, shared plain-text formats. Each game's own text is in story/games/<game>/ui/.
+Text the core shows players that every game uses: choices, notices, errors. Each game's own text is in story/games/<game>/ui/.
 Same format as the prompts: each section starts with "## name"; the name is how the program finds it and must not change. {name} is a variable filled in by the program.
 -->
 
@@ -71,7 +71,7 @@ A team needs {min} to {max} players with different names.
 <!-- ---------- Errors ---------- -->
 
 ## key_invalid
-The API key is invalid or lacks permission.
+The server's Gemini API key is invalid or lacks permission. Please tell whoever runs the server.
 
 ## failed
 <!-- An AI call failed. Variables: {hint} (failed_turn, or blank), {error} -->
@@ -97,18 +97,3 @@ Help
 
 ## memory_title
 What the program remembers
-
-<!-- ---------- Plain-text output ---------- -->
-
-## text_notice
-<!-- Variable: {notice} -->
-({notice})
-
-## text_info
-<!-- Variables: {title}, {body} -->
-[{title}]
-{body}
-
-## text_ending_title
-<!-- Variable: {title} -->
-─── {title} ───

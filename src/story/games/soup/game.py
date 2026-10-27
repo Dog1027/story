@@ -12,9 +12,7 @@
 import random
 from pathlib import Path
 
-from story.core.ai import LOG_PATH
 from story.core.reply import Ending, InputMode, Reply, Status, join, pick_choice
-from story.core.saves import SAVE_PATH
 from story.core.team import FAILURES, PLAY_AGAIN_CHOICES, TeamGame
 from story.games.soup.judge import SoupJudge
 from story.games.soup.models import Move, Puzzle, SoupState, word
@@ -40,8 +38,8 @@ class SoupCore(TeamGame):
         api_key: str,
         players: list[str],
         *,
-        save_path: Path = SAVE_PATH,
-        log_path: Path = LOG_PATH,
+        save_path: Path,
+        log_path: Path | None = None,
         judge: SoupJudge | None = None,
         client=None,
         puzzles: list[Puzzle] | None = None,
@@ -51,9 +49,6 @@ class SoupCore(TeamGame):
         self.puzzles = load_puzzles()[0] if puzzles is None else puzzles
         self.state: SoupState | None = None
         self.played: set[str] = set()  # 這個房間玩過的題目：從題庫抽時先抽沒玩過的，AI 出題時避開
-
-    def set_api_key(self, api_key: str) -> None:
-        self.judge.set_api_key(api_key)
 
     @property
     def progress(self) -> str:
@@ -214,18 +209,3 @@ class SoupCore(TeamGame):
         p = self.state.puzzle
         rounds = "\n\n".join(UI["soup_memory_round"].format(turn=i, text=self._round_text(r)) for i, r in enumerate(self.state.rounds, 1))
         return UI["soup_memory"].format(title=p.title, surface=p.surface, rounds=rounds or UI["soup_memory_empty"])
-
-    def _render(self, reply: Reply) -> str:
-        parts = []
-        if reply.notice:
-            parts.append(UI["text_notice"].format(notice=reply.notice))
-        if reply.info:
-            parts.append(UI["text_info"].format(title=reply.info[0], body=reply.info[1]))
-        parts += [narration for narration, _ in reply.history]
-        if reply.narration:
-            parts.append(reply.narration)
-        if reply.ending:
-            parts += [UI["text_ending_title"].format(title=reply.ending.title), reply.ending.epilogue, reply.ending.record]
-        if reply.choices:
-            parts.append("\n".join(f"{i}. {c}" for i, c in enumerate(reply.choices, 1)))
-        return "\n\n".join(parts)

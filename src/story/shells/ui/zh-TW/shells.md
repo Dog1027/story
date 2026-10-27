@@ -174,9 +174,6 @@ Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
 ## host_only_restart
 只有房主能重新開始。
 
-## server_key_invalid
-伺服器的 Gemini API key 無效或沒有權限，請通知架站的人。
-
 <!-- ---------- 名字 ---------- -->
 
 ## name_empty
@@ -202,7 +199,7 @@ Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
 監聽位址；0.0.0.0 代表開放其他電腦連線（預設只有本機）
 
 ## server_no_key
-網頁伺服器呼叫 AI 用架站者的 API key：請先在終端機裡執行一次 uv run story-web 輸入 key，或設定環境變數 GEMINI_API_KEY。
+網頁伺服器呼叫 AI 用架站者的 API key：請先在終端機裡執行一次 uv run story 輸入 key，或設定環境變數 GEMINI_API_KEY。
 
 ## server_open_warning
 ⚠ 已開放其他電腦連線。目前沒有 HTTPS，連線內容（名字、劇情）以明文傳送，名字也沒有密碼保護，只建議在信任的網路使用。

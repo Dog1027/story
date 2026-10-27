@@ -2,7 +2,7 @@
 
 伺服器（aiohttp）對每個瀏覽器分頁建立一個共用層的 Client，介面是 WebView（view.py）：
 共用層的每個呼叫變成一則 JSON 訊息，經由 WebSocket 送到瀏覽器，瀏覽器（static/）只負責畫出來。
-流程都在共用層，跟終端機版是同一份。
+流程都在共用層（client.py）。
 
 伺服器裡有一個大廳（lobby.py）：每個分頁的 Client 都連進大廳，輸入名字後開房間或加入別人的房間，
 每個房間各自玩一局（一個人玩就是只有自己的房間）。呼叫 AI 用架站者的 Gemini API key（設定檔或環境變數），玩家不用輸入。
@@ -18,11 +18,11 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from story.core import MAX_PLAYERS
 from story import settings
-from story.shells.text import ui_text
-from story.shells.room_client import RoomClient
+from story.core import MAX_PLAYERS
+from story.shells.client import Client
 from story.shells.lobby import MAX_ROOMS, Lobby
+from story.shells.text import ui_text
 from story.shells.web.view import WebView
 
 DEFAULT_HOST, DEFAULT_PORT = "127.0.0.1", 8080  # 預設只接受本機連線
@@ -66,7 +66,7 @@ def make_app(lobby: Lobby) -> web.Application:
             return ws
         sessions += 1
         view = WebView(ws)
-        client = RoomClient(view, lobby, token=request.query.get("token", "")[:64])
+        client = Client(view, lobby, token=request.query.get("token", "")[:64])
         view.client = client
         writer = asyncio.create_task(view.write_loop())
         game = asyncio.create_task(client.run())

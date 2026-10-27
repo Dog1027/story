@@ -25,7 +25,7 @@
 
 | 指令 | 不用 just 的寫法 | 說明 |
 |---|---|---|
-| `just serve` | `uv run story-web --host 0.0.0.0` | 啟動伺服器，預設 8080 埠（`just serve 9000` 換埠） |
+| `just serve` | `uv run story --host 0.0.0.0` | 啟動伺服器，預設 8080 埠（`just serve 9000` 換埠） |
 | `just start`／`just stop` | | 在背景啟動／關閉伺服器（輸出在 `server.log`） |
 
 第一次執行時會問語言與 API key，存在 `~/.config/story/config.toml`（可以直接編輯）。環境變數優先：`STORY_LANG`（`zh-TW`、`en`）、`GEMINI_API_KEY`。
