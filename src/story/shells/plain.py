@@ -2,7 +2,8 @@
 
 from getpass import getpass
 
-from story.core import StoryCore, ui_text
+from story.games import StoryCore
+from story.shells.text import ui_text
 from story import settings
 
 

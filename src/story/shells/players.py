@@ -3,9 +3,9 @@
 import re
 from pathlib import Path
 
-from story.core import ui_text
+from story.shells.text import ui_text
 
-UI = ui_text("shells")  # story/ui/語言/shells.md
+UI = ui_text("shells")  # story/shells/ui/語言/shells.md
 
 SAVES_DIR = Path("saves")
 MAX_NAME_LEN = 20

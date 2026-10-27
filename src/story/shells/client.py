@@ -1,7 +1,7 @@
 """外殼共用層：跟真人玩家互動的流程，終端機、網頁等介面都用這一層。
 
 分工：
-- 核心（story.core）：遊戲規則、AI、存檔。送文字進去、拿 Reply 出來，沒有時間感，也不知道畫面的存在。
+- 核心（story.core）與玩法（story.games）：遊戲規則、AI、存檔。送文字進去、拿 Reply 出來，沒有時間感，也不知道畫面的存在。
 - 這一層（Client）：「什麼時候顯示什麼」。依回覆的階段跳出哪個對話框、打完字才顯示選項、
   大家看完才倒數、結局一段一段出現……終端機版用 LocalClient（自己的核心），網頁版用 room_client.py 的
   RoomClient（連進大廳與房間），兩者只差在把輸入交給誰、回覆從哪裡來。
@@ -16,7 +16,9 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
-from story.core import GENRE_AUTO, GENRE_NONE, ChangeGroups, Ending, InputMode, Reply, Status, StoryCore, pick_choice, ui_text, word
+from story.core import ChangeGroups, Ending, InputMode, Reply, Status, pick_choice
+from story.games import GENRE_AUTO, GENRE_NONE, StoryCore
+from story.shells.text import ui_text
 from story import settings
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 
@@ -24,8 +26,8 @@ from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 CONFIG_PATH = settings.CONFIG_PATH
 __all__ = ["CONFIG_PATH", "MAX_NAME_LEN", "CharacterLine", "Client", "LocalClient", "PremiseForm", "StatusLine", "View", "status_line"]
 
-UI = ui_text("shells")  # 外殼共用的文字（story/ui/語言/shells.md）
-DIALOGS = ui_text("dialogs")  # 兩種介面都有的對話框的文字（story/ui/語言/dialogs.md）
+UI = ui_text("shells")  # 外殼共用的文字（story/shells/ui/語言/shells.md）
+DIALOGS = ui_text("dialogs")  # 兩種介面都有的對話框的文字（story/shells/ui/語言/dialogs.md）
 BUSY_DELAY = 0.15  # 核心超過這麼久還沒回覆才顯示「故事生成中」，很快的回覆就不閃一下
 DRAFT_POLL = 0.1  # 等核心時每隔幾秒看一次 AI 寫到哪裡（串流），有新的字就先顯示
 
@@ -54,10 +56,9 @@ class StatusLine:
 
 
 def character_line(status: Status) -> CharacterLine:
-    # 哪些程度要警告是遊戲規則，由核心判斷（status.warning）
-    warning_text = word("level", status.warning) if status.warning else ""
-    items = list(status.conditions) or [(word("level", "healthy"), "healthy")]
-    return CharacterLine(status.name, status.alive, status.warning, warning_text, items)
+    # 哪些程度要警告是遊戲規則，由玩法判斷（status.warning），顯示的詞也由玩法給
+    items = list(status.conditions) or ([(status.fine, "healthy")] if status.fine else [])
+    return CharacterLine(status.name, status.alive, status.warning, status.warning_text, items)
 
 
 def status_line(turn: int, characters: list[Status], timed: bool) -> StatusLine | None:

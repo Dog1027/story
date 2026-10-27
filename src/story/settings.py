@@ -11,7 +11,7 @@
 
 環境變數優先於這個檔案：STORY_LANG 蓋過 language，GEMINI_API_KEY（或 GOOGLE_API_KEY）蓋過 api_key，
 所以臨時換語言或 key 時不用改檔案。遊戲裡選擇儲存 API key、換配色主題時，程式會改寫這個檔案（手寫的註解會不見）。
-核心與外殼都會讀它；個人的題材包也放在同一個資料夾（~/.config/story/genres/語言/）。
+核心、玩法與外殼都會讀它；個人的題材包與海龜湯題目也放在同一個資料夾（~/.config/story/genres/語言/、puzzles/語言/）。
 """
 
 import json

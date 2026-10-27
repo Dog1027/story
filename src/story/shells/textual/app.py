@@ -16,16 +16,17 @@ from textual.containers import VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Input, OptionList, Static
 
-from story.core import ChangeGroups, ui_text
+from story.core import ChangeGroups
 from story.shells.client import CharacterLine, LocalClient, PremiseForm, StatusLine, View
 from story.shells.textual.commands import COMMANDS, help_text
 from story.shells.textual.dialogs import ApiKeyDialog, ConfirmDialog, EndingDialog, InfoDialog, PremiseDialog
 from story.shells.textual.prose import Marked, Prose
 from story import settings
+from story.shells.text import ui_text
 from story.shells.textual.style import CHAR_DELAY, FAST_FACTOR, PAUSE_AFTER, SPINNER, THEME, palette
 
 
-UI, DIALOGS = ui_text("terminal"), ui_text("dialogs")  # story/ui/語言/
+UI, DIALOGS = ui_text("terminal"), ui_text("dialogs")  # story/shells/ui/語言/
 NARROW_WIDTH = 60  # 比這個窄（手機直式）就用窄畫面的樣式
 
 

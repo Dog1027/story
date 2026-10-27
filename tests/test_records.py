@@ -2,18 +2,19 @@
 
 from conftest import hero, solo
 
-from story.core.models import Condition
-from story.core.records import change_groups, ending_record, load, save, snapshot
+from story.games.adventure.models import Condition, GameState
+from story.core.saves import load, save
+from story.games.adventure.records import change_groups, ending_record, snapshot
 
 
 def test_save_and_load_roundtrip(isolated):
     state = solo(turn=3, inventory=["油燈"], conditions=[Condition(name="擦傷", severity="light")])
     save(state, isolated / "s.json")
-    assert load(isolated / "s.json") == state
+    assert load(isolated / "s.json", GameState) == state
 
 
 def test_load_missing_file_returns_none(isolated):
-    assert load(isolated / "nope.json") is None
+    assert load(isolated / "nope.json", GameState) is None
 
 
 def test_change_groups_use_tones_not_colors():

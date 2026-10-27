@@ -18,14 +18,15 @@ from pathlib import Path
 
 from aiohttp import WSMsgType, web
 
-from story.core import MAX_PLAYERS, ui_text
+from story.core import MAX_PLAYERS
 from story import settings
+from story.shells.text import ui_text
 from story.shells.room_client import RoomClient
 from story.shells.lobby import MAX_ROOMS, Lobby
 from story.shells.web.view import WebView
 
 DEFAULT_HOST, DEFAULT_PORT = "127.0.0.1", 8080  # 預設只接受本機連線
-UI = ui_text("shells")  # story/ui/語言/shells.md
+UI = ui_text("shells")  # story/shells/ui/語言/shells.md
 MAX_SESSIONS = MAX_ROOMS * MAX_PLAYERS  # 同時在線的人數上限：每個房間都坐滿的人數，避免太多連線把主機資源用光
 STATIC = Path(__file__).parent / "static"
 

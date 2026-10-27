@@ -31,12 +31,14 @@
 import asyncio
 from collections.abc import Callable
 
-from story.core import MAX_PLAYERS, Game, RateLimit, SoupCore, StoryCore, new_client, pick_choice, ui_text
+from story.core import MAX_PLAYERS, Game, RateLimit, new_client, pick_choice
+from story.games import GAMES
+from story.shells.text import ui_text
 from story.shells.players import SAVES_DIR, InvalidName, check_name
 from story.shells.connection import Connection
 from story.shells.room import Room
 
-UI = ui_text("shells")  # story/ui/語言/shells.md
+UI = ui_text("shells")  # story/shells/ui/語言/shells.md
 MAX_ROOMS = 10  # 同時最多幾個房間：大家共用一把 key，房間太多就會一直排隊
 AI_PER_MINUTE = 15  # 所有房間加起來，每分鐘最多呼叫幾次 AI（免費方案 flash-lite 的上限；付費方案可以調高）
 
@@ -69,8 +71,7 @@ class Lobby:
 
         def make_core(players: list[str], on_queue: Callable[[bool], None], game: str) -> Game:
             save_path, log_path = team_save(players, game)
-            kind = SoupCore if game == "soup" else StoryCore
-            return kind(api_key, players, save_path=save_path, log_path=log_path, client=limit.wrap(client, on_queue))
+            return GAMES[game](api_key, players, save_path=save_path, log_path=log_path, client=limit.wrap(client, on_queue))
 
         return Lobby(make_core)
 

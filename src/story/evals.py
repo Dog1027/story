@@ -1,6 +1,6 @@
 """評估（evals）：用固定的情境讓 AI 真的寫一回合，再由程式與評審（另一次 AI 呼叫）檢查寫得對不對。
 
-會呼叫真的 Gemini（花一點錢，跑一兩分鐘），所以不在 just test 裡。改了 story/prompts/ 之後手動執行：
+會呼叫真的 Gemini（花一點錢，跑一兩分鐘），所以不在 just test 裡。改了提示詞（story/games/*/prompts/）之後手動執行：
 
     just eval                  全部情境，各跑 3 次
     just eval reveal agency    只跑這兩個情境
@@ -8,7 +8,7 @@
     just eval --runs 5         各跑 5 次（AI 每次寫的不一樣，次數多比較準）
     just eval --rpm 60         每分鐘最多呼叫 60 次（付費方案可以調高，跑比較快）
 
-情境寫在這裡（範例故事跟 just prompts 共用），評審的標準在 story/prompts/語言/eval.md。
+情境寫在這裡（範例故事跟 just prompts 共用），評審的標準在 story/games/adventure/prompts/語言/eval.md。
 每次的劇情、選項、評審理由都存到 eval_results/，方便比較改提示詞之前與之後。不會動到存檔與遊戲紀錄。
 """
 
@@ -27,14 +27,15 @@ from pydantic import BaseModel, Field
 
 from story.core import RateLimit, prompts
 from story.core.ai import MODEL, new_client
-from story.core.engine import Engine
-from story.core.genres import Genre, load_genres
-from story.core.models import SCHEMA, Character, GameState
-from story.core.rules import ACT_TURNS, body_level, body_score
+from story.games.adventure.engine import Engine
+from story.games.adventure.genres import Genre, load_genres
+from story.games.adventure.models import SCHEMA, Character, GameState
+from story.games.adventure.rules import ACT_TURNS, body_level, body_score
+from story.games.adventure.text import TEXT
 from story.preview import ARC, PREMISE, SAMPLE, conditions, items, listed, sample_actions, sample_state
 from story import settings
 
-EVAL = prompts.sections("eval")
+EVAL = TEXT.sections("eval")
 # 評審跟遊戲用同一個模型，但多想一點。免費方案的 gemini-3.5-flash 每分鐘只能呼叫 5 次，有付費的話換成它判斷會更可靠
 JUDGE_MODEL = MODEL
 RUNS = 3
@@ -209,7 +210,7 @@ def tone(genre: Genre) -> Callable[[Trial], GameState]:
     return run
 
 
-# 給評審的範例（story/samples/語言.md）：故意寫壞的（評審要判不通過）與沒問題的（要判通過）。評審若把壞的都放過，其他情境的「通過」就不可信
+# 給評審的範例（story/games/adventure/samples/語言.md）：故意寫壞的（評審要判不通過）與沒問題的（要判通過）。評審若把壞的都放過，其他情境的「通過」就不可信
 
 
 def calibration(genres: dict[str, Genre]) -> Callable[[Trial], None]:
@@ -232,14 +233,16 @@ def calibration(genres: dict[str, Genre]) -> Callable[[Trial], None]:
 def soup(t: Trial) -> None:
     """海龜湯的裁判：真的玩過的猜測，各題的猜測放在同一回合一起判斷（跟遊戲裡一樣），說中的關鍵點數要在範圍內。
     猜測不完整（例如沒說出是什麼病）不能給滿分；意思一樣的猜測要給一樣的分數。"""
-    from story.core.soup.judge import SoupJudge
-    from story.core.soup.models import Move, SoupState
-    from story.core.soup.puzzles import load_puzzles
+    from story.games.soup.judge import SoupJudge
+    from story.games.soup.models import Move, SoupState
+    from story.games.soup.puzzles import load_puzzles
+
+    samples = prompts.sections(prompts.LANGUAGE, Path(__file__).resolve().parent / "games" / "soup" / "samples")
 
     judge = SoupJudge(client=t.engine.client, log_path=t.log_path)
     bank = {p.title: p for p in load_puzzles()[0]}
     cases: dict[str, list[tuple[str, int, int]]] = {}
-    for title, guess, low, high in items("soup_cases"):
+    for title, guess, low, high in ([f.strip() for f in item.split("|")] for item in prompts.items(samples["soup_cases"])):
         cases.setdefault(title, []).append((guess, int(low), int(high)))
     for title, guesses in cases.items():
         state = SoupState(puzzle=bank[title], players=[f"P{i}" for i in range(len(guesses))])

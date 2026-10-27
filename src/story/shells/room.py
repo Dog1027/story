@@ -30,10 +30,11 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import replace
 
-from story.core import MAX_PLAYERS, Game, Reply, pick_choice, ui_text
+from story.core import MAX_PLAYERS, Game, Reply, pick_choice
+from story.shells.text import ui_text
 from story.shells.connection import Connection
 
-UI = ui_text("shells")  # story/ui/語言/shells.md
+UI = ui_text("shells")  # story/shells/ui/語言/shells.md
 GAMES = {UI["start_story"]: "story", UI["start_soup"]: "soup"}  # 房主在等人的畫面選要玩哪一種：冒險、海龜湯
 LEAVE = UI["leave_room"]
 READY_WAIT = 90  # 等大家看完劇情最多幾秒，超過就直接開始倒數

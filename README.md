@@ -110,11 +110,10 @@ The host chooses "Start turtle soup" in the room, then draws a puzzle from the b
 
 ```
 src/story/
-├── core/       Core: game rules, calling the AI, saves
-├── prompts/    What the AI is told (markdown), one folder per language; edit without touching code
-├── ui/         What players see (markdown), one folder per language
-├── genres/     Genre packs, one folder per language
-├── puzzles/    Turtle soup puzzles, one folder per language, one file per puzzle
+├── core/       Core: the flow every game shares, the reply format, calling the AI, saves
+├── games/      Games, side by side, each built on the core
+│   ├── adventure/  Adventure: rules, prompts (prompts/), genre packs (genres/)
+│   └── soup/       Turtle soup: the judge, prompts (prompts/), puzzles (puzzles/)
 └── shells/     Shells
     ├── client.py   The flow shared by interfaces for human players; LocalClient plays on this computer
     ├── room_client.py  The same flow for the web: RoomClient joins the lobby and rooms
@@ -126,13 +125,14 @@ src/story/
     └── plain.py    The plain-text version
 ```
 
-Three layers, each with one job:
+Layers stacked from the inside out, each with one job:
 
-- **Core** (`core/`): works like calling an LLM. Send in a line of text, get a reply back (narration, choices, conditions…). It knows nothing about screens, so a new shell such as a Discord bot only has to handle display and input. The plain-text version is the simplest example
+- **Core** (`core/`): what every game shares (the team, continuing a save, collecting everyone's actions, the reply format, calling the AI). It doesn't know which games exist
+- **Games** (`games/`): adventure and turtle soup each have a folder, independent of each other, with their own rules and text. Using one works like calling an LLM: send in a line of text, get a reply back (narration, choices, conditions…). They know nothing about screens, so a new shell such as a Discord bot only has to handle display and input. The plain-text version is the simplest example
 - **Shared layer** (`shells/client.py`, `shells/room_client.py`): when to show what. What to ask when starting, choices appearing only after the text finishes typing, the ending arriving in steps, how the web version connects to the lobby and rooms. Both the terminal and web versions use it
 - **Interfaces** (`textual/`, `web/`): only decide how things look
 
-Where a new feature goes: changes the game's outcome or facts → core; changes the order, timing, or flow of what a person sees → shared layer; changes the look → interface.
+Where a new feature goes: flow every game needs → core; one game's rules or facts → that game; changes the order, timing, or flow of what a person sees → shared layer; changes the look → interface.
 
 Every file is described in [docs/files.md](docs/files.md), and plans are in [docs/roadmap.md](docs/roadmap.md) (both in Chinese).
 
@@ -140,15 +140,15 @@ Every file is described in [docs/files.md](docs/files.md), and plans are in [doc
 
 Common settings are constants at the top of each file, or separate text files:
 
-- **Story length, wound and healing rules**: `src/story/core/rules.py`; **the model**: `src/story/core/ai.py`
-- **How the AI writes** (writing rules, narration length, pacing reminders, the epilogue…): the markdown files in `src/story/prompts/en/`. Start with [src/story/prompts/README.md](src/story/prompts/README.md) (in Chinese), which maps "what you want to change → where"
-- **Interface text**: the markdown files in `src/story/ui/en/`
-- **Genre packs**: `src/story/genres/en/`; see [docs/genres.md](docs/genres.md) for how to write one
-- **Turtle soup puzzles**: `src/story/puzzles/en/`, one file per puzzle with the sections `title`, `surface` (the scenario), `truth`, and `key_points` (2-4, one per line). Personal puzzles go in `~/.config/story/puzzles/en/`
+- **Story length, wound and healing rules**: `src/story/games/adventure/rules.py`; **the model**: `src/story/core/ai.py`
+- **How the AI writes** (writing rules, narration length, pacing reminders, the epilogue…): the markdown files in `src/story/games/adventure/prompts/en/` (turtle soup's judge: `src/story/games/soup/prompts/en/`). Start with [src/story/games/adventure/prompts/README.md](src/story/games/adventure/prompts/README.md) (in Chinese), which maps "what you want to change → where"
+- **Interface text**: the `ui/en/` folders of each layer (`src/story/core/`, each game under `src/story/games/`, `src/story/shells/`)
+- **Genre packs**: `src/story/games/adventure/genres/en/`; see [docs/genres.md](docs/genres.md) for how to write one
+- **Turtle soup puzzles**: `src/story/games/soup/puzzles/en/`, one file per puzzle with the sections `title`, `surface` (the scenario), `truth`, and `key_points` (2-4, one per line). Personal puzzles go in `~/.config/story/puzzles/en/`
 - **Terminal color theme and typing speed**: `src/story/shells/textual/style.py`. Condition colors are derived from the theme's success, warning, and error colors
 - **Web colors, fonts, and typing speed**: the color settings at the top of `src/story/shells/web/static/style.css`, and the constants at the top of `app.js`
 
-**Adding a language**: add a folder under `src/story/prompts/` and `src/story/ui/` with the full set of files (copy `en/` and translate), plus genre packs under `src/story/genres/`, then select it with `STORY_LANG`. The tests check that every language has the same files, sections, and variables.
+**Adding a language**: in every layer (`src/story/core/`, each game under `src/story/games/`, `src/story/shells/`), add a folder under `prompts/` and `ui/` with the full set of files (copy `en/` and translate), plus genre packs and puzzles, then select it with `STORY_LANG`. The tests check that every language has the same files, sections, and variables.
 
 ## Tests and evals
 

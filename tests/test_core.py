@@ -3,9 +3,11 @@
 import pytest
 from conftest import HERO, FakeEngine, InvalidKeyError
 
-from story.core import StoryCore
-from story.core.prompting import TIMEOUT_ACTION
-from story.core.records import DEFAULT_PREMISE, load
+from story.games import StoryCore
+from story.games.adventure.prompting import TIMEOUT_ACTION
+from story.core.saves import load
+from story.games.adventure.models import GameState
+from story.games.adventure.records import DEFAULT_PREMISE
 
 
 @pytest.fixture
@@ -119,14 +121,15 @@ def test_info_commands_do_not_advance_the_story(core):
 
 
 def test_status_warns_only_when_the_next_wound_could_kill(core):
-    """哪些程度要警告是遊戲規則（跟死亡門檻一起定義在核心），外殼直接使用 Status.warning。"""
-    from story.core.models import Condition
+    """哪些程度要警告是遊戲規則（跟死亡門檻一起定義在冒險裡），外殼直接使用 Status.warning 與顯示的詞。"""
+    from story.games.adventure.models import Condition
 
     new_game(core)
-    assert core.send("/state").characters[0].warning == ""
+    fine = core.send("/state").characters[0]
+    assert fine.warning == "" and fine.conditions == [] and fine.fine == "良好"
     core.state.characters[0].conditions = [Condition(name="失血", kind="body", severity="severe")]
     reply = core.send("/state")
-    assert reply.characters[0].warning == "serious"
+    assert reply.characters[0].warning == "serious" and reply.characters[0].warning_text == "重傷"
     core.state.characters[0].conditions = [Condition(name="疲勞", kind="body", severity="moderate"), Condition(name="恐懼", kind="mind", severity="severe")]
     assert core.send("/state").characters[0].warning == ""  # 中度的疲勞、精神狀態都不會致命
 
@@ -141,7 +144,7 @@ def test_unknown_command_and_empty_input_while_playing(core):
 def test_each_turn_is_saved(core, isolated):
     new_game(core)
     core.send("1")
-    assert load(isolated / "save.json").turn == 2
+    assert load(isolated / "save.json", GameState).turn == 2
 
 
 def test_compaction_runs_in_background_and_is_awaited(core, engine):

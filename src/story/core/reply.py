@@ -1,11 +1,10 @@
-"""核心回給外殼的資料：Reply 與它裡面的 Status、Ending、InputMode。冒險與海龜湯共用同一種回覆，
+"""核心回給外殼的資料：Reply 與它裡面的 Status、Ending、InputMode。每種玩法都用同一種回覆，
 外殼不用知道現在玩的是哪一種遊戲。"""
 
 from dataclasses import asdict, dataclass, field
 from typing import Literal
 
-from story.core import prompts
-from story.core.records import ChangeGroups
+from story.core.prompts import UI  # 給玩家看的文字（story/core/ui/語言/core.md）
 
 Phase = Literal[
     "ask_continue",  # 找到存檔，問要不要繼續
@@ -17,8 +16,12 @@ Phase = Literal[
     "ended",  # 結局整理好了，可以再玩一次
 ]
 
-UI = prompts.ui("core")  # 給玩家看的文字（story/ui/語言/core.md）
 MAX_PLAYERS = 4  # 一隊最多幾位玩家
+
+# 回合間的變化（Reply.changes）。每個項目的語氣，由外殼決定怎麼呈現（例如上什麼顏色）：
+# light／moderate／severe＝新出現的狀態的程度；good＝好轉、痊癒；bad＝惡化；plain＝一般（獲得物品）；muted＝不重要（失去物品）
+Tone = Literal["light", "moderate", "severe", "good", "bad", "plain", "muted"]
+ChangeGroups = list[tuple[str, list[tuple[str, Tone]]]]  # [(標籤, [(文字, 語氣)])]
 
 
 def join(items) -> str:
@@ -37,9 +40,11 @@ class Status:
     """狀態列上的一位玩家（冒險是他的角色）。背包不在這裡，變化在 changes，完整內容用 /state 看。"""
 
     conditions: list[tuple[str, str]]  # 要列出的項目：(文字, 語氣的代號)。冒險是狀態與程度（身體在前、精神在後），海龜湯是提問數、說中幾點
-    warning: str = ""  # 要警告玩家的整體狀態代號（serious、dying：再受傷就有生命危險）；不危險時是空字串。顯示的詞用 word("level", …)
+    warning: str = ""  # 要警告玩家的整體狀態代號（serious、dying：再受傷就有生命危險）；不危險時是空字串
     name: str = ""  # 名字
     alive: bool = True  # 角色是否還活著
+    warning_text: str = ""  # 警告顯示的詞，例如「重傷」
+    fine: str = ""  # conditions 是空的時候顯示的詞，例如「良好」
 
 
 @dataclass

@@ -1,4 +1,4 @@
-"""LLM 文字冒險遊戲。核心在 story.core，外殼在 story.shells。"""
+"""LLM 文字遊戲。共用的核心在 story.core，玩法（冒險、海龜湯）在 story.games，外殼在 story.shells。"""
 
 import sys
 

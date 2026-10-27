@@ -110,10 +110,10 @@ theme = "tokyo-night"
 
 ```
 src/story/
-├── core/       核心：遊戲規則、呼叫 AI、存檔
-├── prompts/    給 AI 的提示詞（markdown），改了不用動程式
-├── genres/     題材包，每種語言一個資料夾
-├── puzzles/    海龜湯的題庫，每種語言一個資料夾，一題一個檔案
+├── core/       核心：每種玩法共用的流程、回覆格式、呼叫 AI、存檔
+├── games/      玩法，彼此平行，都建立在核心上
+│   ├── adventure/  冒險：規則、提示詞（prompts/）、題材包（genres/）
+│   └── soup/       海龜湯：裁判、提示詞（prompts/）、題庫（puzzles/）
 └── shells/     外殼
     ├── client.py   給真人玩的介面共用的流程；LocalClient 在這台電腦上玩
     ├── room_client.py  網頁版的同一套流程：RoomClient 連進大廳與房間
@@ -125,13 +125,14 @@ src/story/
     └── plain.py    純文字版
 ```
 
-分成三層，各自只做一件事：
+由內往外一層一層疊，各自只做一件事：
 
-- **核心**（`core/`）：像呼叫 LLM 一樣，送一句文字進去、拿回覆出來（劇情、選項、狀態……）。不知道畫面的存在，所以要做 Discord 機器人之類的新外殼，也只需要處理顯示和輸入。純文字版就是最簡單的例子
+- **核心**（`core/`）：每種玩法共用的部分（隊伍、存檔接續、收集大家的行動、回覆的格式、呼叫 AI），不知道有哪些玩法
+- **玩法**（`games/`）：冒險、海龜湯各一個資料夾，互不相依，各自帶著自己的規則與文字。用起來像呼叫 LLM：送一句文字進去、拿回覆出來（劇情、選項、狀態……）。不知道畫面的存在，所以要做 Discord 機器人之類的新外殼，也只需要處理顯示和輸入。純文字版就是最簡單的例子
 - **共用層**（`shells/client.py`、`shells/room_client.py`）：什麼時候顯示什麼。開局要問什麼、劇情打完字才出現選項、結局一段一段出現、網頁版怎麼連大廳與房間。終端機版和網頁版都用這一份
 - **介面**（`textual/`、`web/`）：只決定長什麼樣子
 
-判斷新功能放哪裡：改變遊戲結果或事實 → 核心；改變真人看到的順序、時機、流程 → 共用層；改變長相 → 介面。
+判斷新功能放哪裡：每種玩法都用得到的流程 → 核心；只有一種玩法的規則或事實 → 那個玩法；改變真人看到的順序、時機、流程 → 共用層；改變長相 → 介面。
 
 每個檔案的詳細說明見 [docs/files.md](docs/files.md)，待辦與改進方向見 [docs/roadmap.md](docs/roadmap.md)。
 
@@ -139,14 +140,14 @@ src/story/
 
 常用的設定都是程式檔開頭的常數，或獨立的文字檔：
 
-- **故事長度、傷勢與痊癒規則**：`src/story/core/rules.py`；**使用的模型**：`src/story/core/ai.py`
-- **AI 的寫法**（寫作規則、劇情字數、節奏提醒、尾聲……）：`src/story/prompts/` 的 markdown 檔。先看 [src/story/prompts/README.md](src/story/prompts/README.md)，裡面有「想改什麼 → 改哪裡」的對照
-- **題材包**：`src/story/genres/zh-TW/`，寫法見 [docs/genres.md](docs/genres.md)
-- **海龜湯的題庫**：`src/story/puzzles/zh-TW/`，一題一個檔案，段落是 `title`（題目名稱）、`surface`（湯面）、`truth`（湯底）、`key_points`（2-4 個關鍵點，一行一個）。個人的題目放在 `~/.config/story/puzzles/zh-TW/`
+- **故事長度、傷勢與痊癒規則**：`src/story/games/adventure/rules.py`；**使用的模型**：`src/story/core/ai.py`
+- **AI 的寫法**（寫作規則、劇情字數、節奏提醒、尾聲……）：`src/story/games/adventure/prompts/` 的 markdown 檔。先看 [src/story/games/adventure/prompts/README.md](src/story/games/adventure/prompts/README.md)，裡面有「想改什麼 → 改哪裡」的對照。海龜湯裁判的提示詞在 `src/story/games/soup/prompts/`
+- **題材包**：`src/story/games/adventure/genres/zh-TW/`，寫法見 [docs/genres.md](docs/genres.md)
+- **海龜湯的題庫**：`src/story/games/soup/puzzles/zh-TW/`，一題一個檔案，段落是 `title`（題目名稱）、`surface`（湯面）、`truth`（湯底）、`key_points`（2-4 個關鍵點，一行一個）。個人的題目放在 `~/.config/story/puzzles/zh-TW/`
 - **終端機版的配色主題、打字速度**：`src/story/shells/textual/style.py`。狀態的顏色會從主題的成功／警告／錯誤色算出來
 - **網頁版的配色、字型、打字速度**：`src/story/shells/web/static/style.css` 開頭的顏色設定，與 `app.js` 開頭的常數
 
-**新增語言**：在 `src/story/prompts/` 與 `src/story/ui/` 各加一個資料夾，放一整套同名的檔案（複製 `en/` 再翻譯），題材包放在 `src/story/genres/語言/`，用 `STORY_LANG` 選擇。測試會檢查每種語言的檔案、段落與變數都一樣。
+**新增語言**：每一層（`src/story/core/`、`src/story/games/` 底下的每種玩法、`src/story/shells/`）的 `prompts/` 與 `ui/` 各加一個資料夾，放一整套同名的檔案（複製 `en/` 再翻譯），題材包與題庫也一樣，用 `STORY_LANG` 選擇。測試會檢查每種語言的檔案、段落與變數都一樣。
 
 ## 測試與評估
 

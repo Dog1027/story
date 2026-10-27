@@ -6,7 +6,8 @@ import pytest
 from conftest import FakeEngine, InvalidKeyError
 
 import story.shells.client as client_module
-from story.core import GENRE_AUTO, GENRE_NONE, Reply, StoryCore
+from story.core import Reply
+from story.games import GENRE_AUTO, GENRE_NONE, StoryCore
 from story.core import Status
 from story.shells.client import LocalClient, PremiseForm, View, status_line
 from story.shells.connection import Connection
@@ -185,9 +186,9 @@ def test_status_line_lists_conditions_and_the_core_warning():
     fine = status_line(3, [Status(conditions=[("疲勞", "moderate"), ("恐懼", "light")])], timed=False)
     assert fine.mode == "一般模式" and not fine.named
     assert fine.characters[0].warning == "" and fine.characters[0].items == [("疲勞", "moderate"), ("恐懼", "light")]
-    danger = status_line(3, [Status(conditions=[("失血", "severe")], warning="dying")], timed=True)
+    danger = status_line(3, [Status(conditions=[("失血", "severe")], warning="dying", warning_text="瀕死")], timed=True)
     assert danger.characters[0].warning == "dying" and danger.characters[0].warning_text == "瀕死" and danger.mode == "限時模式"
-    empty = status_line(1, [Status(conditions=[])], timed=False)
+    empty = status_line(1, [Status(conditions=[], fine="良好")], timed=False)  # 顯示的詞由玩法給
     assert empty.characters[0].items == [("良好", "healthy")]
     group = status_line(2, [Status(conditions=[], name="阿明", alive=False), Status(conditions=[], name="小華")], timed=False)
     assert group.named and group.characters[0].name == "阿明" and not group.characters[0].alive
@@ -322,7 +323,7 @@ async def test_premise_request_fails_instead_of_waiting_forever_when_the_room_is
 
 async def test_input_modes_switch_what_typing_does():
     """海龜湯：選「猜湯底」只切換方式（標出來、換提示），接著打的字用 /guess 送出；「放棄」不用打字，直接送出。"""
-    from story.core.soup.game import INPUTS
+    from story.games.soup.game import INPUTS
 
     view = RecordingView()
     client = LocalClient(view)

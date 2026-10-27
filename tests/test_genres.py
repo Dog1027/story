@@ -2,9 +2,9 @@
 
 from conftest import HERO, FakeEngine, beat, make_engine, solo
 
-from story.core import GENRE_AUTO, GENRE_NONE, StoryCore
-from story.core.genres import BUILTIN_DIR, MAX_GUIDE, load_genres
-from story.core.records import DEFAULT_PREMISE
+from story.games import GENRE_AUTO, GENRE_NONE, StoryCore
+from story.games.adventure.genres import BUILTIN_DIR, MAX_GUIDE, load_genres
+from story.games.adventure.records import DEFAULT_PREMISE
 
 
 def write_genre(root, folder, name="武俠", description="江湖恩怨", guide="用古白話。", premises="", names="", twists=""):
@@ -21,7 +21,7 @@ def write_genre(root, folder, name="武俠", description="江湖恩怨", guide="
 
 
 def pack(**fields):
-    from story.core.genres import Genre
+    from story.games.adventure.genres import Genre
 
     base = dict(name="武俠", description="江湖恩怨", guide="用古白話，人物用名號稱呼。", premises=["你是鏢師。"], names="人名：沈青衣", twists=["師父才是元兇"])
     return {"武俠": Genre(**{**base, **fields})}
@@ -143,7 +143,7 @@ def test_genre_command_and_new_story_fields(isolated):
 
 
 def two_packs():
-    from story.core.genres import Genre
+    from story.games.adventure.genres import Genre
 
     return {
         "武俠": Genre(name="武俠", description="江湖", guide="古白話。", premises=["你是鏢師。", "你是捕快。"]),

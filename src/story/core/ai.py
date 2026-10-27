@@ -1,6 +1,7 @@
 """呼叫 Gemini：建立 client、送出請求、串流時先取出劇情、記下每次呼叫的時間與 token 用量。
 
-Engine（engine.py）繼承 AICaller，用 generate()、stream_beat() 呼叫 AI；這裡不知道遊戲規則與提示詞的內容。
+每種玩法呼叫 AI 的類別都繼承 AICaller（冒險的 Engine、海龜湯的 SoupJudge），用 generate()、stream() 呼叫 AI；
+這裡不知道遊戲規則與提示詞的內容。
 """
 
 import json
@@ -12,14 +13,12 @@ import httpx
 from google import genai
 from google.genai import types
 
-from story.core import prompts
-from story.core.models import StoryBeat
+from story.core.prompts import UI  # 給玩家看的錯誤訊息（story/core/ui/語言/core.md）
 
 MODEL = "gemini-3.5-flash-lite"
 REQUEST_TIMEOUT = 40  # 一次 AI 請求最多等幾秒；Gemini 偶爾卡住一兩分鐘，重送通常比較快
 REQUEST_ATTEMPTS = 3  # 逾時或伺服器忙（429、5xx）時最多送幾次（含第一次）
 LOG_PATH = Path("story_log.jsonl")  # 每回合的狀態變化紀錄
-UI = prompts.ui("core")  # 給玩家看的錯誤訊息（story/ui/語言/core.md）
 
 
 def new_client(api_key: str | None) -> genai.Client:
@@ -47,8 +46,10 @@ def raise_friendly(e: Exception) -> None:
     raise e
 
 
-class EndingTooEarly(Exception):
-    """串流時發現 AI 太早宣告結局：還沒有任何劇情顯示出來就中斷，請它重寫。"""
+class StopStream(Exception):
+    """串流時發現不用再收下去（例如冒險的 AI 太早宣告結局）：從 stream() 的 on_text 丟出，中斷並往外丟。"""
+
+    reason = "stopped"  # 寫進紀錄的中斷原因
 
 
 def partial_string(text: str, key: str) -> str | None:
@@ -105,7 +106,7 @@ class AICaller:
         return response
 
     def stream(self, kind: str, on_text, **request):
-        """串流的呼叫：每收到一段，就用目前為止的全文呼叫 on_text。回傳 (全文, 最後一段)。on_text 丟出 EndingTooEarly 時中斷並往外丟。"""
+        """串流的呼叫：每收到一段，就用目前為止的全文呼叫 on_text。回傳 (全文, 最後一段)。on_text 丟出 StopStream 時中斷並往外丟。"""
         started, text, last, extra = time.monotonic(), "", None, {}
         chunks = None
         try:
@@ -115,8 +116,8 @@ class AICaller:
                 if piece := chunk.text:
                     text += piece
                     on_text(text)
-        except EndingTooEarly:
-            extra["stopped"] = "early_ending"
+        except StopStream as e:
+            extra["stopped"] = e.reason
             raise
         except Exception as e:
             extra["error"] = str(e)[:200]
@@ -126,29 +127,6 @@ class AICaller:
                 chunks.close()  # 中斷時不再接收剩下的部分
             self.record(kind, started, last, **extra)
         return text, last
-
-    def stream_beat(self, system: str, prompt: str, kind: str = "turn", stop_on_ending: bool = False, prefix: str = "") -> StoryBeat:
-        """串流呼叫，取得一回合的結構化回傳（StoryBeat）。收到劇情的同時更新 draft（前面接上 prefix），外殼可以先顯示。
-        stop_on_ending 時，AI 一宣告結局就中斷（EndingTooEarly）。"""
-
-        def on_text(text: str) -> None:
-            if stop_on_ending and partial_bool(text, "game_over") is True:
-                raise EndingTooEarly
-            if (narration := partial_string(text, "narration")) is not None:
-                self.draft = prefix + narration
-
-        text, last = self.stream(
-            kind,
-            on_text,
-            model=MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(system_instruction=system, response_mime_type="application/json", response_schema=StoryBeat),
-        )
-        try:
-            return StoryBeat.model_validate_json(text)
-        except ValueError:
-            reason = last.candidates[0].finish_reason if last is not None and last.candidates else UI["no_content"]
-            raise RuntimeError(UI["unparsable"].format(reason=reason))
 
     def record(self, kind: str, started: float, response, **extra) -> None:
         call = {"kind": kind, "seconds": round(time.monotonic() - started, 2)}

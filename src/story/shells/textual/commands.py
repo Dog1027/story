@@ -1,8 +1,8 @@
 """遊戲指令。"""
 
-from story.core import ui_text
+from story.shells.text import ui_text
 
-UI = ui_text("terminal")  # story/ui/語言/terminal.md
+UI = ui_text("terminal")  # story/shells/ui/語言/terminal.md
 
 # 指令名稱 -> (快捷鍵, 說明)
 COMMANDS = {

@@ -7,12 +7,12 @@ from types import SimpleNamespace
 import pytest
 
 from story.core import prompts
-from story.core.soup import SoupCore
-from story.core.soup.judge import SoupJudge
+from story.games.soup import SoupCore
+from story.games.soup.judge import SoupJudge
 from conftest import AI_PUZZLE, PUZZLE, FakeJudge
 
-from story.core.soup.models import Judgement, Move, PointCheck, PuzzleCheck, PuzzleDraft, Ruling, SoupState
-from story.core.soup.puzzles import BUILTIN_DIR, load_puzzles
+from story.games.soup.models import Judgement, Move, PointCheck, PuzzleCheck, PuzzleDraft, Ruling, SoupState
+from story.games.soup.puzzles import BUILTIN_DIR, load_puzzles
 
 def soup(isolated, players=("阿明",), judge=None, puzzles=(PUZZLE,)) -> SoupCore:
     return SoupCore("test", list(players), save_path=isolated / "soup.json", judge=judge or FakeJudge(), puzzles=list(puzzles))
@@ -170,7 +170,7 @@ def test_judge_counts_only_points_stated_with_a_real_quote(isolated):
 
 
 def test_quotes_may_differ_in_punctuation_but_not_in_substance():
-    from story.core.soup.judge import quoted
+    from story.games.soup.judge import quoted
 
     assert quoted("沒有貼紙條，代表他出事了", "因為阿凱的室友沒有貼紙條代表他出事了 所以阿凱就打119")
     assert not quoted("室友有心臟病", "因為阿凱的室友沒有貼紙條代表他出事了")

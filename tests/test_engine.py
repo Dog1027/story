@@ -4,9 +4,9 @@ import pytest
 from conftest import ARC, HERO, InvalidKeyError, beat, cond, hero, make_engine, solo
 
 from story.core.ai import is_key_error
-from story.core.models import Condition, Turn
-from story.core.prompting import clock_text
-from story.core.rules import (
+from story.games.adventure.models import Condition, Turn
+from story.games.adventure.prompting import clock_text
+from story.games.adventure.rules import (
     ACT_TURNS,
     DAY,
     DEATH_SCORE,
@@ -354,7 +354,7 @@ def test_every_turn_is_kept_in_the_history():
 
 
 def test_history_over_budget_compacts_the_oldest_half(monkeypatch):
-    import story.core.rules as rules
+    import story.games.adventure.rules as rules
 
     monkeypatch.setattr(rules, "HISTORY_BUDGET", 100)
     engine, gemini = make_engine(summary="早期劇情的摘要")
@@ -422,7 +422,7 @@ def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):
 
 def test_overall_level_words_are_not_conditions():
     """AI 偶爾把狀態列的評語（良好、重傷……）當成傷勢名稱回報：直接忽略。"""
-    from story.core.models import ConditionChange
+    from story.games.adventure.models import ConditionChange
 
     state = solo(premise="x")
     changes = [ConditionChange(**cond(name, "重")) for name in ("良好", "重傷", "右臂撕裂傷")]

@@ -8,7 +8,7 @@
 
 | 位置 | 用途 |
 |---|---|
-| `src/story/genres/語言/` | 內建的題材，跟著專案一起管理（commit 後大家都有） |
+| `src/story/games/adventure/genres/語言/` | 內建的題材，跟著專案一起管理（commit 後大家都有） |
 | `~/.config/story/genres/語言/` | 個人的題材，只有你自己的電腦用得到 |
 
 `語言` 是 `zh-TW`（繁體中文）或 `en`（英文），跟提示詞一樣用 `STORY_LANG` 選擇，每種語言一整套題材包。英文版不是逐字翻譯：命名素材換成英文讀者念得出來的名字，開頭與轉折也寫成英文讀起來自然的句子。各語言的題材不必一樣，只寫一種語言的題材包也可以。
@@ -95,5 +95,5 @@ description: 江湖恩怨、門派紛爭、俠義與復仇。適合比武、追�
 格式不對的題材包會被略過，不會讓遊戲出錯。在專案資料夾執行下面的指令，可以看到讀到哪些題材，以及被略過的題材和原因：
 
 ```bash
-uv run python -c "from story.core.genres import load_genres; g, p = load_genres(); print(list(g)); print(*p, sep='\n')"
+uv run python -c "from story.games.adventure.genres import load_genres; g, p = load_genres(); print(list(g)); print(*p, sep='\n')"
 ```

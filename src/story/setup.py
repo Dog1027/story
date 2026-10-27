@@ -12,7 +12,7 @@ from pathlib import Path
 
 from story import settings
 
-LANGUAGES_DIR = Path(__file__).resolve().parent / "ui"  # 有介面文字的語言才能選
+LANGUAGES_DIR = Path(__file__).resolve().parent / "shells" / "ui"  # 有介面文字的語言才能選
 
 
 def language_names() -> dict[str, str]:
@@ -31,7 +31,7 @@ def run(key: bool = True, theme: bool = False, name: bool = False) -> None:
         return
     if not (settings.get("language") or "STORY_LANG" in os.environ):
         ask_language()
-    from story.core import ui_text  # 語言決定之後才讀這個語言的文字
+    from story.shells.text import ui_text  # 語言決定之後才讀這個語言的文字
 
     ui = ui_text("shells")
     if key and not settings.api_key():

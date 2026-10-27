@@ -5,11 +5,12 @@ from pathlib import Path
 import pytest
 from conftest import ARC, FakeGroupEngine, InvalidKeyError, cond, make_engine, pbeat, upd
 
-from story.core import StoryCore
-from story.core.prompting import AWAY_ACTION
-from story.core.prompting import TIMEOUT_ACTION
-from story.core.models import Character, GameState
-from story.core.records import ending_record, load
+from story.games import StoryCore
+from story.games.adventure.prompting import AWAY_ACTION
+from story.games.adventure.prompting import TIMEOUT_ACTION
+from story.games.adventure.models import Character, GameState
+from story.core.saves import load
+from story.games.adventure.records import ending_record
 
 NAMES = ["阿明", "小華"]
 
@@ -251,7 +252,7 @@ def test_resume_team_save(engine, isolated):
     first.send("")
     act(first, "1")
     act(first, "1")
-    assert load(isolated / "team.json").turn == 2
+    assert load(isolated / "team.json", GameState).turn == 2
 
     same = StoryCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
     assert same.start().phase == "ask_continue"
@@ -352,4 +353,4 @@ def test_group_core_with_real_engine(isolated):
     assert core.waiting() == ["小華"] and reply.choices == ["逃走"]  # 阿明倒下了，只剩小華
     assert [(s.name, s.alive) for s in reply.characters] == [("阿明", False), ("小華", True)]
     assert ("小華", [("獲得", [("鑰匙", "plain")])]) in reply.changes
-    assert load(isolated / "team.json").characters[0].alive is False
+    assert load(isolated / "team.json", GameState).characters[0].alive is False

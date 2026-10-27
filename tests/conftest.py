@@ -8,10 +8,10 @@ import pytest
 # 語言在 import 時就決定了：測試一律用中文，不管你的設定檔或環境變數選了什麼
 os.environ["STORY_LANG"] = "zh-TW"
 
-from story.core.engine import Engine
-from story.core.models import Character, Condition, GameState, GenrePick, StoryArc, StoryBeat, Turn
-from story.core.prompting import format_actions
-from story.core.soup.models import Puzzle
+from story.games.adventure.engine import Engine
+from story.games.adventure.models import Character, Condition, GameState, GenrePick, StoryArc, StoryBeat, Turn
+from story.games.adventure.prompting import format_actions
+from story.games.soup.models import Puzzle
 
 
 @pytest.fixture(autouse=True)
@@ -22,7 +22,7 @@ def isolated(tmp_path, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr("story.settings.CONFIG_DIR", tmp_path)  # 看不到你的設定檔（config.toml）
     monkeypatch.setattr("story.settings.CONFIG_PATH", tmp_path / "config.toml")
-    monkeypatch.setattr("story.core.genres.PERSONAL_DIR", tmp_path / "genres")  # 看不到你個人的題材包
+    monkeypatch.setattr("story.games.adventure.genres.PERSONAL_DIR", tmp_path / "genres")  # 看不到你個人的題材包
     return tmp_path
 
 

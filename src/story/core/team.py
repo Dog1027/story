@@ -1,4 +1,4 @@
-"""隊伍遊戲的共用流程：冒險（session.py 的 StoryCore）與海龜湯（soup/ 的 SoupCore）都是它的子類別。
+"""隊伍遊戲的共用流程：每種玩法（story/games/ 底下的冒險 StoryCore、海龜湯 SoupCore）都是它的子類別。
 
 一局遊戲是一支一到 MAX_PLAYERS 人的隊伍。每位玩家的行動用 send_as(名字, 文字) 送，誰先送誰先記，
 還在場上的人都行動了，才交給子類別推進一回合（_play_round）；只有一位玩家時，send(文字) 就是他的行動。
@@ -6,7 +6,7 @@
 
 這裡管：玩家名單、找到存檔時問要不要繼續、收集每個人的行動（推進失敗時全部撤回）、確認重新開始、再玩一次、
 view()、waiting()、失敗時的回覆、組回覆。子類別管：開新局要問什麼（setup_phase）、一回合怎麼推進、
-結局、狀態列、純文字版的樣子，以及存檔的格式（state_class）。存檔要有 names、premise、turn、game_over。
+結局、狀態列、純文字版的樣子、/help，以及存檔的格式（state_class）。存檔要有 names、premise、turn、game_over。
 """
 
 from dataclasses import replace
@@ -16,9 +16,8 @@ from google.genai import errors
 from pydantic import BaseModel
 
 from story.core.ai import is_key_error
-from story.core.prompting import AWAY_ACTION, TIMEOUT_ACTION
-from story.core.records import load, save
 from story.core.reply import MAX_PLAYERS, UI, Phase, Reply, pick_choice
+from story.core.saves import load, save
 
 CONTINUE_CHOICES = [UI["choice_continue"], UI["choice_new_game"]]
 CONFIRM_CHOICES = [UI["choice_confirm"], UI["choice_cancel"]]
@@ -29,6 +28,8 @@ FAILURES = (errors.APIError, RuntimeError)  # 呼叫 AI 失敗：留在原本的
 class TeamGame:
     setup_phase: Phase  # 開新局時等玩家回答的階段（冒險是 ask_premise，海龜湯是 ask_puzzle）
     state_class: type[BaseModel]  # 存檔的格式
+    timeout_action: str  # 限時模式時間到，代替還沒行動的人的行動（/timeout）
+    away_action: str  # 暫時離開（網頁版斷線時由房間送出 /away），代替這個人的行動
 
     def __init__(self, players: list[str], save_path: Path):
         names = [n.strip() for n in players if n.strip()]
@@ -82,9 +83,9 @@ class TeamGame:
         if self._phase != "playing" or not raw:
             return None
         if raw == "/timeout":
-            return TIMEOUT_ACTION
+            return self.timeout_action
         if raw == "/away":
-            return AWAY_ACTION
+            return self.away_action
         return self._action(raw, self._actor())
 
     def send(self, text: str) -> Reply:
@@ -289,7 +290,8 @@ class TeamGame:
         """找到可以接續的存檔時（self.state 已經換成存檔）。"""
 
     def _help(self) -> str:
-        return UI["help"]
+        """/help 顯示的內容。"""
+        raise NotImplementedError
 
     def _memory(self) -> str:
         """/state 顯示的內容。"""

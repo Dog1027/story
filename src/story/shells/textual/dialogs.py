@@ -10,10 +10,10 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Select, Static, TextArea
 
-from story.core import ui_text
+from story.shells.text import ui_text
 from story.shells.client import CONFIG_PATH, PremiseForm
 
-UI, TERMINAL = ui_text("dialogs"), ui_text("terminal")  # story/ui/語言/
+UI, TERMINAL = ui_text("dialogs"), ui_text("terminal")  # story/shells/ui/語言/
 
 
 class Dialog(ModalScreen):

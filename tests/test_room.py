@@ -6,8 +6,9 @@ import pytest
 from conftest import PUZZLE, FakeGroupEngine, FakeJudge
 
 import story.shells.lobby as lobby_module
-from story.core import Reply, SoupCore, StoryCore
-from story.core.prompting import AWAY_ACTION
+from story.core import Reply
+from story.games import SoupCore, StoryCore
+from story.games.adventure.prompting import AWAY_ACTION
 from story.shells.lobby import Lobby
 from story.shells.connection import Connection
 
@@ -314,7 +315,7 @@ async def test_everyone_sees_the_opening_progress(isolated):
 
 
 async def test_host_genre_choice_reaches_the_core(isolated):
-    from story.core.genres import Genre
+    from story.games.adventure.genres import Genre
 
     class GenreEngine(FakeGroupEngine):
         genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}

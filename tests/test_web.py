@@ -8,7 +8,7 @@ from conftest import FakeGroupEngine
 
 import story.shells.lobby as lobby_module
 import story.shells.web as web
-from story.core import StoryCore
+from story.games import StoryCore
 from story.shells.lobby import Lobby
 
 
@@ -21,7 +21,7 @@ def fake_core(monkeypatch) -> list[str]:
         keys.append(api_key)
         return StoryCore(api_key, players, save_path=save_path, log_path=log_path, engine=FakeGroupEngine())
 
-    monkeypatch.setattr(lobby_module, "StoryCore", make)
+    monkeypatch.setitem(lobby_module.GAMES, "story", make)
     return keys
 
 

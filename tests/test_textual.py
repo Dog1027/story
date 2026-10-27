@@ -12,8 +12,8 @@ from textual.widgets import Button, Checkbox, Input, Static
 import story.shells.client as client_module
 from story.shells.client import status_line
 import story.shells.textual.app as app_module
-from story.core import StoryCore
-from story.core.records import DEFAULT_PREMISE
+from story.games import StoryCore
+from story.games.adventure.records import DEFAULT_PREMISE
 from story.shells.textual import StoryApp
 from story.shells.textual.prose import Prose
 from story import settings
@@ -317,9 +317,9 @@ async def test_status_lists_conditions_and_warns_only_when_in_danger():
         app.set_status(status_line(3, [Status(conditions=[("疲勞", "moderate"), ("恐懼", "light")])], timed=False))
         line = status_text(app)
         assert "疲勞 · 恐懼" in line and "受傷" not in line and "⚠" not in line and "鑰匙" not in line
-        app.set_status(status_line(3, [Status(conditions=[("失血", "severe")], warning="dying")], timed=False))
+        app.set_status(status_line(3, [Status(conditions=[("失血", "severe")], warning="dying", warning_text="瀕死")], timed=False))
         assert "⚠ 瀕死 · 失血" in status_text(app)
-        app.set_status(status_line(3, [Status(conditions=[])], timed=False))
+        app.set_status(status_line(3, [Status(conditions=[], fine="良好")], timed=False))
         assert "狀態 良好" in status_text(app)
 
 
@@ -362,7 +362,7 @@ async def test_status_chips_are_never_split_on_narrow_screens():
     """狀態很多、畫面很窄（手機）時：狀態移到第二排並換行，但「⚠ 重傷」這類小區塊不會被拆到兩行。"""
     from story.core import Status
 
-    me = [Status(conditions=[("右臂撕裂傷", "severe"), ("小腿挫傷", "moderate"), ("恐懼", "moderate"), ("失眠", "light")], warning="serious")]
+    me = [Status(conditions=[("右臂撕裂傷", "severe"), ("小腿挫傷", "moderate"), ("恐懼", "moderate"), ("失眠", "light")], warning="serious", warning_text="重傷")]
     for width in (100, 40):
         app = StoryApp()
         async with app.run_test(size=(width, 30)) as pilot:
@@ -380,7 +380,7 @@ async def test_status_chips_are_never_split_on_narrow_screens():
 async def test_premise_dialog_lets_you_pick_a_genre(monkeypatch):
     from textual.widgets import Select
 
-    from story.core.genres import Genre
+    from story.games.adventure.genres import Genre
 
     class GenreEngine(FakeEngine):
         genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}
@@ -401,7 +401,7 @@ async def test_premise_dialog_works_with_arrow_keys_only(monkeypatch):
     """只用方向鍵：從前提輸入框一路往下走到「開始」，題材選單不會把上下鍵攔走；左右鍵可以切換題材。"""
     from textual.widgets import Select
 
-    from story.core.genres import Genre
+    from story.games.adventure.genres import Genre
 
     class GenreEngine(FakeEngine):
         genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}
@@ -428,7 +428,7 @@ async def test_premise_dialog_works_with_arrow_keys_only(monkeypatch):
 async def test_premise_dialog_reroll_and_genre_change_update_the_default(monkeypatch):
     from textual.widgets import Select
 
-    from story.core.genres import Genre
+    from story.games.adventure.genres import Genre
 
     class PackEngine(FakeEngine):
         genres = {
@@ -458,7 +458,7 @@ async def test_premise_dialog_reroll_and_genre_change_update_the_default(monkeyp
 async def test_premise_typed_by_the_player_is_kept_when_the_genre_changes(monkeypatch):
     from textual.widgets import Select
 
-    from story.core.genres import Genre
+    from story.games.adventure.genres import Genre
 
     class PackEngine(FakeEngine):
         genres = {"克蘇魯": Genre(name="克蘇魯", description="恐怖", guide="暗示。", premises=["你收到舅舅的包裹。"])}
@@ -479,7 +479,7 @@ async def test_premise_typed_by_the_player_is_kept_when_the_genre_changes(monkey
 
 async def test_rapid_genre_switching_shows_the_last_genres_premise(monkeypatch):
     """用左右鍵快速連續切換題材：請求排隊、舊的結果丟掉，最後顯示的前提一定屬於最後選的題材。"""
-    from story.core.genres import Genre
+    from story.games.adventure.genres import Genre
 
     class PackEngine(FakeEngine):
         genres = {

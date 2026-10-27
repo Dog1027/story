@@ -11,7 +11,7 @@ const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const TOUCH = matchMedia("(pointer: coarse)").matches || matchMedia("(hover: none)").matches;
 
 const $ = (id) => document.getElementById(id);
-// 介面文字：T 是伺服器放進頁面的字串表（story/ui/語言/dialogs.md、web.md），{名稱} 換成 vars 裡的值
+// 介面文字：T 是伺服器放進頁面的字串表（story/shells/ui/語言/dialogs.md、web.md），{名稱} 換成 vars 裡的值
 const t = (key, vars = {}) => T[key].replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? "");
 const log = $("log"), input = $("input"), choicesList = $("choices");
 

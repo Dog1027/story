@@ -1,38 +1,45 @@
-"""提示詞檔案（story/prompts/）：格式正確、每段都讀得到、組合後沒有留下沒填的變數。"""
+"""文字檔（每一層的 prompts/語言/、ui/語言/）：格式正確、每段都讀得到、組合後沒有留下沒填的變數。"""
 
 import re
+from pathlib import Path
 
 from conftest import ARC, HERO, beat, make_engine, solo
 
 from story.core import prompts
-from story.core.rules import ACT_TURNS
-from story.core.models import GameState
+from story.games.adventure.text import TEXT
+from story.games.adventure.rules import ACT_TURNS
+from story.games.adventure.models import GameState
 
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 
 
 def test_every_prompt_file_loads():
-    assert prompts.load("system").startswith("你是")
-    for name in ("context", "turn", "progress", "plan", "premise", "memory", "schema", "eval", "vocab", "soup"):
-        parts = prompts.sections(name)
-        assert parts and all(body.strip() for body in parts.values()), name
+    from story.games.soup.text import TEXT as SOUP
+
+    assert TEXT.load("system").startswith("你是")
+    for texts, names in ((TEXT, ("context", "turn", "progress", "plan", "premise", "memory", "schema", "eval", "vocab")), (SOUP, ("soup", "schema", "vocab"))):
+        for name in names:
+            parts = texts.sections(name)
+            assert parts and all(body.strip() for body in parts.values()), name
 
 
 def test_vocabulary_has_a_word_for_every_code():
     """vocab.md：每個代號都有這個語言的詞，同一類的詞不重複（AI 回傳詞，程式才換得回代號）。"""
     from typing import get_args
 
-    from story.core.models import CODES, code, word
+    from story.games.adventure.models import VOCAB as ADVENTURE
+    from story.games.soup.models import VOCAB as SOUP
 
-    for category, codes in CODES.items():
-        found = [word(category, c) for c in get_args(codes)]
-        assert len(set(found)) == len(found), category
-        assert all(code(category, word(category, c)) == c for c in get_args(codes))
+    for vocab in (ADVENTURE, SOUP):
+        for category, codes in vocab.codes.items():
+            found = [vocab.word(category, c) for c in get_args(codes)]
+            assert len(set(found)) == len(found), category
+            assert all(vocab.code(category, vocab.word(category, c)) == c for c in get_args(codes))
 
 
 def test_comments_are_not_sent_to_the_ai():
-    assert all("<!--" not in body for name in ("turn", "plan") for body in prompts.sections(name).values())
-    assert "<!--" not in prompts.load("system")
+    assert all("<!--" not in body for name in ("turn", "plan") for body in TEXT.sections(name).values())
+    assert "<!--" not in TEXT.load("system")
 
 
 def test_assembled_prompts_have_no_unfilled_variables():
@@ -50,7 +57,7 @@ def test_epilogue_prompt_is_story_content_plus_its_own_instruction():
     """尾聲不是從一般回合的提示詞切開的：不會帶到「本回合」的指示（開場、焦點）。"""
     from conftest import pbeat, upd
 
-    from story.core.models import Character
+    from story.games.adventure.models import Character
 
     engine, gemini = make_engine(pbeat(upd("阿明"), upd("小華")))
     state = GameState(premise="燈塔", turn=25, minutes=600, arc=ARC, act=3, current_narration="最後一段",
@@ -72,11 +79,9 @@ def test_preview_shows_every_scenario_without_calling_the_ai(capsys):
 
 
 def test_every_ui_text_used_in_the_code_exists():
-    """程式用到的介面文字都在 story/ui/語言/ 裡：寫錯名稱或翻譯時漏了一段，測試會指出是哪一個。"""
-    from pathlib import Path
-
+    """程式用到的介面文字都在某一層的 ui/語言/ 裡：寫錯名稱或翻譯時漏了一段，測試會指出是哪一個。"""
     src = Path(prompts.__file__).resolve().parent.parent
-    texts = {key for name in ("core", "shells", "dialogs", "terminal", "web") for key in prompts.ui(name)}
+    texts = {key for folder in text_folders("ui") for f in (folder / "zh-TW").glob("*.md") for key in prompts.sections(f.stem, f.parent)}
     used = set()
     for path in [*src.rglob("*.py"), src / "shells/web/static/app.js", src / "shells/web/static/index.html"]:
         code = path.read_text(encoding="utf-8")
@@ -93,13 +98,12 @@ def test_web_page_is_filled_with_the_language_texts():
 
 
 def test_every_language_has_the_same_files_and_sections():
-    """每種語言（story/prompts/語言/、story/ui/語言/）都要有一整套同名的檔案與段落，變數也要一樣。"""
-    from pathlib import Path
-
-    root = Path(prompts.__file__).resolve().parent.parent
-    for kind in ("prompts", "ui"):
-        base = root / kind / "zh-TW"
-        for lang in (p for p in (root / kind).iterdir() if p.is_dir() and p != base):
+    """每種語言（每一層的 prompts/語言/、ui/語言/）都要有一整套同名的檔案與段落，變數也要一樣。"""
+    folders = text_folders("prompts") + text_folders("ui")
+    assert len(folders) == 6, folders  # 核心與外殼的 ui，冒險與海龜湯的 prompts、ui
+    for folder in folders:
+        base = folder / "zh-TW"
+        for lang in (p for p in folder.iterdir() if p.is_dir() and p != base):
             assert sorted(f.name for f in lang.glob("*.md")) == sorted(f.name for f in base.glob("*.md")), lang
             for f in base.glob("*.md"):
                 ours, theirs = prompts.sections(f.stem, base), prompts.sections(f.stem, lang)
@@ -107,10 +111,16 @@ def test_every_language_has_the_same_files_and_sections():
                 for key in ours:
                     variables = lambda text: set(re.findall(r"\{(\w+)[:}]", text))  # noqa: E731
                     assert variables(ours[key]) == variables(theirs[key]), (lang.name, f.name, key)
-    samples = root / "samples"  # 範例故事（just prompts、just eval）：每種語言一份，段落相同
-    base = prompts.sections("zh-TW", samples).keys()
-    for f in samples.glob("*.md"):
-        assert prompts.sections(f.stem, samples).keys() == base, f.name
+    for samples in text_folders("samples"):  # 範例（just prompts、just eval）：每種語言一份，段落相同
+        base = prompts.sections("zh-TW", samples).keys()
+        for f in samples.glob("*.md"):
+            assert prompts.sections(f.stem, samples).keys() == base, f.name
+
+
+def text_folders(kind: str) -> list[Path]:
+    """src/story 底下所有叫 kind（prompts、ui、samples）的文字資料夾。"""
+    root = Path(prompts.__file__).resolve().parent.parent
+    return sorted(p for p in root.rglob(kind) if p.is_dir() and "__pycache__" not in p.parts)
 
 
 def test_text_length_counts_chinese_characters_and_english_words():

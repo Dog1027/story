@@ -1,13 +1,13 @@
 """預覽送給 AI 的完整提示詞：用範例情境把每一種 AI 呼叫的提示詞組出來印出，不會呼叫 AI、不花錢。
 
-改了 story/prompts/ 的檔案之後，用這個看拼起來的樣子：
+改了冒險的提示詞（story/games/adventure/prompts/）之後，用這個看拼起來的樣子：
 
     just prompts              列出所有情境
     just prompts turn         只看「一般回合」
     just prompts --players 2  兩位角色的隊伍（預設一位）
     just prompts --genre 克蘇魯 opening   換一個題材包
 
-範例的故事內容在 story/samples/語言.md（不是提示詞，只是讓預覽看起來像真的一局）。
+範例的故事內容在 story/games/adventure/samples/語言.md（不是提示詞，只是讓預覽看起來像真的一局）。
 """
 
 import random
@@ -16,14 +16,14 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from story.core import prompts
-from story.core.engine import Engine
-from story.core.genres import load_genres
-from story.core.models import SCHEMA, Act, Character, Condition, GameState, StoryArc, Turn
-from story.core.prompting import SYSTEM_PROMPT
-from story.core.rules import ACT_TURNS, MIN_ACT_TURNS, TARGET_TURNS
+from story.games.adventure.engine import Engine
+from story.games.adventure.genres import load_genres
+from story.games.adventure.models import SCHEMA, Act, Character, Condition, GameState, StoryArc, Turn
+from story.games.adventure.prompting import SYSTEM_PROMPT
+from story.games.adventure.rules import ACT_TURNS, MIN_ACT_TURNS, TARGET_TURNS
 
-SAMPLES_DIR = Path(__file__).resolve().parent / "samples"
-SAMPLE = prompts.sections(prompts.LANGUAGE, SAMPLES_DIR)  # 這個語言的範例故事（story/samples/語言.md）
+SAMPLES_DIR = Path(__file__).resolve().parent / "games" / "adventure" / "samples"
+SAMPLE = prompts.sections(prompts.LANGUAGE, SAMPLES_DIR)  # 這個語言的範例故事（samples/語言.md）
 
 
 def items(name: str) -> list[list[str]]:
