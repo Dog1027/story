@@ -5,6 +5,8 @@ AI 只提議：回答與說中了哪幾個關鍵點由 AI 判斷，算不算解�
 
 from pathlib import Path
 
+from difflib import SequenceMatcher
+
 from google.genai import types
 
 from story.core import prompts
@@ -35,6 +37,16 @@ def past_text(state: SoupState) -> str:
     return "\n".join(lines) or SOUP["history_empty"]
 
 
+def quoted(quote: str, guess: str) -> bool:
+    """裁判引用的原文真的出自這個猜測（容許標點、空白不同，或少數幾個字的出入）。沒有引用到原文的關鍵點不算說中。"""
+    squash = lambda text: "".join(ch for ch in text if ch.isalnum()).lower()  # noqa: E731
+    quote, guess = squash(quote), squash(guess)
+    if not quote:
+        return False
+    match = SequenceMatcher(None, quote, guess).find_longest_match(0, len(quote), 0, len(guess))
+    return match.size >= max(2, len(quote) * 0.6)
+
+
 class SoupJudge(AICaller):
     def __init__(self, api_key: str | None = None, client=None, log_path: Path = LOG_PATH):
         super().__init__(api_key, client, log_path)
@@ -56,7 +68,7 @@ class SoupJudge(AICaller):
                 system_instruction=SOUP["system"],
                 response_mime_type="application/json",
                 response_schema=Judgement,
-                thinking_config=types.ThinkingConfig(thinking_level="low"),
+                thinking_config=types.ThinkingConfig(thinking_level="medium"),  # 逐點對照湯底，想清楚比較不會鬆緊不一
             ),
         )
         if not isinstance(response.parsed, Judgement):
@@ -70,7 +82,7 @@ class SoupJudge(AICaller):
             if move.kind == "ask":
                 move.answer = code("soup_answer", ruling.answer)
             else:
-                move.hit = len({n for n in ruling.matched if 1 <= n <= total})  # 不存在的編號、重複的都不算
+                move.hit = len({c.point for c in ruling.points if 1 <= c.point <= total and c.stated and quoted(c.quote, move.text)})
         self.write_log({"turn": state.turn + 1, "soup": [m.model_dump() for m in moves]})
 
     def make_puzzle(self, avoid: list[str]) -> Puzzle | None:

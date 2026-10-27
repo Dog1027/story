@@ -110,8 +110,17 @@ The number of this round's move (as listed under "This round")
 ## Ruling.answer
 The answer to a question, judged against the truth. If the question has nothing to do with the truth, choose "Irrelevant"; if it's half right, choose "Yes and no"; if it can't be answered yes or no, choose "Not a yes/no question". Guesses must fill this in too: always "Irrelevant"
 
-## Ruling.matched
-For a guess, which key points it got right (their numbers). It only counts if the guess states what the key point actually is; brushing against it or a lucky hint doesn't count. Leave empty for questions
+## Ruling.points
+For a guess, one entry for every key point, in order, none missing; leave empty for questions
+
+## PointCheck.point
+The key point's number
+
+## PointCheck.quote
+Copy the sentence of the guess that speaks to this key point; leave empty if the guess doesn't mention it at all
+
+## PointCheck.stated
+Whether the quoted sentence states the core of this key point. The core meaning counts even if details and wording differ (key point "he is left-handed", guess "he writes with his left hand": true); missing the core fact doesn't (key point "she is allergic to pollen", guess "she felt unwell": false). Brushing against it, or having no matching sentence, is false
 
 ## Judgement.rulings
 One entry for each move this round, in the order listed under "This round"

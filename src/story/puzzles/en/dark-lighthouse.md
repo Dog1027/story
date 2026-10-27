@@ -11,5 +11,5 @@ It was wartime, and an enemy fleet was trying to sneak into the harbor at night,
 
 ## key_points
 - It was wartime
-- Enemy ships were navigating by the lighthouse
+- The enemy ships relied on the lighthouse's light
 - Without the light they lost their way and the attack failed

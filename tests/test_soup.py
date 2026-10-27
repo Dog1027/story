@@ -11,7 +11,7 @@ from story.core.soup import SoupCore
 from story.core.soup.judge import SoupJudge
 from conftest import AI_PUZZLE, PUZZLE, FakeJudge
 
-from story.core.soup.models import Judgement, Move, PuzzleCheck, PuzzleDraft, Ruling, SoupState
+from story.core.soup.models import Judgement, Move, PointCheck, PuzzleCheck, PuzzleDraft, Ruling, SoupState
 from story.core.soup.puzzles import BUILTIN_DIR, load_puzzles
 
 def soup(isolated, players=("阿明",), judge=None, puzzles=(PUZZLE,)) -> SoupCore:
@@ -143,14 +143,36 @@ class FakeClient:
         return SimpleNamespace(parsed=self.results.pop(0))
 
 
-def test_judge_counts_only_real_key_points(isolated):
-    client = FakeClient(Judgement(rulings=[Ruling(move=1, answer="是也不是", matched=[]), Ruling(move=2, answer="無關", matched=[1, 1, 3, 9])]))
+def test_judge_counts_only_points_stated_with_a_real_quote(isolated):
+    """每個關鍵點都要引用猜測的原文並判斷說中了才算：沒說中的、引用不到原文的、不存在的編號、重複的都不算。"""
+    guess = "那段語音是他媽媽錄的，她已經過世了"
+    points = [
+        PointCheck(point=1, quote="那段語音是他媽媽錄的", stated=True),
+        PointCheck(point=1, quote="那段語音是他媽媽錄的", stated=True),  # 重複
+        PointCheck(point=2, quote="她已經過世了", stated=True),
+        PointCheck(point=3, quote="他想聽媽媽的聲音", stated=True),  # 猜測裡沒有這句話
+        PointCheck(point=9, quote="她已經過世了", stated=True),  # 不存在的關鍵點
+    ]
+    client = FakeClient(Judgement(rulings=[Ruling(move=1, answer="是也不是", points=[]), Ruling(move=2, answer="無關", points=points)]))
     judge = SoupJudge(client=client, log_path=isolated / "log.jsonl")
     state = SoupState(puzzle=PUZZLE, players=["阿明", "小華"])
-    moves = [Move(name="阿明", kind="ask", text="是電話嗎"), Move(name="小華", kind="guess", text="母親")]
+    moves = [Move(name="阿明", kind="ask", text="是電話嗎"), Move(name="小華", kind="guess", text=guess)]
     judge.judge(state, moves)
-    assert moves[0].answer == "partly" and moves[1].hit == 2  # 重複的、不存在的編號都不算
+    assert moves[0].answer == "partly" and moves[1].hit == 2
     assert "那是母親錄的語音。" in client.prompts[0] and "1. 阿明 提問：是電話嗎" in client.prompts[0]
+
+    moves = [Move(name="小華", kind="guess", text=guess)]
+    not_stated = [PointCheck(point=1, quote="那段語音是他媽媽錄的", stated=False)]
+    SoupJudge(client=FakeClient(Judgement(rulings=[Ruling(move=1, answer="無關", points=not_stated)])), log_path=isolated / "l.jsonl").judge(state, moves)
+    assert moves[0].hit == 0
+
+
+def test_quotes_may_differ_in_punctuation_but_not_in_substance():
+    from story.core.soup.judge import quoted
+
+    assert quoted("沒有貼紙條，代表他出事了", "因為阿凱的室友沒有貼紙條代表他出事了 所以阿凱就打119")
+    assert not quoted("室友有心臟病", "因為阿凱的室友沒有貼紙條代表他出事了")
+    assert not quoted("", "任何猜測")
 
 
 def test_judge_missing_a_move_is_a_failure(isolated):

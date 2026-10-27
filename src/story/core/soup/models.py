@@ -21,12 +21,20 @@ class Puzzle(BaseModel):
 # ---------- AI 回傳的格式 ----------
 
 
+class PointCheck(BaseModel):
+    """猜湯底時，裁判對一個關鍵點的判斷：先引用猜測裡的原文，再判斷有沒有說中。"""
+
+    point: int = Field(description=SCHEMA["PointCheck.point"])
+    quote: str = Field(description=SCHEMA["PointCheck.quote"])
+    stated: bool = Field(description=SCHEMA["PointCheck.stated"])
+
+
 class Ruling(BaseModel):
     """裁判對一個行動的判斷。"""
 
     move: int = Field(description=SCHEMA["Ruling.move"])
     answer: words("soup_answer") = Field(description=SCHEMA["Ruling.answer"])
-    matched: list[int] = Field(description=SCHEMA["Ruling.matched"])
+    points: list[PointCheck] = Field(description=SCHEMA["Ruling.points"])
 
 
 class Judgement(BaseModel):

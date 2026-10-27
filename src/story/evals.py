@@ -31,7 +31,7 @@ from story.core.engine import Engine
 from story.core.genres import Genre, load_genres
 from story.core.models import SCHEMA, Character, GameState
 from story.core.rules import ACT_TURNS, body_level, body_score
-from story.preview import ARC, PREMISE, SAMPLE, conditions, listed, sample_actions, sample_state
+from story.preview import ARC, PREMISE, SAMPLE, conditions, items, listed, sample_actions, sample_state
 from story import settings
 
 EVAL = prompts.sections("eval")
@@ -229,6 +229,26 @@ def calibration(genres: dict[str, Genre]) -> Callable[[Trial], None]:
     return run
 
 
+def soup(t: Trial) -> None:
+    """海龜湯的裁判：真的玩過的猜測，各題的猜測放在同一回合一起判斷（跟遊戲裡一樣），說中的關鍵點數要在範圍內。
+    猜測不完整（例如沒說出是什麼病）不能給滿分；意思一樣的猜測要給一樣的分數。"""
+    from story.core.soup.judge import SoupJudge
+    from story.core.soup.models import Move, SoupState
+    from story.core.soup.puzzles import load_puzzles
+
+    judge = SoupJudge(client=t.engine.client, log_path=t.log_path)
+    bank = {p.title: p for p in load_puzzles()[0]}
+    cases: dict[str, list[tuple[str, int, int]]] = {}
+    for title, guess, low, high in items("soup_cases"):
+        cases.setdefault(title, []).append((guess, int(low), int(high)))
+    for title, guesses in cases.items():
+        state = SoupState(puzzle=bank[title], players=[f"P{i}" for i in range(len(guesses))])
+        moves = [Move(name=f"P{i}", kind="guess", text=g) for i, (g, _, _) in enumerate(guesses)]
+        judge.judge(state, moves)
+        for move, (guess, low, high) in zip(moves, guesses):
+            t.check(f"{title}：{prompts.clip(guess, 12)}… 說中 {low}-{high}", low <= move.hit <= high, f"說中 {move.hit}")
+
+
 def scenarios(genres: dict[str, Genre]) -> dict[str, tuple[str, Callable[[Trial], GameState | None]]]:
     """{代號: (說明, 情境)}。每個題材包各有一個情境，代號就是題材名稱。"""
     found = {
@@ -239,6 +259,7 @@ def scenarios(genres: dict[str, Genre]) -> dict[str, tuple[str, Callable[[Trial]
         "reckless": ("魯莽的行動：要付出代價", reckless),
         "dying": ("瀕死還冒險：會死", dying),
         "judge": ("評審：故意寫壞的劇情要判不通過，沒問題的要判通過", calibration(genres)),
+        "soup": ("海龜湯的裁判：猜測不完整不給滿分，意思一樣的猜測分數一樣", soup),
     }
     for name, genre in genres.items():
         found[name] = (f"題材「{name}」的開場：文風符合題材指引", tone(genre))

@@ -13,7 +13,8 @@ Rules:
 - Answer only from the truth. Don't invent details it doesn't contain. If the truth doesn't mention something but it follows naturally, answer with common sense; if it really can't be decided, answer "Irrelevant".
 - Answers must be exactly one of "Yes", "No", "Irrelevant", "Yes and no", "Not a yes/no question". Add no explanation or hint, and never reveal anything about the truth.
 - Stay consistent with earlier answers: the same question gets the same answer.
-- Be strict when judging guesses: a guess only gets a key point if it states what that point actually is. Different wording is fine if the meaning is right; brushing against it, being vague, or listing several possibilities to fish for a match doesn't count.
+- Judge each key point of a guess separately: first find the sentence of the guess that speaks to it, then decide whether it states what that point actually is. Different wording is fine if the meaning is right; brushing against it, being vague, or listing several possibilities to fish for a match doesn't count.
+- Guesses that mean the same thing get the same ruling, whoever made them and in whatever order they're worded.
 - Judge each player on their own; don't become looser or stricter because someone else already asked or guessed.
 
 ## judge
