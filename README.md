@@ -2,173 +2,85 @@
 
 English | [繁體中文](README.zh-TW.md)
 
-An AI text adventure you can play in the terminal or the browser, alone or online with friends. Gemini writes the story as you go, and every choice you make shapes where it leads. The web version also has turtle soup: a lateral thinking puzzle game with the AI as the judge.
+A text game whose story Gemini writes as you play, in the terminal or the browser, alone or with friends. Two games:
 
-The design principle is **the AI tells the story, the program keeps the memory and the rules**: each turn the AI only *proposes* what happens and how your condition changes, and the program checks it before anything goes into the game state. So the AI can't kill you off with one sentence or forget what's in your bag. In return, reckless choices bring real wounds, and wounds that pile up to a fatal level will kill you.
+- **Adventure**: the AI writes the story, and every choice you make shapes it
+- **Turtle soup** (web): the AI is the judge while everyone guesses the truth behind a strange scenario
+
+The design rule is **the AI tells the story, the program keeps the memory and the rules**: the AI only *proposes* narration and changes, and the program checks them before they enter the game state. So the AI can't kill you in one line or forget what's in your bag, while reckless choices bring real wounds.
 
 ## Features
 
-- **A real story structure**: before the opening, the AI plans a hidden four-act outline, along with a truth the player doesn't know. Clues are planted in the first two acts and the truth comes out in the third. The program tracks progress and controls the pacing, so the story reaches its ending in about 30 turns without ending early, followed by an epilogue and a title for your ending
-- **Body and mind**: no hit points. Instead you have conditions like "torn right arm (severe)" or "fear (moderate)". Only body wounds that add up to a fatal level kill you; mind conditions affect how you act
-- **Hidden in-game time**: wounds heal over time, but severe ones need treatment in the story
-- **Timed mode**: when things get tense, you have to decide before the countdown runs out
-- **Long-term memory**: the full text of every turn is kept, so the AI sees the whole story; only when it grows past a limit is the oldest part compacted into a summary
-- **Genre packs**: Wuxia, Cthulhu, Ghost Story, Monsters & Aliens, and Cyberpunk, each with its own writing guide, opening ideas, and twist ideas. One is picked automatically to fit your premise, or you choose. You can write your own genre pack without touching code; see [docs/genres.md](docs/genres.md) (in Chinese)
-- **Random openings**: a new story starts from an opening drawn from the genre packs; press "Another one" to draw again, or "Inspire me" to have the AI invent a new one
-- **Play alone or together**: every game is a team of 1 to 4 characters, each played by one person with their own conditions, inventory, and choices. Alone, the story speaks to you as "you"; with friends, the turn advances once everyone has acted. On the web, everyone joins the web page from their own phone or computer, opening rooms or joining friends' rooms in the lobby; several rooms can play at once
-- **Turtle soup** (web): the AI is the judge and gives everyone a strange scenario. Each round everyone asks a yes/no question or guesses the truth at the same time, and everyone sees every question and answer. State every key point to solve it; if several people do it in the same round, they win together. Puzzles come from a puzzle bank, or the AI writes one
+- **A real story structure**: before the opening, a hidden four-act outline and a truth the players don't know are planned; acts one and two plant clues, act three reveals it, and the story ends in about 30 turns with an epilogue
+- **Body and mind conditions**: no hit points, just conditions like "torn right arm (severe)" or "fear (moderate)" that heal over in-game time; only accumulated physical wounds can kill
+- **Timed mode**: decide before the countdown runs out when things get tense
+- **Long-term memory**: every turn is kept word for word; only the oldest parts are summarized once the story gets long
+- **Genre packs**: wuxia, Cthulhu, ghost story, creatures, cyberpunk, picked automatically or by you; write your own (see [docs/genres.md](docs/genres.md))
+- **Alone or with friends**: a team of 1 to 4, each with their own conditions, bag, and choices; the turn moves on once everyone has acted. On the web, open rooms in the lobby, with several rooms playing at once
+- **Turtle soup**: each round everyone asks a yes/no question or guesses the truth at the same time and sees everyone's results; state every key point to solve it, and those who do in the same round win together. Puzzles come from the bank or are written by the AI
 
-## Getting started
+## Playing
 
-You need:
+You need [uv](https://docs.astral.sh/uv/) (installs Python 3.14 and the packages), a [Gemini API key](https://aistudio.google.com/apikey) (free), and ideally [just](https://github.com/casey/just).
 
-- [uv](https://docs.astral.sh/uv/): installs Python 3.14 and the dependencies for you
-- A Gemini API key: get one free at [Google AI Studio](https://aistudio.google.com/apikey)
-- [just](https://github.com/casey/just) (recommended): shortcuts for common commands. Without it, use the `uv run …` commands in the table below
-
-```bash
-just play
-```
-
-The first time it runs, it asks you four things: the language, your Gemini API key, and, for the terminal version, a color theme and your character's name. The answers are saved in `~/.config/story/config.toml`, so you won't be asked again. You can edit that file directly:
-
-```toml
-language = "en"         # or "zh-TW"
-api_key = "your key"
-name = "Alex"            # your character in the terminal version
-
-[terminal]
-theme = "tokyo-night"
-```
-
-Environment variables take precedence over the file: `STORY_LANG`, `GEMINI_API_KEY`.
-
-**Language**: the language you choose the first time sticks. To switch temporarily, put `STORY_LANG=zh-TW` (or `en`) in front of a command, e.g. `STORY_LANG=zh-TW just serve`. The story, the interface, and the genre packs all switch; everyone on the same server uses the same language.
-
-## Ways to play
-
-| Command | Without just | What it is |
+| Command | Without just | What |
 |---|---|---|
-| `just play` | `uv run story` | Terminal version |
-| `just plain` | `uv run story --plain` | Plain-text version (just input/print) |
-| `just serve` | `uv run story-web --host 0.0.0.0` | Web version: everyone enters a lobby and opens rooms, to play alone or as a team |
-| `just start` / `just stop` | | Start / stop the web server in the background (restarts it if already running; output goes to `server.log`) |
+| `just play` | `uv run story` | Terminal version (adventure, solo) |
+| `just serve` | `uv run story-web --host 0.0.0.0` | Web version, port 8080 by default (`just serve 9000` to change it) |
+| `just start` / `just stop` | | Start or stop the web server in the background (output in `server.log`) |
+| `just plain` | `uv run story --plain` | Plain-text version |
 
-The web server uses port 8080 by default (`just serve 9000` to change it). Open `http://this-computer's-IP:8080` in a browser; on the same computer that's <http://localhost:8080>. Phones and computers use the same page, which follows the system's light or dark mode.
+The first run asks for a language, an API key, and, for the terminal version, a color theme and a character name, saved to `~/.config/story/config.toml` (editable). Environment variables win: `STORY_LANG` (`zh-TW`, `en`), `GEMINI_API_KEY`.
 
-### Web: the lobby and rooms
+### Web version
 
-The web version calls the AI with the host's API key (entered the first time you start the server); players only enter a name.
+Open `http://<this computer's IP>:8080` (locally <http://localhost:8080>) on a phone or a computer. The AI uses the host's key; players only enter a name.
 
-- Enter a name when you join (unique on the whole server); your name is your character in the story. Your browser remembers it, so next time you go straight in; use "Change name" in the ⋯ menu to pick another
-- You start in the lobby: open a new room, or join a room that's still waiting for players. Playing alone is just a room of your own. Several rooms can play at once, so different groups can team up separately (at most 10 rooms, 4 players per room)
-- Whoever opens the room is the host, who chooses the game (an adventure or turtle soup), the premise or where the puzzle comes from, whether to continue a save, and whether to start over. In an adventure, once the host sends the premise everyone sees it, and you all enter the story together when the AI finishes the opening
-- In the game everyone sees their own choices and can act in any order; the input box hint shows who has acted and who you are waiting for, and the turn advances once everyone has acted. In timed mode the room runs a single countdown, which starts only after everyone has finished reading
-- If you disconnect, come back with the same name and you go straight back to your room. Coming back from the same browser (a refresh, or a phone that kept the old connection open in the background) takes over your seat right away, and the old tab leaves. If everyone else has acted and you're still away, your character "steps away" for that turn
-- If the host leaves, the next person in the room becomes host
-- When the story ends you return to the room's waiting screen and can play again, or choose "Leave room" to go back to the lobby (you can also type `/leave` during a game). A room closes when nobody is left in it
-- All rooms share one API key: the free tier allows 15 AI calls per minute, so with many rooms calls queue up, and the screen shows "queued"
+- Your name is your character, and the browser remembers it. Open a room with the same group and names to continue your last save
+- Open or join a room in the lobby (up to 10 rooms, 4 players each). The host picks adventure or turtle soup
+- Anyone can act first; the turn moves on once everyone has. A short notice at the top right shows when others act
+- If you disconnect, come back with the same name to return to your room; coming back from the same browser replaces the old connection
+- All rooms share one key: the free tier allows 15 AI calls a minute, so busy times queue
 
-### Turtle soup
+> ⚠ The web version has no HTTPS and names have no passwords (anyone who knows a name can continue that team's save). Use it only on a network you trust.
 
-The host chooses "Start turtle soup" in the room, then draws a puzzle from the bank or has the AI write one (an AI puzzle is checked first; if it isn't sound, one is drawn from the bank instead).
+### Controls
 
-- Everyone sees the scenario first. Each round, everyone chooses "Ask" or "Guess" and types (typing without choosing is a question), or chooses "Give up"
-- Once everyone has acted, the judge (the AI) answers every question that round at once: "Yes", "No", "Irrelevant" or "Yes and no"; for guesses it tells everyone how many key points were stated, but not which ones
-- State every key point to solve it; if several people do it in the same round, they win together. When everyone gives up in the same round, the truth is revealed
-- The status bar shows how many questions each person asked and the most key points they've stated; "What the program remembers" in the ⋯ menu shows the scenario and every question so far
-
-> ⚠ The web server accepts connections from other computers on the same network. There's no HTTPS yet, so traffic is sent in plain text, and names have no password: anyone who knows the names can continue that team's save. Only use it on a network you trust.
-
-## Controls
-
-**Terminal**
-
-| Key | Action |
-|---|---|
-| ↑↓, numbers, mouse | Pick a choice |
-| Just type | Do your own thing instead of a listed choice |
-| Enter (while text appears) | Speed up; press again to show it all |
-| Mouse wheel | Scroll the story. You can scroll back while text is still appearing; scroll to the bottom to follow new text again |
-| F2 | Choose a color theme (moving up and down previews it; remembered) |
-| `/` or Ctrl+P | Open the command menu |
-| Ctrl+T | See what the program remembers |
-| Ctrl+R | Start over |
-| F1 | Help |
-| Ctrl+Q | Save and quit |
-
-**Web**: tap a choice, or write an action in the input box at the bottom (on a computer you can also choose with ↑↓ in the input box and press Enter). While text appears, tap the story or press Enter to speed up, and again to show it all. The ⋯ menu at the top right has "What the program remembers", "Start over", help, and appearance (light/dark).
-
-**Saves**: the game saves after every turn, so you can pick up where you left off.
-
-| How you play | Save |
-|---|---|
-| Terminal | `save.json` in the current folder |
-| Web | `saves/team-name.json`, or `saves/team-Alex+Sam.json` for a group (the same group can continue when they open a room again) |
+Click a choice (or press its number), or type your own action. Press Enter to speed up text. `/help` lists commands and `/state` shows what the program remembers; press F1 in the terminal for shortcuts, or use the ⋯ menu on the web. Every turn saves automatically: `save.json` in the terminal, `saves/team-<names>.json` on the web.
 
 ## How it's built
 
 ```
 src/story/
-├── core/       Core: the flow every game shares, the reply format, calling the AI, saves
-├── games/      Games, side by side, each built on the core
-│   ├── adventure/  Adventure: rules, prompts (prompts/), genre packs (genres/)
-│   └── soup/       Turtle soup: the judge, prompts (prompts/), puzzles (puzzles/)
-└── shells/     Shells
-    ├── client.py   The flow shared by interfaces for human players; LocalClient plays on this computer
-    ├── room_client.py  The same flow for the web: RoomClient joins the lobby and rooms
-    ├── textual/    The terminal interface
-    ├── web/        The web server and page
-    ├── lobby.py    The web lobby: names and the room list
-    ├── room.py     A web room: one game per room
-    ├── connection.py  In-memory connections between the lobby, rooms, and browser tabs
-    └── plain.py    The plain-text version
+├── core/        Core: the flow every game shares, the reply format, calling the AI, saves
+├── games/       Games, side by side, each built on the core
+│   ├── adventure/   Adventure: rules, prompts, genre packs
+│   └── soup/        Turtle soup: the judge, prompts, puzzles
+└── shells/      Shells: client.py is the flow shared by interfaces, textual/ the terminal, web/ the web
 ```
 
-Layers stacked from the inside out, each with one job:
-
-- **Core** (`core/`): what every game shares (the team, continuing a save, collecting everyone's actions, the reply format, calling the AI). It doesn't know which games exist
-- **Games** (`games/`): adventure and turtle soup each have a folder, independent of each other, with their own rules and text. Using one works like calling an LLM: send in a line of text, get a reply back (narration, choices, conditions…). They know nothing about screens, so a new shell such as a Discord bot only has to handle display and input. The plain-text version is the simplest example
-- **Shared layer** (`shells/client.py`, `shells/room_client.py`): when to show what. What to ask when starting, choices appearing only after the text finishes typing, the ending arriving in steps, how the web version connects to the lobby and rooms. Both the terminal and web versions use it
-- **Interfaces** (`textual/`, `web/`): only decide how things look
-
-Where a new feature goes: flow every game needs → core; one game's rules or facts → that game; changes the order, timing, or flow of what a person sees → shared layer; changes the look → interface.
-
-Every file is described in [docs/files.md](docs/files.md), and plans are in [docs/roadmap.md](docs/roadmap.md) (both in Chinese).
+Layers stack from the inside out: the core doesn't know which games exist, games don't depend on each other or know about screens, and shells only handle display and input. Using any game works like calling an LLM: send in a line of text, get a reply back. Every file is described in [docs/files.md](docs/files.md), and plans are in [docs/roadmap.md](docs/roadmap.md) (both in Chinese).
 
 ## Customizing
 
-Common settings are constants at the top of each file, or separate text files:
+| To change | Look in |
+|---|---|
+| How the AI writes (rules, length, pacing) | `src/story/games/adventure/prompts/`, starting with its [README](src/story/games/adventure/prompts/README.md) (in Chinese) |
+| How strict the turtle soup judge is | `src/story/games/soup/prompts/` |
+| Story length, wound rules | `src/story/games/adventure/rules.py` |
+| The model | `src/story/core/ai.py` |
+| Genre packs | `src/story/games/adventure/genres/` (personal ones in `~/.config/story/genres/`) |
+| Turtle soup puzzles | `src/story/games/soup/puzzles/`, one file per puzzle (personal ones in `~/.config/story/puzzles/`) |
+| Colors, typing speed | terminal `src/story/shells/textual/style.py`; web `src/story/shells/web/static/` |
 
-- **Story length, wound and healing rules**: `src/story/games/adventure/rules.py`; **the model**: `src/story/core/ai.py`
-- **How the AI writes** (writing rules, narration length, pacing reminders, the epilogue…): the markdown files in `src/story/games/adventure/prompts/en/` (turtle soup's judge: `src/story/games/soup/prompts/en/`). Start with [src/story/games/adventure/prompts/README.md](src/story/games/adventure/prompts/README.md) (in Chinese), which maps "what you want to change → where"
-- **Interface text**: the `ui/en/` folders of each layer (`src/story/core/`, each game under `src/story/games/`, `src/story/shells/`)
-- **Genre packs**: `src/story/games/adventure/genres/en/`; see [docs/genres.md](docs/genres.md) for how to write one
-- **Turtle soup puzzles**: `src/story/games/soup/puzzles/en/`, one file per puzzle with the sections `title`, `surface` (the scenario), `truth`, and `key_points` (2-4, one per line). Personal puzzles go in `~/.config/story/puzzles/en/`
-- **Terminal color theme and typing speed**: `src/story/shells/textual/style.py`. Condition colors are derived from the theme's success, warning, and error colors
-- **Web colors, fonts, and typing speed**: the color settings at the top of `src/story/shells/web/static/style.css`, and the constants at the top of `app.js`
-
-**Adding a language**: in every layer (`src/story/core/`, each game under `src/story/games/`, `src/story/shells/`), add a folder under `prompts/` and `ui/` with the full set of files (copy `en/` and translate), plus genre packs and puzzles, then select it with `STORY_LANG`. The tests check that every language has the same files, sections, and variables.
+All text is markdown, in each layer's own `prompts/<lang>/` (for the AI) and `ui/<lang>/` (for players). To add a language, copy `en/` in each layer and translate it.
 
 ## Tests and evals
 
-| Command | What it does |
+| Command | What |
 |---|---|
-| `just test` | All tests (about 30 seconds). They never contact Gemini and never touch your saves or API key. Run them after a change to make sure nothing broke |
-| `just prompts` | Preview the full prompts sent to the AI, without calling it. E.g. `just prompts turn`, `just prompts --players 2` |
-| `just eval` | Have the AI actually write turns from fixed scenarios, then check them with code and an AI judge: does it end too early, does the third act reveal the truth, does it make decisions for the player, do reckless choices cost something, does the style fit the genre. Calls the real AI; a full run takes six or seven minutes on the free tier. Results are saved in `eval_results/` so you can compare before and after a prompt change |
+| `just test` | All tests (about 30 seconds); never calls Gemini or touches your saves |
+| `just prompts` | Preview the full prompts sent to the AI, without calling it |
+| `just eval` | Run fixed scenarios with the real AI and check pacing, the reveal, not deciding for the player, genre tone, and the turtle soup judge (`just eval soup`); results go to `eval_results/` |
 
-What each test file checks is in [docs/files.md](docs/files.md#測試-tests).
-
-## Debugging
-
-What the AI proposed each turn and what the program actually applied are logged (one line per turn), so you can trace why a condition changed oddly:
-
-| How you play | Log |
-|---|---|
-| Terminal | `story_log.jsonl` |
-| Web | `saves/team-name.log.jsonl` (one per team, as above) |
-
-Each line's `calls` lists every AI call in that period: the kind (`kind`: `genre` picking a genre, `arc` planning the outline, `turn` a story turn, `rewrite` rewriting an ending that came too early, `death` falling to wounds, `epilogue`, `suggest` inspire me, `compaction` memory compaction), how long it took (`seconds`), and the token counts Gemini reports: sent (`prompt`), of which cached (`cached`), output (`output`), and thinking (`thinking`). If you're waiting a long time, this shows where the time goes.
-
-Logs only grow; a 30-turn story is about 50 KB. Run `just clean-logs` to delete them; it never touches saves.
+Each turn's AI proposals, what the program applied, and how long each call took are logged to `story_log.jsonl` (on the web, `saves/team-<names>.log.jsonl`); the fields are described in [docs/files.md](docs/files.md). `just clean-logs` deletes only the logs, not saves.

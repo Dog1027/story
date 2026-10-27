@@ -606,8 +606,10 @@ uv run pytest                  # 全部（約 30 秒）
 | 檔案 | 用途 |
 |---|---|
 | `save.json` | 終端機版的存檔，每回合自動更新。內容就是 `GameState` |
-| `saves/team-名字.json`、`saves/team-名字.log.jsonl` | 網頁版每一隊的存檔與每回合紀錄（好幾個人時名字用 `+` 串起來） |
+| `saves/team-名字.json`、`saves/team-名字.log.jsonl` | 網頁版每一隊的存檔與每回合紀錄（好幾個人時名字用 `+` 串起來；海龜湯是 `team-名字.soup.json`） |
 | `story_log.jsonl` | 終端機版每回合一行的紀錄：玩家行動、AI 提議的變化、套用前後的狀態、遊戲內時間。用來查「為什麼會這樣」 |
 | `~/.config/story/config.toml` | 玩家的設定：語言、API key、配色主題（在家目錄，不在專案裡） |
 
 這些檔案會產生在執行 `uv run story` 或 `uv run story-web` 時所在的資料夾。
+
+紀錄每一行的 `calls` 列出這段期間的每次 AI 呼叫：種類（`kind`：`genre` 挑題材、`arc` 規劃大綱、`turn` 劇情、`rewrite` 太早寫出結局時重寫、`death` 傷重倒下、`epilogue` 尾聲、`suggest` 幫我想、`compaction` 記憶壓縮；海龜湯是 `judge` 裁判、`puzzle` 出題、`puzzle_check` 檢查題目）、花了幾秒（`seconds`），以及 Gemini 回報的 token 用量：送出（`prompt`）、其中命中快取（`cached`）、輸出（`output`）、思考（`thinking`）。覺得等很久時，可以從這裡看時間花在哪裡。紀錄只會一直往後加，一局 30 回合約 50 KB；`just clean-logs` 只刪紀錄，不會動到存檔。
