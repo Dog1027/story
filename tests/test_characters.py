@@ -1,11 +1,11 @@
-"""Teams of several characters: rules applied to each character separately, and StoryCore advancing only once every character's action is in (send_as)."""
+"""Teams of several characters: rules applied to each character separately, and AdventureCore advancing only once every character's action is in (send_as)."""
 
 from pathlib import Path
 
 import pytest
 from conftest import ARC, FakeGroupEngine, InvalidKeyError, cond, make_engine, pbeat, upd
 
-from story.games import StoryCore
+from story.games import AdventureCore
 from story.games.adventure.prompting import AWAY_ACTION
 from story.games.adventure.prompting import TIMEOUT_ACTION
 from story.games.adventure.models import Character, GameState
@@ -136,7 +136,7 @@ def test_one_character_gets_no_focus_and_wrong_names_still_count():
     assert state.characters[0].inventory == ["油燈"] and state.characters[0].choices == ["點燈"]
 
 
-# ---------- StoryCore: several characters ----------
+# ---------- AdventureCore: several characters ----------
 
 
 @pytest.fixture
@@ -146,7 +146,7 @@ def engine():
 
 @pytest.fixture
 def core(engine, isolated):
-    return StoryCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
+    return AdventureCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
 
 
 def act(core, text: str):
@@ -155,10 +155,10 @@ def act(core, text: str):
 
 
 def test_needs_one_to_four_unique_players():
-    StoryCore("test", ["阿明"], save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakeGroupEngine())  # One person can start too
+    AdventureCore("test", ["阿明"], save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakeGroupEngine())  # One person can start too
     for players in ([], ["阿明", "阿明"], ["a", "b", "c", "d", "e"]):
         with pytest.raises(ValueError):
-            StoryCore("test", players, save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakeGroupEngine())
+            AdventureCore("test", players, save_path=Path("p.json"), log_path=Path("p.jsonl"), engine=FakeGroupEngine())
 
 
 def test_everyone_acts_before_the_round_resolves(core, engine):
@@ -247,28 +247,28 @@ def test_group_ending(core):
 
 
 def test_resume_team_save(engine, isolated):
-    first = StoryCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
+    first = AdventureCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
     first.start()
     first.send("")
     act(first, "1")
     act(first, "1")
     assert load(isolated / "team.json", GameState).turn == 2
 
-    same = StoryCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
+    same = AdventureCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
     assert same.start().phase == "ask_continue"
     reply = same.send("1")
     assert reply.resumed and same.view("阿明", reply).choices == ["阿明往上爬", "阿明躲起來"]
     assert reply.history == [("兩人在燈塔醒來。", "阿明：阿明往上爬\n小華：小華往上爬")]  # Several characters: one action per line, with names
 
-    others = StoryCore("test", ["阿明", "小美"], save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
+    others = AdventureCore("test", ["阿明", "小美"], save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
     assert others.start().phase == "setup"  # Different players start a new game
 
 
 def test_resume_ignores_player_order(engine, isolated):
-    first = StoryCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
+    first = AdventureCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
     first.start()
     first.send("")
-    reversed_order = StoryCore("test", NAMES[::-1], save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
+    reversed_order = AdventureCore("test", NAMES[::-1], save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
     assert reversed_order.start().phase == "ask_continue"  # Joining a room in a different order still continues
 
 
@@ -336,13 +336,13 @@ def test_reply_survives_json_round_trip(core):
 
 
 def test_group_core_with_real_engine(isolated):
-    """StoryCore with a real Engine (only Gemini is fake), played from the opening until someone falls."""
+    """AdventureCore with a real Engine (only Gemini is fake), played from the opening until someone falls."""
     lethal = [cond("失血", "重"), cond("骨折", "重")]
     engine, gemini = make_engine(
         pbeat(upd("阿明", choices=["推門", "點燈"]), upd("小華", choices=["守門", "搜索"]), narration="兩人醒來。"),
         pbeat(upd("阿明", conditions_changed=lethal), upd("小華", items_gained=["鑰匙"], choices=["逃走"]), narration="惡犬撲來。"),
     )
-    core = StoryCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
+    core = AdventureCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
     core.start()
     reply = core.send("")
     assert reply.narration == "兩人醒來。" and core.view("阿明", reply).choices == ["推門", "點燈"]

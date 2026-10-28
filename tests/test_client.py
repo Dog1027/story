@@ -1,4 +1,4 @@
-"""The shells' shared layer: a fake interface that only records calls checks the "what to show when" flow. The rooms and lobby are real, the core is a real StoryCore, and the engine is fake."""
+"""The shells' shared layer: a fake interface that only records calls checks the "what to show when" flow. The rooms and lobby are real, the core is a real AdventureCore, and the engine is fake."""
 
 import asyncio
 
@@ -7,7 +7,7 @@ from conftest import FakeEngine
 
 import story.shells.client as client_module
 from story.core import Reply
-from story.games import StoryCore
+from story.games import AdventureCore
 from story.games.adventure import GENRE_AUTO, GENRE_NONE
 from story.core import Status
 from story.shells.client import Client, PremiseForm, View, status_line
@@ -132,7 +132,7 @@ async def play(isolated):
 
     async def start(view: "RecordingView", engine=None) -> Client:
         engine = engine or FakeEngine()
-        lobby = Lobby(lambda players, on_queue, game: StoryCore(
+        lobby = Lobby(lambda players, on_queue, game: AdventureCore(
             "test", players, save_path=isolated / "save.json", log_path=isolated / "log.jsonl", engine=engine))
         lobbies.append(lobby)
         client = Client(view, lobby)

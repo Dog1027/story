@@ -1,4 +1,4 @@
-"""The web lobby and rooms: connect to the lobby with connect(), open or join rooms, and simulate several players playing together. The core is a real StoryCore and the engine is fake."""
+"""The web lobby and rooms: connect to the lobby with connect(), open or join rooms, and simulate several players playing together. The core is a real AdventureCore and the engine is fake."""
 
 import asyncio
 
@@ -7,7 +7,7 @@ from conftest import PUZZLE, FakeGroupEngine, FakeJudge
 
 import story.shells.lobby as lobby_module
 from story.core import Reply
-from story.games import SoupCore, StoryCore
+from story.games import SoupCore, AdventureCore
 from story.games.adventure.prompting import AWAY_ACTION
 from story.shells.lobby import Lobby
 from story.shells.connection import Connection
@@ -50,7 +50,7 @@ def make_lobby(isolated, engine=None) -> Lobby:
     def make_core(players, on_queue, game="adventure"):
         if game == "soup":
             return SoupCore("test", players, save_path=isolated / "soup.json", judge=FakeJudge(), puzzles=[PUZZLE])
-        return StoryCore("test", players, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
+        return AdventureCore("test", players, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
 
     lobby = Lobby(make_core)
     lobby.engine = engine

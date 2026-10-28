@@ -1,4 +1,4 @@
-"""The flow shared by team games: every game (the adventure's StoryCore and turtle soup's SoupCore under story/games/) is a subclass.
+"""The flow shared by team games: every game (the adventure's AdventureCore and turtle soup's SoupCore under story/games/) is a subclass.
 
 A game is a team of one to MAX_PLAYERS players. Each player's action is sent with send_as(name, text), recorded in the order sent;
 once everyone still in play has acted, the subclass advances a turn (_play_round). With one player, send(text) is their action.

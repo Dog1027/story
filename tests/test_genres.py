@@ -2,7 +2,7 @@
 
 from conftest import HERO, FakeEngine, beat, make_engine, solo
 
-from story.games import StoryCore
+from story.games import AdventureCore
 from story.games.adventure import GENRE_AUTO, GENRE_NONE
 from story.games.adventure.genres import BUILTIN_DIR, MAX_GUIDE, load_genres
 from story.games.adventure.records import DEFAULT_PREMISE
@@ -119,7 +119,7 @@ class GenreEngine(FakeEngine):
 
 
 def test_genre_command_and_new_story_fields(isolated):
-    core = StoryCore("test", [HERO], engine=GenreEngine(), save_path=isolated / "save.json")
+    core = AdventureCore("test", [HERO], engine=GenreEngine(), save_path=isolated / "save.json")
     reply = core.start()
     assert reply.genre == GENRE_AUTO and [v for v, _, _ in reply.genres] == [GENRE_AUTO, GENRE_NONE, "武俠"]
     assert reply.genres[2] == ("武俠", "題材：武俠", "江湖恩怨")  # The genre menu: value, text shown, description
@@ -158,7 +158,7 @@ class PackEngine(FakeEngine):
 
 
 def test_first_new_story_draws_a_premise_from_the_packs(isolated):
-    core = StoryCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
+    core = AdventureCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     reply = core.start()
     assert reply.premise_default in ("你是鏢師。", "你是捕快。", "你收到舅舅的包裹。", DEFAULT_PREMISE)
     core.send("")  # Blank: start with the drawn one
@@ -166,7 +166,7 @@ def test_first_new_story_draws_a_premise_from_the_packs(isolated):
 
 
 def test_random_draws_a_different_premise_and_genre_change_redraws(isolated):
-    core = StoryCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
+    core = AdventureCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     core.start()
     reply = core.send("/genre 武俠")
     assert reply.premise_default in ("你是鏢師。", "你是捕快。")  # Changing the genre: the drawn opening changes with it
@@ -176,7 +176,7 @@ def test_random_draws_a_different_premise_and_genre_change_redraws(isolated):
 
 
 def test_play_again_keeps_the_last_premise_unless_rerolled(isolated):
-    core = StoryCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
+    core = AdventureCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     core.start()
     core.send("自己寫的前提")
     core.send("/restart")
@@ -187,7 +187,7 @@ def test_play_again_keeps_the_last_premise_unless_rerolled(isolated):
 
 
 def test_ai_suggestion_wins_over_drawn_premise(isolated):
-    core = StoryCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
+    core = AdventureCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     core.start()
     assert core.send("/suggest").premise_default == "你是月球礦坑的夜班工程師。"
 

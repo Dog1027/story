@@ -3,7 +3,7 @@
 import pytest
 from conftest import HERO, FakeEngine, InvalidKeyError
 
-from story.games import StoryCore
+from story.games import AdventureCore
 from story.games.adventure.prompting import TIMEOUT_ACTION
 from story.core.saves import load
 from story.games.adventure.models import GameState
@@ -17,7 +17,7 @@ def engine():
 
 @pytest.fixture
 def core(engine, isolated):
-    return StoryCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
+    return AdventureCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
 
 
 def new_game(core, *inputs):
@@ -199,11 +199,11 @@ def test_ending_epilogue_and_play_again(core):
 
 
 def test_resume_from_save(engine, isolated):
-    first = StoryCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
+    first = AdventureCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
     new_game(first)
     first.send("1")
 
-    second = StoryCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json")
+    second = AdventureCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json")
     reply = second.start()
     assert reply.phase == "ask_continue" and "第 2 回合" in reply.notice
     reply = second.send("1")
@@ -215,18 +215,18 @@ def test_resume_from_save(engine, isolated):
 
 
 def test_finished_save_starts_new_story(engine, isolated):
-    core = StoryCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
+    core = AdventureCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
     new_game(core)
     core.send("1")
     core.send("2")
-    assert StoryCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json").start().phase == "setup"
+    assert AdventureCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json").start().phase == "setup"
 
 
 def test_new_game_from_continue_prompt_reuses_premise(engine, isolated):
-    core = StoryCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
+    core = AdventureCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
     core.start()
     core.send("自訂的前提")
-    reply = StoryCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json")
+    reply = AdventureCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json")
     reply.start()
     assert reply.send("2").premise_default == "自訂的前提"
 
@@ -236,7 +236,7 @@ def test_progress_tells_what_the_opening_is_doing(isolated):
     from conftest import beat, make_engine
 
     engine, gemini = make_engine(beat(narration="燈塔的門吱呀一聲打開。"))
-    core = StoryCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
+    core = AdventureCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
     seen = []
     generate = gemini.generate_content
     gemini.models.generate_content = lambda **kw: (seen.append(core.progress), generate(**kw))[1]

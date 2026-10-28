@@ -9,7 +9,7 @@
 每種玩法用起來都像呼叫 LLM：送一句文字進去，拿一個回覆出來。
 
 ```python
-core = StoryCore(api_key, players=["阿明", "小華"], save_path=…)
+core = AdventureCore(api_key, players=["阿明", "小華"], save_path=…)
 reply = core.start()                    # 有存檔就問要不要繼續，否則問怎麼開局
 reply = core.send_as("阿明", "往上爬")   # 大家都行動了才推進一回合
 reply.narration, reply.choices, reply.characters …
@@ -26,7 +26,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 | 目錄 | 主要的檔案 |
 |---|---|
 | `core/` | `team.py`：`TeamGame`，每種玩法共用的流程（隊伍、接續存檔、收集每個人的行動、重來、再玩一次）。`reply.py`：`Reply`，每種玩法回給外殼的同一種回覆。`ai.py`：呼叫 Gemini。`saves.py`、`prompts.py`（讀文字檔）、`vocab.py`（遊戲詞彙）、`evals.py`（評估的共用部分） |
-| `games/adventure/` | `game.py`：`StoryCore`。`engine.py` 串起 `rules.py`（規則，純函式）、`prompting.py`（組提示詞）與 AI 呼叫。`models.py` 是存檔與 AI 回傳的格式。`genres/` 是題材包。`preview.py`（`just prompts`）、`evals.py`（`just eval` 的情境） |
+| `games/adventure/` | `game.py`：`AdventureCore`。`engine.py` 串起 `rules.py`（規則，純函式）、`prompting.py`（組提示詞）與 AI 呼叫。`models.py` 是存檔與 AI 回傳的格式。`genres/` 是題材包。`preview.py`（`just prompts`）、`evals.py`（`just eval` 的情境） |
 | `games/soup/` | `game.py`：`SoupCore`。`judge.py` 是 AI 裁判與出題，`puzzles/` 是題庫，`evals.py` 是 `just eval soup` 的情境 |
 | `shells/` | `client.py`：共用層，一個瀏覽器分頁一個 `Client`。`lobby.py`、`room.py`：大廳與房間，房間持有一局的核心。`web/`：網頁伺服器與瀏覽器頁面 |
 

@@ -1,4 +1,4 @@
-"""The web version: connect to the WebSocket with aiohttp's test tools and play the browser's part. The lobby and rooms are real, the core is a real StoryCore, and the engine is fake."""
+"""The web version: connect to the WebSocket with aiohttp's test tools and play the browser's part. The lobby and rooms are real, the core is a real AdventureCore, and the engine is fake."""
 
 from pathlib import Path
 
@@ -8,7 +8,7 @@ from conftest import FakeGroupEngine
 
 import story.shells.lobby as lobby_module
 import story.shells.web as web
-from story.games import StoryCore
+from story.games import AdventureCore
 from story.shells.lobby import Lobby
 
 
@@ -19,7 +19,7 @@ def fake_core(monkeypatch) -> list[str]:
 
     def make(api_key, players, *, save_path, log_path, client=None):
         keys.append(api_key)
-        return StoryCore(api_key, players, save_path=save_path, log_path=log_path, engine=FakeGroupEngine())
+        return AdventureCore(api_key, players, save_path=save_path, log_path=log_path, engine=FakeGroupEngine())
 
     monkeypatch.setitem(lobby_module.GAMES, "adventure", make)
     return keys

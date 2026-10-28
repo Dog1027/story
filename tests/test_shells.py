@@ -63,7 +63,7 @@ def test_interfaces_go_through_the_shared_client_layer():
     problems = []
     for path in [Path(story.shells.web.view.__file__)]:
         source = path.read_text(encoding="utf-8")
-        for name in ("StoryCore", "Connection", "story.shells.room", "story.shells.players"):
+        for name in ("AdventureCore", "SoupCore", "Connection", "story.shells.room", "story.shells.players"):
             if name in source:
                 problems.append(f"{path.name}: uses {name} (should go through the shared layer)")
         if re.search(r"\bcore\.\w+", source):

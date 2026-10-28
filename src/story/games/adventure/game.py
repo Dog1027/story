@@ -28,7 +28,7 @@ def genre_label(choice: str) -> str:
     return {GENRE_AUTO: UI["genre_auto"], GENRE_NONE: UI["genre_none"]}.get(choice, choice)
 
 
-class StoryCore(TeamGame):
+class AdventureCore(TeamGame):
     """One adventure: a team of one to four characters, each played by one player (one when playing alone).
     The AI writes a turn only once every living character has acted. The shared flow is in TeamGame."""
 
