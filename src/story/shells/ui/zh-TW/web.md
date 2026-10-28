@@ -110,6 +110,10 @@ Story
 <!-- 房間標題旁邊。變數：{count}、{max} -->
 {count}/{max} 人
 
+## pick_game
+<!-- 等人畫面裡，房主選玩法的選單標題 -->
+選擇玩法
+
 ## seat_empty
 空位
 

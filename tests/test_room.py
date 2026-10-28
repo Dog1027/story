@@ -583,3 +583,21 @@ async def test_a_bug_after_the_host_answers_shows_the_dialog_again(lobby, caplog
     core.send = send
     await host.send("燈塔")
     assert (await guest.reply(lambda r: bool(r.narration))).narration == "兩人在燈塔醒來。"
+
+
+async def test_the_host_picks_a_game_from_the_menu(lobby):
+    """The waiting screen gives the host a menu of every game in GAMES, with its name and a line about it; picking one starts that game.
+    Adding a game to GAMES is enough for it to show up here."""
+    from story.games import GAMES
+
+    host, guest = await gather(lobby, "阿明", "小華")
+    screen = await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["members"] == ["阿明", "小華"])
+    menu = screen["games"]
+    assert [g["code"] for g in menu] == list(GAMES) and [g["title"] for g in menu] == ["冒險", "海龜湯"]
+    assert all(g["description"] for g in menu)
+    assert [screen["choices"][int(g["choice"]) - 1] for g in menu] == ["開始冒險", "開始海龜湯"]  # Each game's option starts it
+    third = await join(lobby, "小美")
+    await enter_room(third, "阿明")
+    assert (await guest.expect(lambda m: is_lobby("阿明 的房間")(m) and len(m["members"]) == 3))["games"] == []  # Only the host picks
+    await host.send(next(g["choice"] for g in menu if g["code"] == "soup"))
+    assert (await host.reply()).choices == ["從題庫抽一題", "請 AI 出一題"]

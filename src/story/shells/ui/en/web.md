@@ -110,6 +110,10 @@ Playing in {host}'s room
 <!-- Next to the room title. Variables: {count}, {max} -->
 {count}/{max} players
 
+## pick_game
+<!-- Above the host's game picker on the room's waiting screen -->
+Pick a game
+
 ## seat_empty
 Empty seat
 

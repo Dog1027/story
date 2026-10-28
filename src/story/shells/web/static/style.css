@@ -132,6 +132,16 @@ button { cursor: pointer; }
 .seat.empty .seat-name { color: var(--muted); font-weight: 400; }
 .seat.empty .avatar { background: none; border: 1px dashed var(--line); }
 .room-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.game-picker { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; min-width: 0; }
+.game-picker legend { padding: 0; margin-bottom: 8px; color: var(--muted); font-size: 14px; }
+.game-option {
+  display: flex; align-items: flex-start; gap: 12px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px;
+}
+.game-option:has(input:checked) { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.game-option input { accent-color: var(--accent); margin: 4px 0 0; flex: none; }
+.game-text { display: grid; gap: 2px; min-width: 0; }
+.game-description { color: var(--muted); font-size: 14px; }
 .room-actions .btn { padding: 10px 20px; }
 .room-actions .btn.primary { order: 2; }
 

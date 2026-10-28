@@ -44,7 +44,7 @@ Tests enforce these rules (`tests/test_shells.py`): if the core imports a game, 
 | The order and timing people see (choices appear after the narration, the countdown starts once everyone has read) | `shells/client.py` |
 | The looks | `shells/web/` |
 
-**Adding a game**: add a folder under `games/`, write a subclass of `TeamGame`, and register it in `GAMES` in `games/__init__.py`. The core, the other games and the shells don't change.
+**Adding a game**: add a folder under `games/`, write a subclass of `TeamGame` (`title` is its name, `description` a line about it), and register it in `GAMES` in `games/__init__.py`. The host's game picker lists it automatically; the core, the other games and the shells don't change.
 
 ## How the shells know what to show
 

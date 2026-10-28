@@ -16,8 +16,9 @@ Player → room
   {"type": "ready"}                       New narration finished showing (the timed countdown starts once everyone's has)
 Room → player
   {"type": "lobby", "view": "room", "title": "Ming's room", "host": "Ming", "you": "Hua", "members": [...], "seats": 4,
-   "choices": [...], "hint": "...", "clear": true}
-                                          The waiting screen: who's in the room (members, in the order they came in), the number of seats, the options, the input box hint
+   "choices": [...], "games": [{"code": "adventure", "title": "...", "description": "...", "choice": "1"}, ...], "hint": "...", "clear": true}
+                                          The waiting screen: who's in the room (members, in the order they came in), the number of seats, the options, the input box hint;
+                                          games is the host's game picker (empty for everyone else), each with the option that starts it
   {"type": "reply", "reply": {...}}       The core's reply (Reply.to_dict(), with this player's choices)
   {"type": "premise", "reply": {...}}     The result of a command while starting a new game, sent only to the host who asked with answer
   {"type": "new_story", "premise": "..."}  A new game starts: wipe the screen and show the premise first (answers to options aren't shown)
@@ -41,6 +42,7 @@ from story.shells.text import ui_text
 UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
 log = logging.getLogger(__name__)
 TITLES = {code: game.title for code, game in GAMES.items()}  # Game code → name
+DESCRIPTIONS = {code: game.description for code, game in GAMES.items()}  # Game code → a line about it, for the host's game picker
 STARTS = {UI["start_game"].format(game=title): code for code, title in TITLES.items()}  # The host picks the game on the waiting screen
 LEAVE = UI["leave_room"]
 READY_WAIT = 90  # Most seconds to wait for everyone to finish reading; after that the countdown starts anyway
@@ -417,6 +419,14 @@ class Room:
     def _lobby_choices(self, name: str) -> list[str]:
         return [*STARTS, LEAVE] if name == self.host else [LEAVE]
 
+    @staticmethod
+    def _game_menu() -> list[dict]:
+        """The host's game picker: every game in GAMES with its name and a line about it; choice is the option that starts it."""
+        return [
+            {"code": code, "title": title, "description": DESCRIPTIONS[code], "choice": str(i)}
+            for i, (code, title) in enumerate(TITLES.items(), 1)
+        ]
+
     async def _broadcast_lobby(self, clear_for: str = "") -> None:
         """The waiting screen: who's in the room; the host can start and everyone can leave. clear_for is someone who just came in, whose screen is wiped first."""
         for member in self._online_members():
@@ -430,6 +440,7 @@ class Room:
                 "members": self.online,
                 "seats": MAX_PLAYERS,
                 "choices": self._lobby_choices(member.name),
+                "games": self._game_menu() if host else [],
                 "hint": UI["room_hint_host"] if host else UI["lobby_waiting_host"].format(host=self.host),
                 "clear": member.name == clear_for,
             })

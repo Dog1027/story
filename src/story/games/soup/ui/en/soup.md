@@ -9,6 +9,10 @@ Same format as the prompts: each section starts with "## name"; the name is how 
 <!-- The game's name: the host's choice in the room (start_game in shells) and room cards in the lobby -->
 turtle soup
 
+## description
+<!-- A line about the game: under its name when the host picks a game -->
+The AI is the judge while everyone asks yes/no questions to uncover the truth behind a strange scenario.
+
 ## soup_ask_puzzle
 <!-- Asks the host how to get a puzzle (the two choices are soup_from_bank and soup_from_ai) -->
 Turtle soup: where should the puzzle come from?

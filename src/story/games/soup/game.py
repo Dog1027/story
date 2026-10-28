@@ -30,6 +30,7 @@ INPUTS = [
 
 class SoupCore(TeamGame):
     title = UI["title"]
+    description = UI["description"]
     state_class = SoupState
     timeout_action = away_action = AWAY  # No time limit; someone who disconnected counts as away this turn
 

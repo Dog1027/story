@@ -33,6 +33,7 @@ class AdventureCore(TeamGame):
     The AI writes a turn only once every living character has acted. The shared flow is in TeamGame."""
 
     title = UI["title"]
+    description = UI["description"]
     state_class = GameState
     timeout_action = TIMEOUT_ACTION
     away_action = AWAY_ACTION

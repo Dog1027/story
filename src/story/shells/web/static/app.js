@@ -392,7 +392,7 @@ function lobbyPanel({ title, you, choices, rooms, people, max_rooms, seats }) {
   return panel;
 }
 
-function roomPanel({ title, host, you, members, seats, choices }) {
+function roomPanel({ title, host, you, members, seats, choices, games = [] }) {
   const panel = tag("section", "lobby-panel room-view");
   const head = tag("div", "lobby-head");
   head.append(tag("h1", "", title), tag("span", "lobby-count", t("room_seats", { count: members.length, max: seats })));
@@ -410,11 +410,48 @@ function roomPanel({ title, host, you, members, seats, choices }) {
     }
     list.append(seat);
   }
+  panel.append(head, list);
   const actions = tag("div", "room-actions");
-  // The last one is "Leave room"; the others (start adventure, start turtle soup) are primary buttons
-  choices.forEach((label, i) => actions.append(actionButton(label, String(i + 1), i < choices.length - 1)));
-  panel.append(head, list, actions);
+  if (games.length) { // The host: pick a game from the menu, then start it
+    const [picker, chosen] = gamePicker(games);
+    const start = tag("button", "btn primary", t("start"));
+    start.type = "button";
+    start.onclick = () => pick(chosen().choice);
+    panel.append(picker);
+    actions.append(start);
+  }
+  actions.prepend(actionButton(choices[choices.length - 1], String(choices.length))); // "Leave room" is always the last option
+  panel.append(actions);
   return panel;
+}
+
+// The host's game picker: one card per game, with its name and a line about it. The browser remembers the last game picked.
+// Returns [the picker, a function giving the game currently picked]
+function gamePicker(games) {
+  const box = tag("fieldset", "game-picker");
+  box.append(tag("legend", "", t("pick_game")));
+  let chosen = games.find((g) => g.code === loadGame()) || games[0];
+  for (const game of games) {
+    const option = tag("label", "game-option");
+    const radio = tag("input");
+    radio.type = "radio";
+    radio.name = "game";
+    radio.checked = game === chosen;
+    radio.onchange = () => { chosen = game; saveGame(game.code); };
+    const text = tag("span", "game-text");
+    text.append(tag("strong", "", game.title), tag("span", "game-description", game.description));
+    option.append(radio, text);
+    box.append(option);
+  }
+  return [box, () => chosen];
+}
+
+function loadGame() {
+  try { return localStorage.getItem("story-game") || ""; } catch (e) { return ""; }
+}
+
+function saveGame(code) {
+  try { localStorage.setItem("story-game", code); } catch (e) {}
 }
 
 // ---------- Choices and input ----------
