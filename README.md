@@ -55,7 +55,7 @@ src/story/
 └── shells/      Shells: client.py is the flow players see, lobby.py and room.py the rooms, web/ the server and page
 ```
 
-Layers stack from the inside out: the core doesn't know which games exist, games don't depend on each other or know about screens, and shells only handle display and input. Using any game works like calling an LLM: send in a line of text, get a reply back. The architecture is explained in [docs/en/architecture.md](docs/en/architecture.md), and plans are in [docs/en/roadmap.md](docs/en/roadmap.md).
+Layers stack from the inside out: the core doesn't know which games exist, games don't depend on each other or know about screens, and shells only handle display and input. Using any game works like calling an LLM: send in a line of text, get a reply back. The architecture is explained in [docs/en/architecture.md](docs/en/architecture.md), and plans are in [ROADMAP.md](ROADMAP.md).
 
 ## Customizing
 

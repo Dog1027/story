@@ -1,7 +1,5 @@
 # Roadmap
 
-English | [繁體中文](../zh-TW/roadmap.md)
-
 Directions for improvement gathered from comparing the project with today's mainstream harnesses (Claude Code, the Agent SDK and so on), plus other open items. Finished items are deleted; see the git history for what's been done.
 
 ## Directions

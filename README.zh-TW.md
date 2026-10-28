@@ -55,7 +55,7 @@ src/story/
 └── shells/      外殼：client.py 是玩家看到的流程，lobby.py 與 room.py 是房間，web/ 是伺服器與網頁
 ```
 
-由內往外一層一層疊：核心不知道有哪些玩法，玩法彼此不相依、也不知道畫面的存在，外殼只負責顯示和輸入。每種玩法用起來都像呼叫 LLM：送一句文字進去，拿回覆出來。架構說明見 [docs/zh-TW/architecture.md](docs/zh-TW/architecture.md)，待辦見 [docs/zh-TW/roadmap.md](docs/zh-TW/roadmap.md)。
+由內往外一層一層疊：核心不知道有哪些玩法，玩法彼此不相依、也不知道畫面的存在，外殼只負責顯示和輸入。每種玩法用起來都像呼叫 LLM：送一句文字進去，拿回覆出來。架構說明見 [docs/zh-TW/architecture.md](docs/zh-TW/architecture.md)，待辦見 [ROADMAP.md](ROADMAP.md)（英文）。
 
 ## 調整
 
