@@ -216,7 +216,7 @@ class Room:
             await self._on_lobby(name, text)
         elif self.core.phase == "playing":
             await self._on_playing(name, text)
-        elif name != self.host:
+        elif name != self.host and self.core.phase != "ending":  # Anyone may retry an ending that failed to wrap up
             await self._send_notice(name, UI["wait_host_story"].format(host=self.host))
         elif form and self.core.phase == "setup":  # Actions in the new game dialog, not pushed to anyone else
             reply = await self._call(lambda: self.core.send(text))
@@ -343,8 +343,10 @@ class Room:
             if reply.time_limit:
                 self.ready, self.waiting_ready, self.time_limit = set(), True, reply.time_limit
                 self.countdown = asyncio.create_task(self._countdown(reply.time_limit, wait_first=True))
-        elif phase == "ending":
-            await self._route(await self._call(lambda: self.core.send(""), busy=True))  # Go on to write the epilogue
+        elif phase == "ending" and not reply.error:
+            # Go on to write the epilogue. If wrapping up the ending failed, don't go round again on our own: the same error would repeat
+            # endlessly (and an epilogue that fails calls the AI every time); anyone can send something to try again
+            await self._route(await self._call(lambda: self.core.send(""), busy=True))
         elif phase == "ended":
             self.core = None  # Back to the waiting screen; the same people can play again
             for name in [m.name for m in self.members.values() if not m.online]:
@@ -389,6 +391,11 @@ class Room:
                 if self.core is not None and self.core.phase == "playing":
                     await self._send_reply(member.name, self.core.view(member.name))
             await self._broadcast_waiting()
+            if message.get("answer") and name in self.members:  # The premise dialog is waiting for this answer: give it one, or it waits forever
+                failed = Reply(phase=self.core.phase if self.core else "setup", error="api", notice=UI["room_error"])
+                await self._safe_write(self.members[name], {"type": "premise", "reply": failed.to_dict()})
+            elif self.host_reply and not message.get("form") and self.core is not None and self.core.phase == self.host_reply.phase:
+                await self._send_reply(self.host, self.host_reply)  # The host's dialog closed when they answered: show it again so they can answer again
         except Exception:
             log.exception("could not restore the screens after the error")
 

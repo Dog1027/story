@@ -527,3 +527,59 @@ async def test_an_unexpected_error_in_the_room_keeps_everyone_connected(lobby, c
     core.send_as = send_as
     await guest.send("2")  # The connection still works
     assert (await guest.reply(lambda r: not r.actor)).choices == []  # Acted: no choices left
+
+
+async def test_a_bug_while_wrapping_up_the_ending_is_not_retried_endlessly(lobby, monkeypatch):
+    """If wrapping up the ending fails, the room doesn't keep asking again on its own (the same error would repeat forever,
+    and an adventure's epilogue would call the AI every time); anyone can send something to try again."""
+    calls = []
+    wrap_up = SoupCore._on_ending
+
+    def broken(self, raw):
+        calls.append(raw)
+        if len(calls) == 1:
+            raise KeyError("bug in the ending")
+        return wrap_up(self, raw)
+
+    monkeypatch.setattr(SoupCore, "_on_ending", broken)
+    host, guest = await gather(lobby, "阿明", "小華")
+    await host.send("2")  # Start turtle soup
+    await host.reply(lambda r: r.phase == "setup")
+    await host.send("1")  # Draw from the bank
+    await guest.reply(lambda r: bool(r.narration))
+    await host.send("/guess 全部")
+    await guest.send("/give_up")
+    failed = await guest.reply(lambda r: r.phase == "ending" and r.error is not None)
+    assert "送出任何文字可以再試一次" in failed.notice
+    await asyncio.sleep(0.2)
+    assert len(calls) == 1  # Not retried on its own
+    await guest.send("再試一次")  # Not just the host: anyone can retry
+    assert (await host.reply(lambda r: r.phase == "ended")).ending.epilogue == PUZZLE.truth
+    assert len(calls) == 2
+
+
+async def test_a_bug_answering_the_premise_dialog_does_not_leave_it_waiting(lobby, caplog):
+    """The premise dialog waits for the answer to "suggest one" and the like: if the room fails, it still gets one, with the error."""
+    host, guest = await gather(lobby, "阿明", "小華")
+    await host.send("1")  # Start the adventure
+    await host.reply(lambda r: r.phase == "setup")
+    room_of(lobby).core.send = lambda text: {}["bug"]
+    await host.conn.send({"type": "send", "text": "/suggest", "form": True, "answer": True})
+    answer = await host.expect(lambda m: m["type"] == "premise")
+    assert Reply.from_dict(answer["reply"]).error == "api"
+
+
+async def test_a_bug_after_the_host_answers_shows_the_dialog_again(lobby, caplog):
+    """The host's dialog closes when they answer: if the room then fails, the host gets the dialog again instead of being stuck."""
+    host, guest = await gather(lobby, "阿明", "小華")
+    await host.send("1")  # Start the adventure
+    await host.reply(lambda r: r.phase == "setup")
+    core = room_of(lobby).core
+    send = core.send
+    core.send = lambda text: {}["bug"]
+    await host.send("燈塔")
+    await host.expect(lambda m: m["type"] == "notice" and "伺服器出了點問題" in m["text"])
+    await host.reply(lambda r: r.phase == "setup")  # The dialog again
+    core.send = send
+    await host.send("燈塔")
+    assert (await guest.reply(lambda r: bool(r.narration))).narration == "兩人在燈塔醒來。"

@@ -76,11 +76,15 @@
 伺服器的 Gemini API key 無效或沒有權限，請通知架站的人。
 
 ## failed
-<!-- AI 呼叫失敗。變數：{hint}（failed_turn，或空白）、{error} -->
+<!-- AI 呼叫失敗。變數：{hint}（failed_turn、failed_ending，或空白）、{error} -->
 {hint}出錯了：{error}
 
 ## failed_turn
 這回合沒有推進，請重新選擇行動。
+
+## failed_ending
+<!-- 故事結束後整理結局時出錯：不會自動重試（同一個錯誤只會一直重複），由玩家決定什麼時候再試 -->
+結局還沒整理好，送出任何文字可以再試一次。
 
 ## timeout
 Gemini 太久沒有回應、連不上或連線中斷了，請稍後再試。

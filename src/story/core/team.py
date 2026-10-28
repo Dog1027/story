@@ -240,8 +240,8 @@ class TeamGame:
         if self.state is not None:
             self.state = load(self.save_path, self.state_class) or self.state
         self.pending = {}
-        playing = self._phase == "playing"
-        notice = UI["failed"].format(hint=UI["failed_turn"] if playing else "", error=UI["unexpected"])
+        hint = {"playing": UI["failed_turn"], "ending": UI["failed_ending"]}.get(self._phase, "")
+        notice = UI["failed"].format(hint=hint, error=UI["unexpected"])
         return self._reply(error="api", notice=notice, **self._screen())
 
     def _failed(self, e: Exception, retry_screen, hint: str = "") -> Reply:

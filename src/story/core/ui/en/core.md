@@ -76,11 +76,15 @@ A team needs {min} to {max} players with different names.
 The server's Gemini API key is invalid or lacks permission. Please tell whoever runs the server.
 
 ## failed
-<!-- An AI call failed. Variables: {hint} (failed_turn, or blank), {error} -->
+<!-- An AI call failed. Variables: {hint} (failed_turn, failed_ending, or blank), {error} -->
 {hint}Something went wrong: {error}
 
 ## failed_turn
 This turn didn't go through; please choose your action again. 
+
+## failed_ending
+<!-- Wrapping up the ending after the story ended failed: it isn't retried automatically (the same error would just repeat); players decide when to try again -->
+The ending isn't ready yet; send anything to try again. 
 
 ## timeout
 Gemini took too long to respond, couldn't be reached, or the connection broke off. Please try again later.
