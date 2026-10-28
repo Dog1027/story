@@ -48,7 +48,6 @@ def quoted(quote: str, guess: str) -> bool:
 class SoupJudge(AICaller):
     def __init__(self, api_key: str | None = None, client=None, log_path: Path | None = None):
         super().__init__(api_key, client, log_path)
-        self.stage = ""  # What's happening while writing a puzzle, shown on the waiting screen
 
     def judge(self, state: SoupState, moves: list[Move]) -> None:
         """Rule on this turn's questions and guesses, writing the answers and key points hit into moves."""

@@ -109,7 +109,7 @@ class View:
         raise NotImplementedError
 
     def show_busy(self) -> None:
-        """Show the waiting hint (the text from client.busy_text(), which changes with progress)."""
+        """Show the waiting hint with the text from client.busy_text(); called again each time the progress changes."""
         raise NotImplementedError
 
     # Timed mode: the room keeps time and sends time's up; the interface only shows the countdown

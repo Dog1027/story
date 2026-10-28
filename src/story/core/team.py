@@ -9,6 +9,7 @@ view(), waiting(), failure replies, and building replies. Subclasses handle: wha
 the ending, the status bar, /help, plus the game's name (title) and the save format (state_class). A save must have names, premise, turn, game_over.
 """
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -63,6 +64,10 @@ class TeamGame:
     def draft(self) -> str:
         """While send() runs, the narration the AI is writing (what has streamed in so far); shells may read it from another thread."""
         return ""
+
+    def watch(self, on_change: Callable[[], None]) -> None:
+        """Call on_change() whenever progress or draft changes, so shells don't have to keep checking. It's called from the thread
+        running send(), so it should only hand the news over to the shell's own thread (e.g. loop.call_soon_threadsafe)."""
 
     def start(self) -> Reply:
         """The first reply: asks whether to continue if the same players have an unfinished save, otherwise starts a new game."""

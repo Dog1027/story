@@ -189,3 +189,29 @@ async def test_friends_join_the_same_room(isolated):
         await guest.send("act", text="2")
         await host.expect("activity", lambda m: m["text"] == "小華 已行動")  # Someone else acted: a brief notice that doesn't cover the story
         assert not any(m["t"] == "activity" for m in guest.seen)  # Your own action doesn't notify yourself
+
+
+async def test_the_waiting_line_follows_the_opening_progress(isolated, monkeypatch):
+    """The progress (e.g. "planning the story outline") is pushed all the way to the browser as it changes, without polling."""
+    import time
+
+    class SlowOpening(FakeGroupEngine):
+        def start(self, state):
+            for self.stage in ("規劃故事大綱", "寫開場"):
+                time.sleep(0.3)
+            self.stage = ""
+            super().start(state)
+
+    def make(api_key, players, *, save_path, log_path, client=None):
+        return AdventureCore(api_key, players, save_path=save_path, log_path=log_path, engine=SlowOpening())
+
+    monkeypatch.setitem(lobby_module.GAMES, "adventure", make)
+    async with TestClient(TestServer(app())) as client:
+        browser = await enter_name(client, "阿明")
+        for _ in range(2):  # Open a room, start the game
+            await browser.expect("lobby", lambda m: m["screen"]["choices"][0] in ("開一個新房間", "開始冒險"))
+            await browser.send("act", text="1")
+        await browser.answer((await browser.expect("premise"))["id"], ["燈塔", False])
+        for stage in ("規劃故事大綱", "寫開場"):
+            await browser.expect("busy_line", lambda m: m["text"] == f"故事生成中：{stage}…")
+        await browser.expect("choices", lambda m: m["choices"] == ["阿明往上爬", "阿明躲起來"])

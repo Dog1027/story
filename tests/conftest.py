@@ -130,11 +130,35 @@ def make_engine(*beats, genres=None, **kwargs) -> tuple[Engine, FakeGemini]:
 # ---------- Fake engines for the core and shells (no rules; change the state directly) ----------
 
 
-class FakeEngine:
+class Watched:
+    """Like AICaller: setting stage or draft calls on_change(), which a room sets through core.watch() to hear about progress."""
+
+    on_change = staticmethod(lambda: None)
+    _stage_text = _draft_text = ""
+
+    @property
+    def stage(self):
+        return self._stage_text
+
+    @stage.setter
+    def stage(self, value):
+        self._stage_text = value
+        self.on_change()
+
+    @property
+    def draft(self):
+        return self._draft_text
+
+    @draft.setter
+    def draft(self, value):
+        self._draft_text = value
+        self.on_change()
+
+
+class FakeEngine(Watched):
     """Stands in for Engine so core and shell tests can control each turn exactly. A solo lighthouse story."""
 
     genres: dict = {}  # Subclasses can swap in their own genre packs
-    stage = draft = ""  # Like Engine: the opening's progress, narration while streaming
 
     def __init__(self):
         self.fail_with: Exception | None = None  # The error the next act() raises
@@ -176,11 +200,10 @@ class FakeEngine:
         state.ending_title, state.epilogue = "燈塔守望者", "多年以後，燈塔仍會亮起。"
 
 
-class FakeGroupEngine:
+class FakeGroupEngine(Watched):
     """Stands in for Engine to control each turn exactly. A lighthouse story for Ming and Hua (just Ming when alone)."""
 
     genres: dict = {}
-    stage = draft = ""
 
     def __init__(self):
         self.rounds: list[dict] = []
@@ -232,7 +255,7 @@ PUZZLE = Puzzle(title="空號", surface="他每晚撥同一個空號。", truth=
 AI_PUZZLE = Puzzle(title="AI 的題目", surface="AI 的湯面", truth="AI 的湯底", key_points=["一", "二"])
 
 
-class FakeJudge:
+class FakeJudge(Watched):
     """A fake judge: questions are always answered "yes"; a guess containing 「全部」 ("all") hits every key point, otherwise one."""
 
     def __init__(self, puzzle=None, fail_with=None):

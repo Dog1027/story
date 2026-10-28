@@ -44,7 +44,6 @@ class Engine(AICaller):
         super().__init__(api_key, client, log_path)
         self.genres = load_genres()[0] if genres is None else genres  # Genre packs (see genres.py)
         self.build = PromptBuilder(self.genres)  # Builds the prompts
-        self.stage = ""  # What's happening while a new story starts, shown on the waiting screen (e.g. "planning the story outline")
 
     # ---------- Public interface ----------
 

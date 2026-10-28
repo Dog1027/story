@@ -54,6 +54,9 @@ class SoupCore(TeamGame):
     def progress(self) -> str:
         return self.judge.stage
 
+    def watch(self, on_change) -> None:
+        self.judge.on_change = on_change
+
     # ---------- New game: the puzzle ----------
 
     def _new_game(self) -> Reply:

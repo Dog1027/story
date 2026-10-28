@@ -13,7 +13,7 @@ def test_shells_only_use_the_public_core_interface():
     import story.shells
 
     exported = {"story.core": story.core.__all__, "story.games": story.games.__all__}
-    public = {"send", "start", "action_for", "progress", "draft", "phase", "players", "send_as", "view", "waiting"}
+    public = {"send", "start", "action_for", "watch", "progress", "draft", "phase", "players", "send_as", "view", "waiting"}
     problems = []
     for path in sorted(Path(story.shells.__file__).parent.rglob("*.py")):
         source = path.read_text(encoding="utf-8")

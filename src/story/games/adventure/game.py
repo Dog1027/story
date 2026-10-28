@@ -66,6 +66,9 @@ class AdventureCore(TeamGame):
     def draft(self) -> str:
         return self.engine.draft
 
+    def watch(self, on_change) -> None:
+        self.engine.on_change = on_change
+
     # ---------- New game: the story premise ----------
 
     def _new_game(self) -> Reply:

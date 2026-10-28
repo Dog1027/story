@@ -43,7 +43,6 @@ STARTS = {UI["start_game"].format(game=title): code for code, title in TITLES.it
 LEAVE = UI["leave_room"]
 READY_WAIT = 90  # Most seconds to wait for everyone to finish reading; after that the countdown starts anyway
 TIMEOUT_GRACE = 1  # Wait a little after the countdown ends to make up for network lag
-PROGRESS_POLL = 0.1  # While calling the AI, how often (seconds) to check the progress and how far the AI has written
 
 
 class Member:
@@ -60,7 +59,7 @@ class Room:
         on_change() is awaited after input that may change what the lobby shows (a game started, back to waiting)."""
         self.make_core = make_core
         self.on_change = on_change
-        self.tasks: set[asyncio.Task] = set()  # Input being handled in the background (see handle())
+        self.tasks: set[asyncio.Task] = set()  # Work in the background: input that uses the core (see handle()) and progress reports
         self.game = ""  # The name of this game (shown on the lobby's room card)
         self.members: dict[str, Member] = {}  # In the order they came in; people who disconnect mid-game are kept so they can reconnect
         self.host = ""
@@ -68,6 +67,8 @@ class Room:
         self.host_reply: Reply | None = None  # The screen waiting for the host's answer (save, premise, confirm restart), resent when the host changes
         self.lock = asyncio.Lock()  # Held while using the core (see _using_core); messages that don't need the core never wait for it
         self.busy = False  # Everyone sees "writing the story" (a call made with busy=True is running)
+        self.reported = ("", "")  # The progress and draft everyone was last told about during this call
+        self.loop: asyncio.AbstractEventLoop | None = None  # For news from the thread running the core (see _changed)
         self.ready: set[str] = set()  # People who finished reading this turn's narration
         self.countdown: asyncio.Task | None = None
         self.waiting_ready = False  # The countdown hasn't started; waiting for everyone to finish reading
@@ -108,9 +109,7 @@ class Room:
         """Input that uses the core is handled in the background: the AI can take tens of seconds, and meanwhile this player's
         connection keeps being read (so leaving is noticed at once). The core's lock takes them one at a time, in the order they came."""
         if message.get("type") == "send":
-            task = asyncio.create_task(self._on_send_message(name, message))
-            self.tasks.add(task)
-            task.add_done_callback(self.tasks.discard)
+            self._spawn(self._on_send_message(name, message))
         else:
             await self._on_message(name, message)
 
@@ -232,7 +231,9 @@ class Room:
         game = STARTS.get(pick_choice(text, self._lobby_choices(name)) or "")
         if game is None:
             return
+        self.loop = asyncio.get_running_loop()
         self.game, self.core = TITLES[game], self.make_core(self.online, self._set_queued, game)
+        self.core.watch(self._changed)
         await self._route(self.core.start())
 
     def _progress(self) -> str:
@@ -240,7 +241,30 @@ class Room:
         return UI["queued"] if self.queued else (self.core.progress if self.core else "")
 
     def _set_queued(self, queued: bool) -> None:
-        self.queued = queued  # Called from a background thread: _call() checks it now and then and tells everyone when it changes
+        self.queued = queued
+        self._changed()
+
+    def _changed(self) -> None:
+        """Called from the thread running the core when its progress or draft changes, or an AI call starts or stops queuing:
+        hand it to the event loop, which tells everyone (_report)."""
+        if self.loop is not None:
+            self.loop.call_soon_threadsafe(self._spawn, self._report())
+
+    def _spawn(self, coroutine) -> None:
+        task = asyncio.create_task(coroutine)
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+
+    async def _report(self) -> None:
+        """Tell everyone the progress (a new story calls the AI several times) and the narration so far, if they changed."""
+        if not self.busy or self.core is None:
+            return  # Only while everyone sees "writing the story"; news arriving after the call ended is dropped
+        progress, draft = self._progress(), self.core.draft
+        if progress != self.reported[0]:
+            await self._broadcast({"type": "busy", "on": True, "progress": progress})
+        if draft and draft != self.reported[1]:
+            await self._broadcast({"type": "draft", "text": draft})
+        self.reported = (progress, draft or self.reported[1])
 
     async def _on_playing(self, name: str, text: str) -> None:
         if text == "/timeout":
@@ -270,23 +294,10 @@ class Room:
     async def _call(self, fn: Callable[[], Reply], busy: bool = False) -> Reply:
         """Call the core in a background thread (it may call the AI and take a few seconds). With busy, everyone sees "writing the story"."""
         if busy:
-            self.busy = True
+            self.busy, self.reported = True, ("", "")
             await self._broadcast({"type": "busy", "on": True, "progress": ""})
         try:
-            task = asyncio.create_task(asyncio.to_thread(fn))
-            progress = draft = ""
-            while busy and not task.done():  # Tell everyone when the progress changes (a new story calls the AI several times) or the AI writes more
-                await asyncio.wait({task}, timeout=PROGRESS_POLL)
-                if not self.core or task.done():
-                    continue
-                now = self._progress()
-                if now != progress:
-                    progress = now
-                    await self._broadcast({"type": "busy", "on": True, "progress": progress})
-                if self.core.draft and self.core.draft != draft:
-                    draft = self.core.draft
-                    await self._broadcast({"type": "draft", "text": draft})
-            reply = await task
+            reply = await asyncio.to_thread(fn)  # Progress and narration so far arrive through _changed() meanwhile
         finally:
             if busy:
                 self.busy = False

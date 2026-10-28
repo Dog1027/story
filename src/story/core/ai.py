@@ -153,7 +153,31 @@ class AICaller:
         self.client = client or new_client(api_key)
         self.log_path = log_path  # One log per team; None writes nothing (e.g. just prompts)
         self.calls: list[dict] = []  # AI calls since the last log line (cleared once written)
-        self.draft = ""  # The narration the AI is writing (what has streamed in so far), which shells can show early; empty when not writing
+        self.on_change: Callable[[], None] = lambda: None  # Called (from the worker thread) whenever stage or draft changes
+        self._stage_text = ""
+        self._draft_text = ""
+
+    @property
+    def stage(self) -> str:
+        """What's happening now during a long job (e.g. "planning the story outline"), shown on the waiting screen; empty otherwise."""
+        return self._stage_text
+
+    @stage.setter
+    def stage(self, value: str) -> None:
+        if value != self._stage_text:
+            self._stage_text = value
+            self.on_change()
+
+    @property
+    def draft(self) -> str:
+        """The narration the AI is writing (what has streamed in so far), which shells can show early; empty when not writing."""
+        return self._draft_text
+
+    @draft.setter
+    def draft(self, value: str) -> None:
+        if value != self._draft_text:
+            self._draft_text = value
+            self.on_change()
 
     def generate(self, kind: str, hedge_after: float | None = HEDGE_AFTER, **request):
         """A call that returns the whole result at once. hedge_after=None sends only one copy (for calls that are slow by nature)."""

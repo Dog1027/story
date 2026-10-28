@@ -22,8 +22,6 @@ from story.shells.client import MAX_NAME_LEN, Client
 from story.shells.premise import PremiseForm
 from story.shells.view import StatusLine, View
 
-BUSY_POLL = 0.3  # While waiting, how often (seconds) to check whether the progress text changed
-
 
 class WebView(View):
     def __init__(self, ws: web.WebSocketResponse):
@@ -33,7 +31,6 @@ class WebView(View):
         self.pending: dict[int, asyncio.Future] = {}
         self.next_id = 0
         self.premise_form: PremiseForm | None = None  # While the premise dialog is open: its rules (shared layer)
-        self.busy_task: asyncio.Task | None = None
         self.tasks: set[asyncio.Task] = set()  # Work started by player input (cancelled together when the connection ends)
 
     # ---------- Sending and receiving ----------
@@ -99,8 +96,6 @@ class WebView(View):
             future.cancel()
         for task in list(self.tasks):
             task.cancel()
-        if self.busy_task:
-            self.busy_task.cancel()
 
     # ---------- View ----------
 
@@ -157,23 +152,9 @@ class WebView(View):
 
     def set_busy(self, busy: bool) -> None:
         self.post("busy", on=busy)
-        if not busy and self.busy_task:
-            self.busy_task.cancel()
-            self.busy_task = None
 
     def show_busy(self) -> None:
-        if self.busy_task is None:
-            self.busy_task = asyncio.create_task(self.follow_progress())
-
-    async def follow_progress(self) -> None:
-        """While waiting, update the progress text (e.g. "planning the story outline") when it changes."""
-        shown = None
-        while True:
-            text = self.client.busy_text()
-            if text != shown:
-                self.post("busy_line", text=text)
-                shown = text
-            await asyncio.sleep(BUSY_POLL)
+        self.post("busy_line", text=self.client.busy_text())
 
     def start_timer(self, seconds: int) -> None:
         self.post("timer", seconds=seconds)  # The room keeps time and sends time's up; the browser only displays it

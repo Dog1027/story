@@ -316,7 +316,7 @@ class Client:
                 self.progress = message.get("progress", "")
                 self.set_busy(message["on"])
                 if message["on"]:
-                    self.view.show_busy()
+                    self.view.show_busy()  # The room sends busy again whenever the progress changes
             elif kind == "draft":  # Narration the AI is writing, forwarded by the room
                 self.follow_draft(message["text"])
             elif kind == "timer":
