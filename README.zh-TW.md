@@ -27,6 +27,7 @@
 |---|---|---|
 | `just serve` | `uv run story --host 0.0.0.0` | 啟動伺服器，預設 8080 埠（`just serve 9000` 換埠） |
 | `just start`／`just stop` | | 在背景啟動／關閉伺服器（輸出在 `server.log`） |
+| `just update` | `git pull --ff-only && uv sync` | 把遠端的更新拉下來，並安裝新加的套件（伺服器在跑的話，再用 `just start` 重啟） |
 
 第一次執行時會問語言與 API key，存在 `~/.config/story/config.toml`（可以直接編輯）。環境變數優先：`STORY_LANG`（`zh-TW`、`en`）、`GEMINI_API_KEY`。
 

@@ -37,6 +37,17 @@ stop:
     fi
     rm -f .server.pid
 
+# Pull the latest version from the remote and install any new packages. Only fast-forwards: if your copy has its own commits, it stops instead of merging
+update:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git pull --ff-only
+    uv sync
+    if [ -f .server.pid ] && kill -0 "$(cat .server.pid)" 2>/dev/null; then
+        # Not restarted on its own: that would disconnect anyone in the middle of a game
+        echo "The background server is still running the old version: run just start to restart it"
+    fi
+
 # Preview the full prompts sent to the AI (doesn't call the AI): just prompts, just prompts turn, just prompts --players 2, just prompts --genre <genre name> opening
 prompts *args:
     @uv run python -m story.games.adventure.preview {{args}}

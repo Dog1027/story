@@ -27,6 +27,7 @@ You need [uv](https://docs.astral.sh/uv/) (installs Python 3.14 and the packages
 |---|---|---|
 | `just serve` | `uv run story --host 0.0.0.0` | Start the server, port 8080 by default (`just serve 9000` to change it) |
 | `just start` / `just stop` | | Start or stop the server in the background (output in `server.log`) |
+| `just update` | `git pull --ff-only && uv sync` | Pull the latest version from the remote and install any new packages (then `just start` to restart a running server) |
 
 The first run asks for a language and an API key, saved to `~/.config/story/config.toml` (editable). Environment variables win: `STORY_LANG` (`zh-TW`, `en`), `GEMINI_API_KEY`.
 
