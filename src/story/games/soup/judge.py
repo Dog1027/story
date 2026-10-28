@@ -106,6 +106,7 @@ class SoupJudge(AICaller):
     def _draft(self, prompt: str) -> Puzzle | None:
         response = self.generate(
             "puzzle",
+            hedge_after=None,  # Slow by nature, and the writer model allows only a few calls a minute: never send twice
             model=WRITER_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -127,6 +128,7 @@ class SoupJudge(AICaller):
         """Check a puzzle: an empty string if it holds up, otherwise what's wrong."""
         response = self.generate(
             "puzzle_check",
+            hedge_after=None,  # Slow by nature (it thinks the puzzle through): never send twice
             model=MODEL,
             contents=SOUP["check"].format(surface=puzzle.surface, truth=puzzle.truth, points=points_text(puzzle)),
             config=types.GenerateContentConfig(

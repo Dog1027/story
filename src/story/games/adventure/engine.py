@@ -247,6 +247,7 @@ class Engine(AICaller):
         turns, old_events, old_flags = to_compact(state)
         response = self.generate(
             "compaction",
+            hedge_after=None,  # Runs in the background; nobody is waiting on it
             model=MODEL,
             contents=self.build.compaction(state),
             config=types.GenerateContentConfig(system_instruction=MEMORY["system"], thinking_config=types.ThinkingConfig(thinking_level="low")),

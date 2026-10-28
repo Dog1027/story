@@ -420,6 +420,61 @@ def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):
     assert (call["prompt"], call["cached"], call["output"], call["thinking"]) == (1200, 800, 300, 50)
 
 
+# ---------- A second copy of a slow request ----------
+
+
+def test_a_slow_request_gets_a_second_copy_and_the_first_answer_wins():
+    """Gemini sometimes leaves a request waiting 15-20 seconds: with no answer after a while, send it again and use whichever answers first."""
+    import threading
+
+    from story.core.ai import first_of
+
+    release, dropped, calls = threading.Event(), [], []
+
+    def start():
+        calls.append(1)
+        if len(calls) == 1:  # The first copy is stuck
+            release.wait(5)
+            return "slow"
+        return "fast"
+
+    assert first_of(start, 0.05, discard=dropped.append) == ("fast", True)
+    release.set()
+    for _ in range(100):
+        if dropped:
+            break
+        threading.Event().wait(0.01)
+    assert dropped == ["slow"]  # The copy that lost is dropped (a stream gets closed)
+
+
+def test_a_quick_answer_or_error_sends_only_one_copy():
+    from story.core.ai import first_of
+
+    assert first_of(lambda: "ok", 1) == ("ok", False)
+    with pytest.raises(ValueError):
+        first_of(lambda: (_ for _ in ()).throw(ValueError("bad key")), 1)  # Failing fast isn't slowness: no second copy
+    assert first_of(lambda: "ok", None) == ("ok", False)  # Calls slow by nature never send a second copy
+
+
+def test_an_error_counts_only_when_both_copies_fail():
+    import time
+
+    from story.core.ai import first_of
+
+    calls = []
+
+    def start():
+        calls.append(1)
+        if len(calls) == 1:
+            time.sleep(0.1)
+            raise RuntimeError("timeout")
+        return "second"
+
+    assert first_of(start, 0.05) == ("second", True)
+    with pytest.raises(RuntimeError, match="both"):
+        first_of(lambda: (time.sleep(0.06), (_ for _ in ()).throw(RuntimeError("both")))[1], 0.03)
+
+
 def test_overall_level_words_are_not_conditions():
     """The AI sometimes reports a status bar verdict (fine, badly hurt…) as a wound name: ignore it."""
     from story.games.adventure.models import ConditionChange
