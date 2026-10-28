@@ -29,7 +29,8 @@ Room → player
 """
 
 import asyncio
-from collections.abc import Callable
+from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable
 
 from story.core import MAX_PLAYERS, Game, Reply, pick_choice
 from story.games import GAMES
@@ -49,19 +50,24 @@ class Member:
     def __init__(self, name: str, conn: Connection):
         self.name, self.conn = name, conn
         self.online = True
+        self.behind = False  # Came back while the core was busy: shown the current screen once it's done
 
 
 class Room:
-    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None], str], Game]):
+    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None], str], Game], on_change: Callable[[], Awaitable[None]] | None = None):
         """make_core(players, on_queue, game) builds this game's core: game is a code from GAMES;
-        on_queue(queued) lets the screen show "queued" while an AI call waits in line."""
+        on_queue(queued) lets the screen show "queued" while an AI call waits in line.
+        on_change() is awaited after input that may change what the lobby shows (a game started, back to waiting)."""
         self.make_core = make_core
+        self.on_change = on_change
+        self.tasks: set[asyncio.Task] = set()  # Input being handled in the background (see handle())
         self.game = ""  # The name of this game (shown on the lobby's room card)
         self.members: dict[str, Member] = {}  # In the order they came in; people who disconnect mid-game are kept so they can reconnect
         self.host = ""
         self.core: Game | None = None
         self.host_reply: Reply | None = None  # The screen waiting for the host's answer (save, premise, confirm restart), resent when the host changes
-        self.lock = asyncio.Lock()  # Handle one input at a time, so the core is never called concurrently
+        self.lock = asyncio.Lock()  # Held while using the core (see _using_core); messages that don't need the core never wait for it
+        self.busy = False  # Everyone sees "writing the story" (a call made with busy=True is running)
         self.ready: set[str] = set()  # People who finished reading this turn's narration
         self.countdown: asyncio.Task | None = None
         self.waiting_ready = False  # The countdown hasn't started; waiting for everyone to finish reading
@@ -93,19 +99,36 @@ class Room:
         return text == "/leave" or (self.core is None and pick_choice(text, self._lobby_choices(name)) == LEAVE)
 
     async def add(self, name: str, conn: Connection) -> None:
-        async with self.lock:
-            await self._join(name, conn)
+        await self._join(name, conn)
 
     async def remove(self, name: str) -> None:
-        async with self.lock:
-            await self._leave(name)
+        await self._leave(name)
 
     async def handle(self, name: str, message: dict) -> None:
-        async with self.lock:
+        """Input that uses the core is handled in the background: the AI can take tens of seconds, and meanwhile this player's
+        connection keeps being read (so leaving is noticed at once). The core's lock takes them one at a time, in the order they came."""
+        if message.get("type") == "send":
+            task = asyncio.create_task(self._on_send_message(name, message))
+            self.tasks.add(task)
+            task.add_done_callback(self.tasks.discard)
+        else:
             await self._on_message(name, message)
 
     async def close(self) -> None:
         self._stop_countdown()
+        for task in list(self.tasks):
+            task.cancel()
+
+    @asynccontextmanager
+    async def _using_core(self):
+        """Use the core, one at a time: it isn't thread-safe, and a call can take tens of seconds while the AI writes.
+        Only code that touches the core goes through here, so leaving, disconnecting and "finished reading" never wait for the AI.
+        On the way out, show people who came back meanwhile the current screen, and stand in for offline players if only they are left."""
+        async with self.lock:
+            yield
+            for member in [m for m in self._online_members() if m.behind]:
+                await self._catch_up(member.name)
+            await self._fill_offline()
 
     # ---------- Coming and going ----------
 
@@ -117,13 +140,29 @@ class Room:
             await self._broadcast_lobby(clear_for=name)
             return
         await self._broadcast_notice(UI["room_back"].format(name=name), skip=name)
+        if self.lock.locked():  # The core is busy (e.g. the AI is writing): don't wait here; they're caught up once it's done
+            self.members[name].behind = True
+            if self.busy:
+                await self._safe_write(self.members[name], {"type": "busy", "on": True, "progress": self._progress()})
+            return
+        async with self._using_core():
+            await self._catch_up(name)
+
+    async def _catch_up(self, name: str) -> None:
+        """Show someone who (re)joined a game in progress where things stand now."""
+        member = self.members.get(name)
+        if member is None or not member.online:
+            return
+        member.behind = False
+        if self.core is None:
+            return  # The game ended meanwhile: they already got the waiting screen with everyone else
         if self.core.phase == "playing":
             await self._send_reply(name, self.core.view(name))
             await self._broadcast_waiting()
             if self.countdown and not self.waiting_ready:
                 left = round(self.deadline - asyncio.get_running_loop().time())
                 if left > 0:
-                    await conn.send({"type": "timer", "seconds": left})
+                    await member.conn.send({"type": "timer", "seconds": left})
         elif name == self.host and self.host_reply:
             await self._send_reply(name, self.host_reply)
         else:
@@ -146,11 +185,12 @@ class Room:
             await self._broadcast_lobby()
             return
         await self._broadcast_notice(UI["room_left"].format(name=name))
-        if self.core.phase == "playing":
-            await self._fill_offline()
-            await self._maybe_start_countdown()
-        elif name != self.host and self.host_reply:
+        if self.host_reply and name != self.host:
             await self._send_reply(self.host, self.host_reply)  # The old host left, so the new host answers
+        await self._maybe_start_countdown()  # They might have been the last one still reading
+        if not self.lock.locked():  # If the core is busy, whoever is using it stands in for them on the way out
+            async with self._using_core():
+                pass  # Leaving _using_core stands in for offline players if only they are left
 
     # ---------- Input ----------
 
@@ -159,9 +199,13 @@ class Room:
         if kind == "ready":
             self.ready.add(name)
             await self._maybe_start_countdown()
-        elif kind == "send":
-            text = str(message.get("text", "")).strip()
+
+    async def _on_send_message(self, name: str, message: dict) -> None:
+        text = str(message.get("text", "")).strip()
+        async with self._using_core():
             await self._on_send(name, text, form=bool(message.get("form")), answer=bool(message.get("answer")))
+        if self.on_change:
+            await self.on_change()
 
     async def _on_send(self, name: str, text: str, form: bool = False, answer: bool = False) -> None:
         if self.core is None:
@@ -190,6 +234,10 @@ class Room:
             return
         self.game, self.core = TITLES[game], self.make_core(self.online, self._set_queued, game)
         await self._route(self.core.start())
+
+    def _progress(self) -> str:
+        """What the waiting screen says: queued for the shared call limit, or what the core is doing."""
+        return UI["queued"] if self.queued else (self.core.progress if self.core else "")
 
     def _set_queued(self, queued: bool) -> None:
         self.queued = queued  # Called from a background thread: _call() checks it now and then and tells everyone when it changes
@@ -222,6 +270,7 @@ class Room:
     async def _call(self, fn: Callable[[], Reply], busy: bool = False) -> Reply:
         """Call the core in a background thread (it may call the AI and take a few seconds). With busy, everyone sees "writing the story"."""
         if busy:
+            self.busy = True
             await self._broadcast({"type": "busy", "on": True, "progress": ""})
         try:
             task = asyncio.create_task(asyncio.to_thread(fn))
@@ -230,7 +279,7 @@ class Room:
                 await asyncio.wait({task}, timeout=PROGRESS_POLL)
                 if not self.core or task.done():
                     continue
-                now = UI["queued"] if self.queued else self.core.progress
+                now = self._progress()
                 if now != progress:
                     progress = now
                     await self._broadcast({"type": "busy", "on": True, "progress": progress})
@@ -240,6 +289,7 @@ class Room:
             reply = await task
         finally:
             if busy:
+                self.busy = False
                 await self._broadcast({"type": "busy", "on": False})
         return reply
 
@@ -287,7 +337,7 @@ class Room:
 
     async def _send_reply(self, name: str, reply: Reply) -> None:
         member = self.members.get(name)
-        if member and member.online:
+        if member and member.online and not member.behind:  # Someone catching up gets the whole current screen instead (_catch_up)
             view = self.core.view(name, reply) if self.core else reply
             await self._safe_write(member, {"type": "reply", "reply": view.to_dict()})
 
@@ -305,7 +355,7 @@ class Room:
         self.deadline = asyncio.get_running_loop().time() + seconds
         await self._broadcast({"type": "timer", "seconds": seconds})
         await asyncio.sleep(seconds + TIMEOUT_GRACE)
-        async with self.lock:
+        async with self._using_core():
             self.countdown = None
             if self.core and self.core.phase == "playing" and self.core.waiting():
                 await self._route(await self._call(lambda: self.core.send("/timeout"), busy=True))

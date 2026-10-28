@@ -384,6 +384,46 @@ async def test_everyone_sees_the_narration_while_it_is_written(isolated):
         await lobby.stop()
 
 
+class StuckEngine(FakeGroupEngine):
+    """The AI takes its time with a turn until the test lets it go."""
+
+    def __init__(self):
+        import threading
+
+        super().__init__()
+        self.release = threading.Event()
+
+    def act(self, state, actions):
+        self.release.wait(5)
+        super().act(state, actions)
+
+
+async def test_leaving_and_coming_back_do_not_wait_for_the_ai(isolated):
+    """While the AI writes a turn, someone leaving is handled at once, and someone coming back sees "writing the story" right away,
+    then the current screen once it's done."""
+    engine = StuckEngine()
+    lobby = make_lobby(isolated, engine)
+    try:
+        host, guest = await start_story(lobby)
+        await host.reply()
+        await guest.reply()
+        host.messages.clear()  # Only wait for what comes after this
+        await guest.send("1")
+        await host.send("1")
+        await host.expect(lambda m: m["type"] == "busy" and m["on"])
+        guest.conn.close()
+        await host.expect(lambda m: m["type"] == "notice" and "小華 離線了" in m["text"], timeout=1)  # Not held up by the AI
+        back = await join(lobby, "小華")
+        await back.expect(lambda m: m["type"] == "busy" and m["on"], timeout=1)
+        engine.release.set()
+        view = await back.reply()
+        assert view.resumed and view.narration == "阿明阿明往上爬；小華小華往上爬" and view.actor == "小華"
+        assert not [m for m in back.messages if m["type"] == "reply"]  # Only the whole current screen, not the turn's reply as well
+    finally:
+        engine.release.set()
+        await lobby.stop()
+
+
 async def test_two_rooms_play_at_the_same_time(lobby):
     """Different people form their own teams: two rooms play separately, and the lobby lists rooms still waiting for players."""
     a = await join(lobby, "阿明")

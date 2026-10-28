@@ -268,6 +268,7 @@ class Client:
 
     def clear_story(self, premise: str = "") -> None:
         self.choices = []
+        self.draft = ""  # A cleared screen has no narration in progress
         self.shown = (0, [])
         self.view.clear_story(premise)
         self.refresh_hint()

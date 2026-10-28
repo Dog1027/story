@@ -171,8 +171,7 @@ class Lobby:
         elif message.get("type") == "send" and room.is_leaving(name, text):
             await self._leave_room(name)
         else:
-            await room.handle(name, message)
-            await self._show_rooms()  # The room's state may have changed (a game started, back to waiting)
+            await room.handle(name, message)  # The room calls _show_rooms() when its state may have changed (a game started, back to waiting)
 
     async def _choose(self, name: str, text: str) -> None:
         options = self.options.get(name, [])
@@ -187,7 +186,7 @@ class Lobby:
                 if len(self.rooms) >= MAX_ROOMS:
                     await self._notice(name, UI["rooms_full"].format(max=MAX_ROOMS))
                     return
-                room = Room(self.make_core)
+                room = Room(self.make_core, on_change=self._show_rooms)
                 self.rooms.append(room)
         await self._enter(name, room)
 
