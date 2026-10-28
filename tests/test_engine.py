@@ -1,4 +1,4 @@
-"""engine 的遊戲規則：用假的 Gemini 回覆餵給真的 Engine，檢查程式有沒有正確把關。"""
+"""The engine's game rules: feed a real Engine fake Gemini replies and check that the program guards correctly."""
 
 import pytest
 from conftest import ARC, HERO, InvalidKeyError, beat, cond, hero, make_engine, solo
@@ -23,7 +23,7 @@ from story.games.adventure.rules import (
 
 
 def play(*beats, timed=False, **kwargs):
-    """開場加上數個回合：第一個 beat 是開場，其餘每個 beat 對應一次行動。"""
+    """The opening plus several turns: the first beat is the opening, and each remaining beat is one action."""
     engine, gemini = make_engine(*beats, **kwargs)
     state = solo(premise="測試", timed_mode=timed)
     engine.start(state)
@@ -36,7 +36,7 @@ def conditions(state):
     return {c.name: c.severity for c in hero(state).conditions}
 
 
-# ---------- 狀態：新增、惡化、好轉、移除 ----------
+# ---------- Conditions: new, worse, better, removed ----------
 
 
 def test_new_conditions_are_added_with_kind():
@@ -62,7 +62,7 @@ def test_removing_serious_body_condition_only_downgrades():
         beat(conditions_removed=["骨折"]),
         beat(conditions_removed=["骨折"]),
     )
-    assert conditions(state) == {}  # 重 → 中 → 輕 → 消失，要三回合
+    assert conditions(state) == {}  # Severe → moderate → light → gone takes three turns
 
 
 def test_mind_conditions_can_be_removed_directly():
@@ -83,12 +83,12 @@ def test_long_condition_names_are_trimmed():
 def test_ai_can_correct_kind_of_old_condition():
     engine, _ = make_engine(beat(conditions_changed=[cond("驚魂未定", "中", "精神")]))
     state = solo(premise="舊存檔", turn=5, minutes=0, conditions=[Condition(name="驚魂未定", severity="moderate")])
-    assert hero(state).conditions[0].kind == "body"  # 舊存檔一律先當成身體
+    assert hero(state).conditions[0].kind == "body"  # Old saves always treat it as body first
     engine.act(state, {HERO: "a"})
     assert hero(state).conditions[0].kind == "mind"
 
 
-# ---------- 整體狀態與死亡 ----------
+# ---------- Overall condition and death ----------
 
 
 @pytest.mark.parametrize(
@@ -128,11 +128,11 @@ def test_lethal_injury_ends_game_and_asks_ai_for_death_scene():
     assert body_score(hero(state)) >= DEATH_SCORE
     assert state.game_over
     assert hero(state).choices == []
-    assert state.current_narration == "你咬牙撐著。\n\n（倒下的場景）"  # 程式判定死亡後，AI 接著寫倒下的場景
+    assert state.current_narration == "你咬牙撐著。\n\n（倒下的場景）"  # After the program declares death, the AI writes the falling scene
     assert "傷勢已經致命" in gemini.prompts[-1] and HERO in gemini.prompts[-1]
 
 
-# ---------- 遊戲內時間與痊癒 ----------
+# ---------- In-game time and healing ----------
 
 
 def test_opening_sets_clock_from_time_of_day():
@@ -163,7 +163,7 @@ def test_light_injury_heals_after_six_hours():
 
 def test_medium_injury_can_fully_heal_over_days():
     state, *_ = play(beat(conditions_changed=[cond("扭傷", "中")]), beat(time_passed="數天"))
-    assert conditions(state) == {}  # 2 天降為輕，多出來的 1 天讓輕傷痊癒
+    assert conditions(state) == {}  # 2 days bring it down to light, and the extra day heals the light wound
 
 
 def test_serious_body_injury_does_not_heal_by_time():
@@ -173,12 +173,12 @@ def test_serious_body_injury_does_not_heal_by_time():
 
 def test_serious_mind_condition_fades_over_days():
     state, *_ = play(beat(conditions_changed=[cond("恐懼", "重", "精神")]), beat(time_passed="一夜"))
-    assert conditions(state) == {"恐懼": "severe"}  # 重度要 2 天才降一級
+    assert conditions(state) == {"恐懼": "severe"}  # Severe takes 2 days to drop a level
     state2, *_ = play(beat(conditions_changed=[cond("恐懼", "重", "精神")]), beat(time_passed="數天"))
-    assert conditions(state2) == {}  # 72 小時：重 → 中（48h）→ 輕（12h）→ 消失（2h）
+    assert conditions(state2) == {}  # 72 hours: severe → moderate (48h) → light (12h) → gone (2h)
 
 
-# ---------- 限時模式 ----------
+# ---------- Timed mode ----------
 
 
 @pytest.mark.parametrize("given, expected", [(0, 0), (3, MIN_TIME_LIMIT), (20, 20), (999, MAX_TIME_LIMIT)])
@@ -199,7 +199,7 @@ def test_no_time_limit_when_game_over():
     assert state.game_over and state.current_time_limit == 0
 
 
-# ---------- 背包、事實、事件 ----------
+# ---------- Bag, facts, events ----------
 
 
 def test_cannot_lose_items_you_do_not_have():
@@ -218,7 +218,7 @@ def test_at_most_four_choices():
     assert len(hero(state).choices) == 4
 
 
-# ---------- 故事大綱與節奏 ----------
+# ---------- Story outline and pacing ----------
 
 
 def test_start_plans_arc_before_opening():
@@ -236,7 +236,7 @@ def test_milestone_advances_act():
 
 
 def test_milestone_too_early_in_an_act_is_ignored():
-    """這一幕還沒演滿 MIN_ACT_TURNS 回合：AI 說達成也不推進，提示詞也會叫它先鋪陳。"""
+    """The act hasn't run MIN_ACT_TURNS turns yet: the AI saying it's reached doesn't advance, and the prompt tells it to build up first."""
     engine, gemini = make_engine(beat(milestone_reached=True))
     state = solo(premise="x", turn=2, minutes=0, arc=ARC, act=0, act_turns=1)
     engine.act(state, {HERO: "a"})
@@ -245,7 +245,7 @@ def test_milestone_too_early_in_an_act_is_ignored():
 
 
 def test_early_ending_is_rewritten_then_ignored():
-    """太早寫出結局：先請 AI 重寫一次；重寫後還是結局就忽略，故事繼續。"""
+    """An ending written too early: first have the AI rewrite once; if the rewrite still ends, ignore it and the story goes on."""
     engine, gemini = make_engine(beat(game_over=True, narration="全劇終"), beat(narration="新的發展", choices=["追上去"]))
     state = solo(premise="x", turn=5, minutes=0, arc=ARC, act=1)
     engine.act(state, {HERO: "a"})
@@ -264,11 +264,11 @@ def test_ending_needs_the_final_act_and_enough_turns():
         state = solo(premise="x", turn=turn, minutes=0, arc=ARC, act=act)
         engine.act(state, {HERO: "a"})
         assert state.game_over is allowed, (turn, act)
-        assert len(gemini.prompts) == (1 if allowed else 2)  # 不能結束時會請 AI 重寫一次
+        assert len(gemini.prompts) == (1 if allowed else 2)  # When it can't end, the AI is asked to rewrite once
 
 
 def test_death_ends_the_story_at_any_time():
-    """因傷死亡由程式判定，不受最早結局回合的限制。"""
+    """Death from wounds is decided by the program and isn't limited by the earliest ending turn."""
     lethal = [cond("失血", "重"), cond("骨折", "重")]
     engine, _ = make_engine(beat(conditions_changed=lethal), beat(narration="主角倒下了。", game_over=True))
     state = solo(premise="x", turn=3, minutes=0, arc=ARC, act=0)
@@ -298,7 +298,7 @@ def test_wrap_up_reminder_after_target_length():
 
 
 def test_twist_is_foreshadowed_then_revealed_in_the_third_act():
-    """前兩幕只給真相與伏筆、叫 AI 不要說破；第三幕要揭露；最後一幕當作已知。"""
+    """Acts one and two only give the truth and clues and tell the AI not to give it away; act three must reveal it; the last act treats it as known."""
     prompts = {}
     for act in range(4):
         engine, gemini = make_engine(beat())
@@ -318,7 +318,7 @@ def test_old_save_gets_arc_and_jumps_to_matching_act():
     assert "已經進行了 109 回合" in gemini.prompts[0]
 
 
-# ---------- 提示詞與記憶 ----------
+# ---------- Prompts and memory ----------
 
 
 def test_prompt_includes_the_history_and_no_duplicate_action():
@@ -342,7 +342,7 @@ def test_compaction_folds_old_events_and_flags_into_summary():
     assert engine.needs_compaction(state)
     engine.compact_memory(state)
     assert state.summary == "壓縮後的摘要"
-    assert state.recent == turns  # 劇情紀錄沒有超過預算：原文全部保留
+    assert state.recent == turns  # The story log isn't over budget: everything is kept verbatim
     assert state.key_events == [f"事件{i}" for i in range(10, 16)]
     assert state.flags == [f"事實{i}" for i in range(18, 30)]
     assert "事件0" in gemini.prompts[-1] and "事件15" not in gemini.prompts[-1]
@@ -350,7 +350,7 @@ def test_compaction_folds_old_events_and_flags_into_summary():
 
 def test_every_turn_is_kept_in_the_history():
     state, *_ = play(*[beat() for _ in range(7)])
-    assert len(state.recent) == 6  # 開場之後的 6 回合全部保留原文
+    assert len(state.recent) == 6  # All 6 turns after the opening are kept verbatim
 
 
 def test_history_over_budget_compacts_the_oldest_half(monkeypatch):
@@ -358,18 +358,18 @@ def test_history_over_budget_compacts_the_oldest_half(monkeypatch):
 
     monkeypatch.setattr(rules, "HISTORY_BUDGET", 100)
     engine, gemini = make_engine(summary="早期劇情的摘要")
-    turns = [Turn(narration=f"第{i}回合" + "字" * 16, action="a") for i in range(6)]  # 每回合 21 字，共 126 字
+    turns = [Turn(narration=f"第{i}回合" + "字" * 16, action="a") for i in range(6)]  # 21 characters a turn, 126 in total
     state = solo(premise="x", recent=list(turns))
     assert engine.needs_compaction(state)
     engine.compact_memory(state)
     assert state.summary == "早期劇情的摘要"
-    assert state.recent == turns[-2:]  # 壓到剩預算的一半以內（42 字）
+    assert state.recent == turns[-2:]  # Compacted to within half the budget (42 characters)
     assert "第0回合" in gemini.prompts[-1] and "第5回合" not in gemini.prompts[-1]
     assert not engine.needs_compaction(state)
 
 
 def test_prompt_keeps_changing_sections_after_the_history():
-    """會隨劇情改變的區塊（重大事件、故事進度、狀態）放在劇情紀錄後面，前面的部分每回合都一樣，快取才命中得到。"""
+    """Sections that change with the story (key events, story progress, status) come after the story log, so everything before them is the same every turn and the cache can hit."""
     engine, gemini = make_engine(beat())
     state = solo(
         premise="燈塔", turn=3, minutes=0, arc=ARC, summary="早期的摘要", key_events=["找到鑰匙"],
@@ -393,7 +393,7 @@ def test_turn_log_is_written(isolated):
 
 
 def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):
-    """每回合的紀錄附上這段期間的 AI 呼叫：種類、秒數，以及 Gemini 回報的 token 用量（查等待時間花在哪裡）。"""
+    """Each turn's log includes the AI calls in that span: kind, seconds, and the token usage Gemini reports (to find where waiting time goes)."""
     import json
     from types import SimpleNamespace
 
@@ -411,7 +411,7 @@ def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):
     engine.log_path = isolated / "log.jsonl"
     state = solo(premise="x")
     engine.start(state)
-    engine.act(state, {HERO: "a"})  # AI 太早寫出結局：請它重寫一次
+    engine.act(state, {HERO: "a"})  # The AI wrote the ending too early: have it rewrite once
     opening, turn = [json.loads(line) for line in engine.log_path.read_text(encoding="utf-8").splitlines()]
     assert [c["kind"] for c in opening["calls"]] == ["arc", "turn"]
     assert [c["kind"] for c in turn["calls"]] == ["turn", "rewrite"]
@@ -421,7 +421,7 @@ def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):
 
 
 def test_overall_level_words_are_not_conditions():
-    """AI 偶爾把狀態列的評語（良好、重傷……）當成傷勢名稱回報：直接忽略。"""
+    """The AI sometimes reports a status bar verdict (fine, badly hurt…) as a wound name: ignore it."""
     from story.games.adventure.models import ConditionChange
 
     state = solo(premise="x")
@@ -430,7 +430,7 @@ def test_overall_level_words_are_not_conditions():
     assert [c.name for c in hero(state).conditions] == ["右臂撕裂傷"]
 
 
-# ---------- 串流 ----------
+# ---------- Streaming ----------
 
 
 def test_partial_json_fields_while_streaming():
@@ -439,7 +439,7 @@ def test_partial_json_fields_while_streaming():
     text = '{"game_over": false, "narration": "你在\\n燈塔\\u9192'
     assert partial_bool(text, "game_over") is False
     assert partial_string(text, "narration") == "你在\n燈塔醒"
-    assert partial_string(text[:-3], "narration") == "你在\n燈塔"  # \\u 還沒收完整：先不顯示
+    assert partial_string(text[:-3], "narration") == "你在\n燈塔"  # \\u isn't complete yet: don't show it yet
     assert partial_string('{"game_over": tr', "narration") is None and partial_bool('{"game_over": tr', "game_over") is None
 
 
@@ -450,15 +450,15 @@ def test_draft_follows_the_narration_as_it_streams():
     def watching(**request):
         for chunk in stream(**request, chunk_size=10):
             yield chunk
-            drafts.append(engine.draft)  # 收下這一段之後，draft 已經更新
+            drafts.append(engine.draft)  # After taking this chunk, draft is already updated
 
     gemini.models.generate_content_stream = watching
     state = solo(premise="x", turn=1, minutes=0, arc=ARC)
     engine.act(state, {HERO: "a"})
     shown = [d for d in drafts if d]
-    assert len(shown) > 3 and all(b.startswith(a) for a, b in zip(shown, shown[1:]))  # 一路變長
+    assert len(shown) > 3 and all(b.startswith(a) for a, b in zip(shown, shown[1:]))  # Keeps growing
     assert shown[-1] == state.current_narration
-    assert engine.draft == ""  # 寫完就清空
+    assert engine.draft == ""  # Cleared once done
 
 
 def test_early_ending_stops_before_any_narration_is_shown():
@@ -473,12 +473,12 @@ def test_early_ending_stops_before_any_narration_is_shown():
     gemini.models.generate_content_stream = watching
     state = solo(premise="x", turn=5, minutes=0, arc=ARC, act=1)
     engine.act(state, {HERO: "a"})
-    assert "全劇終" not in "".join(drafts)  # game_over 在劇情前面：還沒出現劇情就中斷重寫
+    assert "全劇終" not in "".join(drafts)  # game_over comes before the narration: stop and rewrite before any narration appears
     assert state.current_narration == "新的發展"
 
 
 def test_requests_time_out_and_retry():
-    """Gemini 偶爾卡住一兩分鐘：每次請求有逾時，逾時或伺服器忙時自動重送。"""
+    """Gemini sometimes hangs a minute or two: each request has a timeout and is resent automatically on a timeout or a busy server."""
     from story.core.ai import REQUEST_ATTEMPTS, REQUEST_TIMEOUT, new_client
 
     options = new_client("key")._api_client._http_options
@@ -486,7 +486,7 @@ def test_requests_time_out_and_retry():
 
 
 def test_timeout_after_retries_becomes_a_normal_error():
-    """重送都逾時：轉成核心會處理的 RuntimeError（不然會讓程式出錯），失敗的呼叫記進下一筆紀錄。"""
+    """Every resend timed out: turn it into a RuntimeError the core handles (otherwise the program would crash), and record the failed call in the next log line."""
     import httpx
 
     engine, gemini = make_engine(beat())

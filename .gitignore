@@ -11,14 +11,14 @@ wheels/
 
 # Game saves
 saves/
-# 以前終端機版的存檔與紀錄
+# Saves and logs from the old terminal version
 save.json
 story_log.jsonl
 .*.tmp
 
-# just start 的背景伺服器
+# just start's background server
 .server.pid
 server.log
 
-# just eval 的結果
+# just eval results
 eval_results/

@@ -1,4 +1,4 @@
-"""海龜湯：AI 當裁判、大家一起猜的情境猜謎。見 game.py。"""
+"""Turtle soup: a lateral-thinking puzzle everyone solves together, with the AI as the judge. See game.py."""
 
 from story.games.soup.game import SoupCore
 

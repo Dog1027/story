@@ -1,12 +1,12 @@
-"""隊伍遊戲的共用流程：每種玩法（story/games/ 底下的冒險 StoryCore、海龜湯 SoupCore）都是它的子類別。
+"""The flow shared by team games: every game (the adventure's StoryCore and turtle soup's SoupCore under story/games/) is a subclass.
 
-一局遊戲是一支一到 MAX_PLAYERS 人的隊伍。每位玩家的行動用 send_as(名字, 文字) 送，誰先送誰先記，
-還在場上的人都行動了，才交給子類別推進一回合（_play_round）；只有一位玩家時，send(文字) 就是他的行動。
-不屬於某位玩家的輸入（時間到、對話框的回答、/state）用 send()。view(名字) 取得某位玩家眼中的畫面。
+A game is a team of one to MAX_PLAYERS players. Each player's action is sent with send_as(name, text), recorded in the order sent;
+once everyone still in play has acted, the subclass advances a turn (_play_round). With one player, send(text) is their action.
+Input that belongs to no player (time's up, dialog answers, /state) uses send(). view(name) gets one player's view of the screen.
 
-這裡管：玩家名單、找到存檔時問要不要繼續、收集每個人的行動（推進失敗時全部撤回）、確認重新開始、再玩一次、
-view()、waiting()、失敗時的回覆、組回覆。子類別管：開新局要問什麼（setup 階段）、一回合怎麼推進、
-結局、狀態列、/help，以及玩法的名稱（title）與存檔的格式（state_class）。存檔要有 names、premise、turn、game_over。
+This class handles: the player list, asking whether to continue a found save, collecting everyone's actions (all taken back if the turn fails), confirming a restart, playing again,
+view(), waiting(), failure replies, and building replies. Subclasses handle: what to ask for a new game (the setup phase), how a turn advances,
+the ending, the status bar, /help, plus the game's name (title) and the save format (state_class). A save must have names, premise, turn, game_over.
 """
 
 from dataclasses import replace
@@ -22,14 +22,14 @@ from story.core.saves import load, save
 CONTINUE_CHOICES = [UI["choice_continue"], UI["choice_new_game"]]
 CONFIRM_CHOICES = [UI["choice_confirm"], UI["choice_cancel"]]
 PLAY_AGAIN_CHOICES = [UI["choice_play_again"]]
-FAILURES = (errors.APIError, RuntimeError)  # 呼叫 AI 失敗：留在原本的階段，讓玩家重試
+FAILURES = (errors.APIError, RuntimeError)  # Calling the AI failed: stay in the same phase and let players retry
 
 
 class TeamGame:
-    title: str  # 玩法的名稱（冒險、海龜湯），外殼顯示用
-    state_class: type[BaseModel]  # 存檔的格式
-    timeout_action: str  # 限時模式時間到，代替還沒行動的人的行動（/timeout）
-    away_action: str  # 暫時離開（網頁版斷線時由房間送出 /away），代替這個人的行動
+    title: str  # The game's name (adventure, turtle soup), shown by the shells
+    state_class: type[BaseModel]  # The save format
+    timeout_action: str  # Stands in for players who haven't acted when timed mode runs out (/timeout)
+    away_action: str  # Stands in for a player who is away (the room sends /away when someone disconnects)
 
     def __init__(self, players: list[str], save_path: Path):
         names = [n.strip() for n in players if n.strip()]
@@ -37,45 +37,45 @@ class TeamGame:
             raise ValueError(UI["team_size"].format(min=1, max=MAX_PLAYERS))
         self._players = names
         self.save_path = save_path
-        self.state = None  # 這一局的狀態（state_class）；還沒開始時是 None
+        self.state = None  # This game's state (state_class); None before it starts
         self._phase: Phase = "setup"
-        self.pending: dict[str, str] = {}  # 這一回合已經送出的行動
-        self._as: str | None = None  # send_as() 指定的玩家
+        self.pending: dict[str, str] = {}  # Actions already sent this turn
+        self._as: str | None = None  # The player given to send_as()
 
-    # ---------- 對外介面 ----------
+    # ---------- Public interface ----------
 
     @property
     def players(self) -> list[str]:
-        """隊伍裡的玩家名字（唯讀），依建立時的順序。"""
+        """The players' names on the team (read-only), in the order given."""
         return list(self._players)
 
     @property
     def phase(self) -> Phase:
-        """目前的遊戲階段（唯讀），和最近一次回覆的 reply.phase 相同。網頁版的房間用它決定輸入要交給誰。"""
+        """The current phase (read-only), the same as the latest reply's reply.phase. Web rooms use it to decide who gets the input."""
         return self._phase
 
     @property
     def progress(self) -> str:
-        """send() 執行中時，目前在做什麼（例如「規劃故事大綱」）；外殼可以在另一個執行緒讀取。"""
+        """While send() runs, what it's doing now (e.g. "planning the story outline"); shells may read it from another thread."""
         return ""
 
     @property
     def draft(self) -> str:
-        """send() 執行中時，AI 正在寫的劇情（串流中目前收到的部分）；外殼可以在另一個執行緒讀取。"""
+        """While send() runs, the narration the AI is writing (what has streamed in so far); shells may read it from another thread."""
         return ""
 
     def start(self) -> Reply:
-        """第一個回覆：同一組玩家有沒結束的存檔就問要不要繼續，否則開新局。"""
+        """The first reply: asks whether to continue if the same players have an unfinished save, otherwise starts a new game."""
         state = load(self.save_path, self.state_class)
-        if state and not state.game_over and sorted(state.names) == sorted(self._players):  # 順序不同也是同一組人
+        if state and not state.game_over and sorted(state.names) == sorted(self._players):  # The same players in any order
             self.state, self._phase = state, "ask_continue"
             self._loaded()
             return self._reply(choices=CONTINUE_CHOICES, notice=UI["found_save"].format(turn=state.turn, premise=state.premise))
         return self._new_game()
 
     def action_for(self, text: str) -> str | None:
-        """這句輸入在遊戲中代表的行動（例如「2」→ 第二個選項），讓外殼可以在等待回覆前先顯示。
-        不是行動（指令、空白、不在遊戲中）時回傳 None。"""
+        """The action this input stands for in the game (e.g. "2" → the second choice), so shells can show it before the reply arrives.
+        None when it isn't an action (a command, blank, not in a game)."""
         raw = text.strip()
         if self._phase != "playing" or not raw:
             return None
@@ -86,7 +86,7 @@ class TeamGame:
         return self._action(raw, self._actor())
 
     def send(self, text: str) -> Reply:
-        """送出一句輸入，拿回覆。可能會呼叫 AI，所以會花幾秒。"""
+        """Send one input and get the reply. May call the AI, so it can take a few seconds."""
         raw = text.strip()
         if raw == "/help":
             return self._reply(info=(UI["help_title"], self._help()), **self._screen())
@@ -105,8 +105,8 @@ class TeamGame:
         return handler(raw)
 
     def send_as(self, name: str, text: str) -> Reply:
-        """以某位玩家的身分送出輸入，不用照隊伍順序。遊戲中以外的階段（前提、確認……）等同 send()。"""
-        if self._phase == "playing" and self._is_action(text.strip()):  # 行動才要檢查
+        """Send input as a given player, in any order. Outside of play (premise, confirmations…), the same as send()."""
+        if self._phase == "playing" and self._is_action(text.strip()):  # Only actions need checking
             if name not in self._active():
                 return self._reply(notice=UI["character_fallen"], **self._screen())
             if name in self.pending:
@@ -118,8 +118,8 @@ class TeamGame:
             self._as = None
 
     def view(self, name: str, reply: Reply | None = None) -> Reply:
-        """某位玩家眼中的畫面：actor 與 choices 換成這位玩家的（已經行動或出局的人沒有選項）。
-        給了 reply 就沿用它的其他欄位，否則是目前這一回合的畫面（重新連線時用）。"""
+        """One player's view of the screen: actor and choices become that player's (players who have acted or are out have no choices).
+        With reply, its other fields are kept; otherwise it's the current turn's screen (used on reconnect)."""
         if reply is None:
             reply = self._reply(**self._screen())
             if self._phase == "playing":
@@ -131,12 +131,12 @@ class TeamGame:
         return mine
 
     def waiting(self) -> list[str]:
-        """這回合還沒行動的玩家名字，依隊伍順序。"""
+        """The names of players who haven't acted this turn, in team order."""
         if self.state is None or self._phase != "playing":
             return []
         return [n for n in self._active() if n not in self.pending]
 
-    # ---------- 各階段 ----------
+    # ---------- Phases ----------
 
     def _on_ask_continue(self, raw: str) -> Reply:
         answer = pick_choice(raw, CONTINUE_CHOICES)
@@ -157,24 +157,24 @@ class TeamGame:
         return self._take_action(action, timeout=raw == "/timeout")
 
     def _take_action(self, action: str, timeout: bool) -> Reply:
-        """記下這位玩家的行動；所有人都行動後才推進一回合。時間到時，還沒行動的人都算遲疑。"""
+        """Record this player's action; advance a turn only once everyone has acted. When time runs out, everyone who hasn't acted hesitates."""
         if timeout:
             for name in self.waiting():
                 self.pending[name] = action
         else:
             actor = self._actor()
             if actor is None:
-                raise ValueError("好幾位玩家時，行動要用 send_as(名字, 文字) 送，才知道是誰的行動")
+                raise ValueError("With several players, actions must be sent with send_as(name, text) so it's clear whose action it is")
             self.pending[actor] = action
             if self.waiting():
-                return self._reply(**self._screen())  # 還在等其他人：畫面上誰還沒行動由外殼用 waiting() 顯示
+                return self._reply(**self._screen())  # Still waiting for others: shells show who hasn't acted using waiting()
         actions = {n: self.pending[n] for n in self._players if n in self.pending}
         try:
             reply = self._play_round(actions)
         except FAILURES as e:
-            self.state = load(self.save_path, self.state_class) or self.state  # 可能已經改了一半，從存檔還原
-            # 撤回這回合所有的行動，大家重新選擇。只撤回最後一個人不夠：時間到或替離線的人自動填入的行動失敗時，
-            # 會變成每個人都「已行動」卻沒有人能重送，整局卡住
+            self.state = load(self.save_path, self.state_class) or self.state  # It may be half changed; restore from the save
+            # Take back every action this turn so everyone chooses again. Taking back only the last one isn't enough: if an action filled in
+            # on time-out or for an offline player fails, everyone counts as having acted but no one can resend, and the game is stuck
             self.pending = {}
             return self._failed(e, lambda **kw: self._reply(**self._screen(), **kw), hint=UI["failed_turn"])
         self.pending = {}
@@ -194,7 +194,7 @@ class TeamGame:
             return self._new_game()
         return self._reply(choices=PLAY_AGAIN_CHOICES, notice=UI["answer_play_again"])
 
-    # ---------- 共用 ----------
+    # ---------- Shared ----------
 
     def _resume(self) -> Reply:
         self._phase = "playing"
@@ -202,91 +202,91 @@ class TeamGame:
         return self._reply(notice=UI["resumed"].format(premise=self.state.premise), **self._replay(), **self._screen())
 
     def _actor(self) -> str | None:
-        """這句輸入是誰的：send_as() 指定的玩家；只有一位玩家時就是他。已經行動或出局了就沒有。"""
+        """Whose input this is: the player given to send_as(), or the only player. None if they've already acted or are out."""
         if self.state is None:
             return None
         name = self._as if self._as is not None else (self._players[0] if len(self._players) == 1 else None)
         return name if name in self.waiting() else None
 
     def _screen(self) -> dict:
-        """遊戲中畫面的固定部分：送出輸入的那位玩家（只有一位時就是他）的選項，以及限時。"""
+        """The fixed part of the in-game screen: the choices of the player who sent the input (the only player when alone), and the time limit."""
         return self._screen_for(self._actor() if self._phase == "playing" else None)
 
     def _screen_for(self, actor: str | None) -> dict:
-        """某位玩家（還沒行動時）的選項與限時；actor 是 None 時沒有選項。"""
+        """A player's choices (while they haven't acted) and the time limit; no choices when actor is None."""
         if self.state is None or self._phase not in ("playing", "ending"):
             return {}
         return {"actor": actor or "", "choices": self._choices(actor) if actor else [], "time_limit": self._time_limit()}
 
     def _failed(self, e: Exception, retry_screen, hint: str = "") -> Reply:
-        """AI 呼叫失敗：留在原本的階段，玩家可以重試。"""
+        """Calling the AI failed: stay in the same phase so players can retry."""
         notice = UI["key_invalid"] if is_key_error(e) else UI["failed"].format(hint=hint, error=str(e)[:300])
         return retry_screen(error="api", notice=notice)
 
     def _reply(self, **fields) -> Reply:
-        in_game = self.state is not None and self._phase != "setup"  # 有一局在進行（等開新局時還沒有）
+        in_game = self.state is not None and self._phase != "setup"  # A game is in progress (not yet while waiting to start one)
         return Reply(phase=self._phase, **(self._status() if in_game else {"timed": self._next_timed()}), **fields)
 
     def _save(self) -> None:
         save(self.state, self.save_path)
 
-    # ---------- 子類別提供 ----------
+    # ---------- Provided by subclasses ----------
 
     def _new_game(self) -> Reply:
-        """開新局（沒有存檔、選了開新遊戲、確認重新開始、再玩一次）：回覆 setup 階段的畫面。"""
+        """Start a new game (no save, chose a new game, confirmed a restart, play again): reply with the setup phase's screen."""
         raise NotImplementedError
 
     def _on_setup(self, raw: str) -> Reply:
-        """setup 階段的輸入。"""
+        """Input during the setup phase."""
         raise NotImplementedError
 
     def _play_round(self, actions: dict[str, str]) -> Reply:
-        """大家都行動了：推進一回合並存檔。失敗時丟出 FAILURES 裡的錯誤，這裡會還原並撤回所有行動。"""
+        """Everyone has acted: advance a turn and save. On failure, raise one of FAILURES; this class restores and takes back every action."""
         raise NotImplementedError
 
     def _on_ending(self, raw: str) -> Reply:
-        """剛結束後的下一次輸入：整理結局，回覆 ended。"""
+        """The next input right after the end: wrap up the ending and reply with ended."""
         raise NotImplementedError
 
     def _active(self) -> list[str]:
-        """這一局還在場上、每回合要行動的玩家（冒險裡倒下的角色不算）。"""
+        """Players still in play who act each turn (in the adventure, fallen characters don't count)."""
         return list(self._players)
 
     def _is_action(self, raw: str) -> bool:
-        """這句輸入是不是遊戲中的行動（要檢查有沒有已經行動）。"""
+        """Whether this input is an in-game action (which must be checked against having acted already)."""
         return not raw.startswith("/") or raw == "/away"
 
     def _action(self, raw: str, actor: str | None) -> str | None:
-        """遊戲中的輸入代表的行動；不是行動時 None。/timeout、/away 已經處理過了。"""
+        """The action an in-game input stands for; None if it isn't one. /timeout and /away are already handled."""
         raise NotImplementedError
 
     def _choices(self, name: str) -> list[str]:
-        """這位玩家這回合的選項。"""
+        """This player's choices this turn."""
         return []
 
     def _time_limit(self) -> int:
         return 0
 
     def _status(self) -> dict:
-        """一局進行中時，回覆裡的 turn、timed、characters。"""
+        """While a game is in progress: turn, timed, characters for the reply."""
         raise NotImplementedError
 
     def _next_timed(self) -> bool:
-        """還沒開始時，開新局會用的模式。"""
+        """Before a game starts: the mode a new game will use."""
         return False
 
     def _replay(self) -> dict:
-        """讀檔、重新連線時要重新顯示的內容：narration、resumed、history……"""
+        """What to show again after loading or reconnecting: narration, resumed, history…"""
         raise NotImplementedError
 
     def _loaded(self) -> None:
-        """找到可以接續的存檔時（self.state 已經換成存檔）。"""
+        """When a save that can be continued is found (self.state is already the save)."""
 
     def _help(self) -> str:
-        """/help 顯示的內容。"""
+        """What /help shows."""
         raise NotImplementedError
 
     def _memory(self) -> str:
-        """/state 顯示的內容。"""
+        """What /state shows."""
         raise NotImplementedError
 

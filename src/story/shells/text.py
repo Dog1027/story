@@ -1,5 +1,5 @@
-"""外殼的介面文字：story/shells/ui/語言/（shells.md 是共用層與網頁伺服器的，dialogs.md 是兩種介面都有的對話框，
-terminal.md、web.md 是各介面自己的）。"""
+"""The shells' interface text: story/shells/ui/<lang>/ (shells.md for the shared layer, rooms and web server, dialogs.md for dialogs,
+web.md for the web page)."""
 
 from pathlib import Path
 

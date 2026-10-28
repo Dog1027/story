@@ -1,4 +1,4 @@
-"""外殼共用層：用一個只記錄呼叫的假介面，確認「什麼時候顯示什麼」的流程。房間與大廳是真的，核心用真的 StoryCore，engine 用假的。"""
+"""The shells' shared layer: a fake interface that only records calls checks the "what to show when" flow. The rooms and lobby are real, the core is a real StoryCore, and the engine is fake."""
 
 import asyncio
 
@@ -16,12 +16,12 @@ from story.shells.lobby import Lobby
 
 
 class RecordingView(View):
-    """記下 Client 呼叫了哪些方法；對話框照預先排好的答案回答。"""
+    """Records which methods Client called; dialogs answer with prearranged answers."""
 
     def __init__(self, premise="燈塔", timed=False, play_again=False):
         self.calls: list[tuple] = []
         self.premise, self.timed, self.play_again = premise, timed, play_again
-        self.lobby_view = ""  # 最後一次大廳畫面的 view：lobby（大廳）或 room（房間的等人畫面）
+        self.lobby_view = ""  # The view of the last lobby screen: lobby (the lobby) or room (a room's waiting screen)
 
     def names(self) -> list[str]:
         return [c[0] for c in self.calls]
@@ -117,7 +117,7 @@ class RecordingView(View):
 
 
 async def until(condition, timeout: float = 3.0) -> None:
-    """等到 condition() 成立（房間的回覆是非同步推來的）。"""
+    """Wait until condition() holds (the room pushes replies asynchronously)."""
     async def wait():
         while not condition():
             await asyncio.sleep(0.01)
@@ -127,7 +127,7 @@ async def until(condition, timeout: float = 3.0) -> None:
 
 @pytest.fixture
 async def play(isolated):
-    """連進真的大廳（核心用假的 engine）、開一個自己的房間、開始冒險，等開場顯示完。回傳 Client。"""
+    """Connect to a real lobby (the core uses a fake engine), open your own room, start an adventure, and wait for the opening to show. Returns the Client."""
     lobbies, tasks = [], []
 
     async def start(view: "RecordingView", engine=None) -> Client:
@@ -138,13 +138,13 @@ async def play(isolated):
         client = Client(view, lobby)
         tasks.append(asyncio.create_task(client.run()))
         await until(lambda: view.lobby_view == "lobby")
-        await client.act("1")  # 開一個新房間
+        await client.act("1")  # Open a new room
         await until(lambda: view.lobby_view == "room")
-        await client.act("1")  # 開始冒險
+        await client.act("1")  # Start an adventure
         await until(lambda: ("show_choices", ["往上爬", "檢查鑰匙"]) in view.calls and "set_status" in view.names())
         if view.timed:
             await until(lambda: "start_timer" in view.names())
-        await asyncio.sleep(0.05)  # 房間接著推來的訊息（還在等誰）也處理完
+        await asyncio.sleep(0.05)  # Also let the messages the room pushes next (who's still pending) be handled
         return client
 
     yield start
@@ -155,7 +155,7 @@ async def play(isolated):
 
 
 def after(view: RecordingView, name: str) -> list[str]:
-    """某個呼叫之後依序呼叫了哪些方法。"""
+    """Which methods were called, in order, after a given call."""
     names = view.names()
     return names[len(names) - names[::-1].index(name) :]
 
@@ -164,7 +164,7 @@ async def test_new_story_shows_premise_then_the_opening(play):
     view = RecordingView()
     await play(view)
     assert "setup" in view.names()
-    assert ("clear_story", "燈塔") in view.calls  # 先顯示前提，再等 AI 寫開場
+    assert ("clear_story", "燈塔") in view.calls  # Show the premise first, then wait for the AI to write the opening
     assert view.names().index("clear_story") < view.names().index("show_narration")
     assert ("show_choices", ["往上爬", "檢查鑰匙"]) in view.calls
 
@@ -177,12 +177,12 @@ async def test_a_turn_reveals_choices_and_status_only_after_the_narration(play):
     await until(lambda: "start_timer" in view.names())
     assert ("show_action", "你選擇了「往上爬」。") not in view.calls and ("show_action", "往上爬") in view.calls
     order = [n for n in view.names() if n in ("show_action", "prepare_choices", "show_narration", "show_changes", "show_choices", "set_status", "start_timer")]
-    # 送出時先收起選項、顯示行動；劇情顯示完才出現變化、選項、狀態，大家看完才開始倒數
+    # On sending, hide the choices and show the action first; changes, choices and status appear only after the narration, and the countdown starts once everyone has read it
     assert order == ["show_choices", "show_action", "prepare_choices", "show_narration", "show_changes", "show_choices", "set_status", "start_timer"]
-    assert ("prepare_choices", ["點亮油燈", "躲起來"], True) in view.calls  # 限時：介面可以先空出倒數條
+    assert ("prepare_choices", ["點亮油燈", "躲起來"], True) in view.calls  # Timed: the interface can reserve room for the countdown bar
     status = [c[1] for c in view.calls if c[0] == "set_status"][-1]
     assert status.turn == 2 and status.mode == "限時模式"
-    assert status.characters[0].items == [["小腿挫傷", "moderate"]]  # 經過房間的 JSON：tuple 變成 list
+    assert status.characters[0].items == [["小腿挫傷", "moderate"]]  # Through the room's JSON: tuples become lists
 
 
 async def test_ending_appears_one_part_at_a_time(play):
@@ -191,7 +191,7 @@ async def test_ending_appears_one_part_at_a_time(play):
     await client.act("1")
     await until(lambda: ("show_choices", ["點亮油燈", "躲起來"]) in view.calls)
     view.calls.clear()
-    await client.act("2")  # 第 3 回合故事結束
+    await client.act("2")  # The story ends on turn 3
     await until(lambda: "exit" in view.names())
     order = after(view, "show_action")
     expected = ["wait_enter", "show_ending_title", "show_narration", "wait_enter", "ask_ending", "exit"]
@@ -211,7 +211,7 @@ def test_status_line_lists_conditions_and_the_core_warning():
 
 
 class StreamingEngine(FakeEngine):
-    """一個字一個字慢慢寫劇情（更新 draft），像真的 AI 在串流。fail 時寫到一半出錯。"""
+    """Writes narration slowly, a character at a time (updating draft), like a real AI streaming. With fail, errors out halfway."""
 
     def __init__(self, fail=False):
         super().__init__()
@@ -238,7 +238,7 @@ async def test_narration_is_shown_while_the_ai_is_still_writing(play):
     await client.act("1")
     await until(lambda: ("show_narration", "風雨中，你推開了燈塔的門。") in view.calls)
     names = view.names()
-    assert names.index("start_narration") < names.index("prepare_choices")  # 回覆到之前就開始顯示
+    assert names.index("start_narration") < names.index("prepare_choices")  # Starts showing before the reply arrives
     extended = [c[1] for c in view.calls if c[0] == "extend_narration"]
     assert len(extended) > 2 and all(b.startswith(a) for a, b in zip(extended, extended[1:]))
     assert ("show_narration", "風雨中，你推開了燈塔的門。") in view.calls
@@ -253,15 +253,15 @@ async def test_half_written_narration_is_taken_back_when_the_turn_fails(play):
     await until(lambda: "discard_narration" in view.names() and "notify" in view.names())
     names = view.names()
     assert "start_narration" in names and "discard_narration" in names and "show_narration" not in names
-    assert any(c[0] == "notify" and c[2] for c in view.calls)  # 出錯的通知
+    assert any(c[0] == "notify" and c[2] for c in view.calls)  # The error notice
     assert client.draft == ""
 
 
-# ---------- 新故事的對話框的規則 ----------
+# ---------- The new story dialog's rules ----------
 
 
 def premise_form(**replies):
-    """假的核心：記下送出的指令，依最後一個指令回覆。"""
+    """A fake core: records the commands sent and replies by the last command."""
     sent = []
 
     async def request(*commands):
@@ -270,7 +270,7 @@ def premise_form(**replies):
         return replies[commands[-1].split()[0]]
 
     menu = [(GENRE_AUTO, "自動", "AI 挑"), (GENRE_NONE, "不套用", "照一般的方式"), ("武俠", "題材：武俠", "江湖"), ("克蘇魯", "題材：克蘇魯", "不可名狀")]
-    reply = Reply(phase="setup", premise_default="燈塔", genre="", genres=menu)  # 選單由玩法給
+    reply = Reply(phase="setup", premise_default="燈塔", genre="", genres=menu)  # The game gives the menu
     return PremiseForm(reply, request), sent
 
 
@@ -278,11 +278,11 @@ async def test_premise_form_keeps_what_the_player_typed():
     form, sent = premise_form(**{"/genre": Reply(phase="setup", premise_default="鏢局"), "/random": Reply(phase="setup", premise_default="客棧")})
     assert form.genre == GENRE_AUTO and [v for _, v in form.genre_options()][:3] == [GENRE_AUTO, GENRE_NONE, "武俠"]
     assert form.genre_hint("武俠") == "江湖"
-    assert await form.change_genre("武俠", "燈塔") == "鏢局"  # 沒改過：換成新題材的開頭
-    assert await form.change_genre("武俠", "我自己寫的") is None  # 改過：保留
-    assert await form.reroll("我自己寫的") == "客棧"  # 按了「換一個」：一定換
+    assert await form.change_genre("武俠", "燈塔") == "鏢局"  # Untouched: switch to the new genre's opening
+    assert await form.change_genre("武俠", "我自己寫的") is None  # Edited: keep it
+    assert await form.reroll("我自己寫的") == "客棧"  # Pressed "another one": always replace
     assert sent[-1] == ["/genre 武俠", "/random"]
-    assert form.finish("  ", True) == ("客棧", True, "武俠")  # 留白用預設的開頭
+    assert form.finish("  ", True) == ("客棧", True, "武俠")  # Blank uses the default opening
     assert form.finish(" 一個 \n人 ", False) == ("一個 人", False, "武俠")
 
 
@@ -300,11 +300,11 @@ async def test_premise_form_suggest_errors_are_raised_for_the_interface_to_show(
         await form.suggest("")
 
 
-# ---------- 與房間的連線 ----------
+# ---------- The connection to the room ----------
 
 
 async def test_room_hint_stops_waiting_once_the_story_ends():
-    """最後一回合結束後，提示不再寫「等待 X 行動」（房間在結局時不會再送還在等誰）。"""
+    """After the last turn, the hint no longer says "waiting for X" (the room stops sending who's pending at the ending)."""
     view = RecordingView()
     client = Client(view, lobby=None)
     client.waiting = ["小華"]
@@ -318,7 +318,7 @@ async def test_client_stops_taking_input_when_the_connection_closes():
     client.room, server = Connection.pair()
     assert client.ready
     server.close()
-    assert not client.ready  # 再送會丟出 ConnectionError
+    assert not client.ready  # Sending again would raise ConnectionError
 
 
 async def test_premise_dialog_request_fails_instead_of_waiting_forever_when_the_room_is_gone():
@@ -329,11 +329,11 @@ async def test_premise_dialog_request_fails_instead_of_waiting_forever_when_the_
     server.close()
     await client.listen()
     with pytest.raises(ConnectionError):
-        await asyncio.wait_for(request, 2)  # 沒修好時會一直等：逾時就是失敗
+        await asyncio.wait_for(request, 2)  # Without the fix it waits forever: a timeout means failure
 
 
 async def test_input_modes_switch_what_typing_does():
-    """海龜湯：選「猜湯底」只切換方式（標出來、換提示），接著打的字用 /guess 送出；「放棄」不用打字，直接送出。"""
+    """Turtle soup: picking "guess" only switches modes (marked, with a new hint), and what's typed next is sent with /guess; "give up" needs no text and is sent at once."""
     from story.games.soup.game import INPUTS
 
     view = RecordingView()
@@ -346,7 +346,7 @@ async def test_input_modes_switch_what_typing_does():
     client.send = send
     client.actor, client.inputs = "阿明", list(INPUTS)
     await client.act("他死了嗎")
-    assert sent[-1] == ("/ask 他死了嗎", "提問：他死了嗎")  # 沒選就是提問
+    assert sent[-1] == ("/ask 他死了嗎", "提問：他死了嗎")  # Not picking a mode means asking
     await client.act("2")
     assert len(sent) == 1 and ("mark_choice", 1) in view.calls and view.calls[-1] == ("set_hint", INPUTS[1].hint)
     await client.act("母親錄的語音")

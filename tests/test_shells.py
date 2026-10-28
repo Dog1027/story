@@ -1,11 +1,11 @@
-"""所有外殼都要遵守的架構規則。網頁版的測試在 test_web.py。"""
+"""Architecture rules every shell follows. The web version's tests are in test_web.py."""
 
 import re
 
 
 def test_shells_only_use_the_public_core_interface():
-    """外殼只能透過核心與玩法的公開介面溝通：只 import story.core、story.games 匯出的名稱，只用公開的方法與唯讀屬性。
-    直接讀核心內部（core.state、core.engine……）時這裡會失敗，核心內部怎麼改才不會弄壞外殼。"""
+    """Shells talk to the core only through the public interface of the core and games: they only import names exported by story.core and story.games, and only use public methods and read-only attributes.
+    Reading core internals directly (core.state, core.engine…) fails here, so the core's internals can change without breaking the shells."""
     from pathlib import Path
 
     import story.core
@@ -19,20 +19,20 @@ def test_shells_only_use_the_public_core_interface():
         source = path.read_text(encoding="utf-8")
         for module, names in re.findall(r"^\s*from (story\.(?:core|games)[\w.]*) import ([^\n]+)", source, re.M):
             if module not in exported:
-                problems.append(f"{path.name}: from {module} import …（只能從 story.core、story.games import）")
+                problems.append(f"{path.name}: from {module} import … (only import from story.core, story.games)")
                 continue
             for name in (n.strip() for n in names.split(",")):
                 if name not in exported[module]:
-                    problems.append(f"{path.name}: {name} 不是 {module} 匯出的名稱")
+                    problems.append(f"{path.name}: {name} is not exported by {module}")
         for attribute in set(re.findall(r"\bcore\.(\w+)", source)):
             if attribute not in public:
-                problems.append(f"{path.name}: core.{attribute} 不是公開介面")
+                problems.append(f"{path.name}: core.{attribute} is not part of the public interface")
     assert problems == []
 
 
 def test_layers_only_depend_outward():
-    """一層一層往外疊：核心不 import 玩法與外殼；每種玩法只 import 核心與自己，玩法之間互不相依、也不 import 外殼。
-    新增玩法時照著做，就不會動到核心與其他玩法。"""
+    """Layers stack outward: the core imports no games or shells; each game imports only the core and itself, games don't depend on each other, and no game imports the shells.
+    Follow this when adding a game and the core and other games stay untouched."""
     from pathlib import Path
 
     import story
@@ -54,8 +54,8 @@ def test_layers_only_depend_outward():
 
 
 def test_interfaces_go_through_the_shared_client_layer():
-    """介面（網頁的 View）只負責長相：不自己建立核心、不直接連房間、不呼叫核心的方法，流程一律交給共用層（client.py）。
-    網頁伺服器（web/__init__.py）負責開房間與連線，不算介面。"""
+    """The interface (the web View) only handles looks: it never builds a core, connects to rooms directly, or calls core methods; the flow always goes to the shared layer (client.py).
+    The web server (web/__init__.py) opens rooms and connections and doesn't count as the interface."""
     from pathlib import Path
 
     import story.shells.web.view
@@ -65,7 +65,7 @@ def test_interfaces_go_through_the_shared_client_layer():
         source = path.read_text(encoding="utf-8")
         for name in ("StoryCore", "Connection", "story.shells.room", "story.shells.players"):
             if name in source:
-                problems.append(f"{path.name}: 用到 {name}（應該交給共用層）")
+                problems.append(f"{path.name}: uses {name} (should go through the shared layer)")
         if re.search(r"\bcore\.\w+", source):
-            problems.append(f"{path.name}: 直接呼叫核心")
+            problems.append(f"{path.name}: calls the core directly")
     assert problems == []

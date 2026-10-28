@@ -1,4 +1,4 @@
-"""網頁版的大廳與房間：用 connect() 連進大廳、開房間或加入房間，模擬好幾位玩家一起玩。核心用真的 StoryCore，engine 用假的。"""
+"""The web lobby and rooms: connect to the lobby with connect(), open or join rooms, and simulate several players playing together. The core is a real StoryCore and the engine is fake."""
 
 import asyncio
 
@@ -14,7 +14,7 @@ from story.shells.connection import Connection
 
 
 class Player:
-    """一位連到房間的玩家：收到的訊息都留著，方便檢查。"""
+    """A player connected to a room: keeps every message received, for checking."""
 
     def __init__(self, conn: Connection):
         self.conn = conn
@@ -24,7 +24,7 @@ class Player:
         await self.conn.send({"type": "send", "text": text})
 
     async def expect(self, condition, timeout: float = 3.0) -> dict:
-        """等到收到符合條件的訊息（之前收過、還沒被等過的也算），回傳並移除那則訊息。"""
+        """Wait for a message matching the condition (including ones received earlier and not yet waited for), then return and remove it."""
         async def wait():
             seen = 0
             while True:
@@ -45,7 +45,7 @@ class Player:
 
 
 def make_lobby(isolated, engine=None) -> Lobby:
-    """每局的核心都用同一個假 engine（lobby.engine），方便檢查 AI 收到了什麼。"""
+    """Every game's core uses the same fake engine (lobby.engine), to check what the AI received."""
     engine = engine or FakeGroupEngine()
     def make_core(players, on_queue, game="adventure"):
         if game == "soup":
@@ -69,7 +69,7 @@ def room_of(lobby) -> object:
 
 
 async def join(lobby, name: str, token: str = "") -> Player:
-    """連進大廳，用這個名字進來。token 是瀏覽器記住的識別碼。"""
+    """Connect to the lobby and enter with this name. token is the ID the browser remembers."""
     conn = lobby.connect()
     await conn.send({"type": "join", "name": name, "token": token})
     answer = await conn.receive()
@@ -82,20 +82,20 @@ def is_lobby(title: str = "大廳"):
 
 
 async def open_room(player: Player) -> None:
-    """在大廳選「開一個新房間」（第一個選項）。"""
+    """Choose "open a new room" in the lobby (the first option)."""
     screen = await player.expect(is_lobby())
     assert screen["choices"][0] == "開一個新房間"
     await player.send("1")
 
 
 async def enter_room(player: Player, host: str) -> None:
-    """在大廳選「加入 host 的房間」。"""
+    """Choose "join host's room" in the lobby."""
     screen = await player.expect(lambda m: is_lobby()(m) and any(host in c for c in m["choices"]))
     await player.send(str(next(i for i, c in enumerate(screen["choices"], 1) if host in c)))
 
 
 async def gather(lobby, *names: str) -> list[Player]:
-    """第一個人開房間，其他人加入，大家都在房間的等人畫面。"""
+    """The first person opens a room and the others join; everyone is on the room's waiting screen."""
     players = [await join(lobby, names[0])]
     await open_room(players[0])
     await players[0].expect(is_lobby(f"{names[0]} 的房間"))
@@ -110,7 +110,7 @@ async def gather(lobby, *names: str) -> list[Player]:
 async def start_story(lobby) -> tuple[Player, Player]:
     host, guest = await gather(lobby, "阿明", "小華")
     await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["members"] == ["阿明", "小華"] and m["host"] == "阿明")
-    await host.send("1")  # 開始冒險
+    await host.send("1")  # Start the adventure
     assert (await host.reply()).phase == "setup"
     await guest.expect(lambda m: m["type"] == "notice" and "房主正在準備這一局" in m["text"])
     await host.send("燈塔")
@@ -119,13 +119,13 @@ async def start_story(lobby) -> tuple[Player, Player]:
 
 async def test_two_players_play_a_round_in_any_order(lobby):
     host, guest = await start_story(lobby)
-    await guest.expect(lambda m: m["type"] == "new_story" and m["premise"] == "燈塔")  # 其他人也先看到故事前提
+    await guest.expect(lambda m: m["type"] == "new_story" and m["premise"] == "燈塔")  # The others see the premise first too
     mine, theirs = await host.reply(), await guest.reply()
     assert mine.narration == theirs.narration == "兩人在燈塔醒來。"
     assert mine.actor == "阿明" and mine.choices == ["阿明往上爬", "阿明躲起來"]
     assert theirs.actor == "小華" and theirs.choices == ["小華往上爬", "小華躲起來"]
 
-    await guest.send("2")  # 小華先行動
+    await guest.send("2")  # Hua acts first
     acted = await guest.reply()
     assert acted.choices == [] and acted.notice == ""
     await host.expect(lambda m: m["type"] == "waiting" and m["names"] == ["阿明"])
@@ -143,16 +143,16 @@ async def test_names_are_unique_on_the_whole_server_and_rooms_have_a_limit(lobby
     assert "已經有人在用" in (await conn.receive())["reason"]
     await conn.send({"type": "join", "name": "../x"})
     assert "只能包含" in (await conn.receive())["reason"]
-    await conn.send({"type": "join", "name": "小華"})  # 被拒絕後可以換名字再試
+    await conn.send({"type": "join", "name": "小華"})  # After being refused, you can try another name
     assert await conn.receive() == {"type": "joined"}
 
     await open_room(first)
-    for name in ("小華", "小美", "阿華"):  # 加到第 4 人
+    for name in ("小華", "小美", "阿華"):  # Up to the 4th person
         player = Player(conn) if name == "小華" else await join(lobby, name)
         await enter_room(player, "阿明")
     fifth = await join(lobby, "阿強")
     screen = await fifth.expect(is_lobby())
-    assert screen["choices"] == ["開一個新房間"]  # 滿了的房間不會列出來
+    assert screen["choices"] == ["開一個新房間"]  # Full rooms aren't listed
 
 
 async def test_only_team_members_can_rejoin_after_start(lobby):
@@ -168,7 +168,7 @@ async def test_only_host_answers_dialogs_and_restarts(lobby):
     await guest.reply()
     await guest.send("/restart")
     await guest.expect(lambda m: m["type"] == "notice" and "只有房主" in m["text"])
-    await guest.send("/timeout")  # 玩家不能替大家按時間到
+    await guest.send("/timeout")  # Players can't call time for everyone
     await guest.send("/state")
     assert (await guest.reply(lambda r: r.info is not None)).info[0] == "程式記住的東西"
     assert lobby.engine.rounds == []
@@ -181,23 +181,23 @@ async def test_disconnected_players_rejoin_or_are_skipped(lobby):
     guest.conn.close()
     await host.expect(lambda m: m["type"] == "notice" and "小華 離線了" in m["text"])
 
-    back = await join(lobby, "小華")  # 用同一個名字回來：直接回到原本的房間，看到目前這回合
+    back = await join(lobby, "小華")  # Back with the same name: straight to the original room, seeing the current turn
     view = await back.reply()
     assert view.resumed and view.narration == "兩人在燈塔醒來。" and view.actor == "小華"
 
     back.conn.close()
     await host.expect(lambda m: m["type"] == "notice" and "小華 離線了" in m["text"])
-    await host.send("1")  # 在線的人都行動了：替離線的小華送出「暫時離開」
+    await host.send("1")  # Everyone online has acted: send "away" for Hua, who's offline
     await host.reply(lambda r: bool(r.narration))
     assert lobby.engine.rounds == [{"阿明": "阿明往上爬", "小華": AWAY_ACTION}]
 
 
 async def test_the_same_browser_takes_over_its_old_connection(lobby):
-    """舊的分頁還沒斷（例如手機切到背景），同一個瀏覽器又用同一個名字進來：新的連線坐回原本的位置。"""
+    """The old tab hasn't dropped (e.g. a phone in the background) and the same browser comes in again with the same name: the new connection takes the same seat."""
     first = await join(lobby, "阿明", token="browser-1")
     await open_room(first)
     await first.expect(is_lobby("阿明 的房間"))
-    await first.send("1")  # 開始冒險
+    await first.send("1")  # Start the adventure
     assert (await first.reply()).phase == "setup"
     await first.send("燈塔")
     await first.reply(lambda r: bool(r.narration))
@@ -206,8 +206,8 @@ async def test_the_same_browser_takes_over_its_old_connection(lobby):
     await first.expect(lambda m: m["type"] == "replaced")
     view = await second.reply()
     assert view.resumed and view.narration and view.actor == "阿明"
-    await asyncio.sleep(0.05)  # 舊的連線結束了
-    assert len(lobby.rooms) == 1 and lobby.people["阿明"] is not first.conn  # 房間沒有因為舊的連線離開而關掉
+    await asyncio.sleep(0.05)  # The old connection ended
+    assert len(lobby.rooms) == 1 and lobby.people["阿明"] is not first.conn  # The room didn't close when the old connection left
     await second.send("1")
     await second.reply(lambda r: bool(r.narration))
     assert lobby.engine.rounds == [{"阿明": "阿明往上爬"}]
@@ -226,9 +226,9 @@ async def test_other_browsers_cannot_take_a_name_in_use(lobby):
 async def test_host_leaving_passes_the_dialog_to_the_next_player(lobby):
     host, guest = await gather(lobby, "阿明", "小華")
     await host.send("1")
-    await host.reply()  # 房主收到前提對話框
+    await host.reply()  # The host gets the premise dialog
     host.conn.close()
-    assert (await guest.reply()).phase == "setup"  # 換小華當房主
+    assert (await guest.reply()).phase == "setup"  # Hua becomes the host
 
 
 class TimedEngine(FakeGroupEngine):
@@ -245,10 +245,10 @@ async def test_countdown_starts_after_everyone_has_read_then_times_out(isolated)
         await guest.reply()
         await host.conn.send({"type": "ready"})
         await asyncio.sleep(0.1)
-        assert not any(m["type"] == "timer" for m in host.messages)  # 小華還沒看完
+        assert not any(m["type"] == "timer" for m in host.messages)  # Hua hasn't finished reading
         await guest.conn.send({"type": "ready"})
         assert (await host.expect(lambda m: m["type"] == "timer"))["seconds"] == 1
-        await host.reply(lambda r: bool(r.narration))  # 時間到，房間替大家推進
+        await host.reply(lambda r: bool(r.narration))  # Time's up; the room advances for everyone
         assert room_of(lobby).core.state.turn == 2
     finally:
         await lobby.stop()
@@ -257,14 +257,14 @@ async def test_countdown_starts_after_everyone_has_read_then_times_out(isolated)
 async def test_game_end_returns_to_lobby(lobby, monkeypatch):
     host, guest = await start_story(lobby)
     await host.reply()
-    for _ in range(3):  # 第 3 回合阿明倒下，第 4 回合結束
+    for _ in range(3):  # Ming falls on turn 3, and it ends on turn 4
         if room_of(lobby).core.waiting() and "阿明" in room_of(lobby).core.waiting():
             await host.send("1")
         await guest.send("1")
         await guest.reply(lambda r: bool(r.narration) or r.phase == "ended")
     ended = await host.reply(lambda r: r.phase == "ended")
     assert ended.ending.title == "燈塔雙人行"
-    await host.expect(is_lobby("阿明 的房間"))  # 回到房間的等人畫面，可以再玩一局
+    await host.expect(is_lobby("阿明 的房間"))  # Back to the room's waiting screen, ready for another game
     assert room_of(lobby).core is None
 
 
@@ -279,9 +279,9 @@ async def test_failed_timeout_round_restarts_the_countdown(isolated):
         for player in (host, guest):
             await player.conn.send({"type": "ready"})
         await host.expect(lambda m: m["type"] == "timer")
-        failed = await guest.reply(lambda r: r.error == "api")  # 時間到，推進失敗
-        assert failed.choices == ["小華往上爬", "小華躲起來"]  # 大家都要重新選
-        await host.expect(lambda m: m["type"] == "timer")  # 重新倒數
+        failed = await guest.reply(lambda r: r.error == "api")  # Time's up, advancing fails
+        assert failed.choices == ["小華往上爬", "小華躲起來"]  # Everyone must choose again
+        await host.expect(lambda m: m["type"] == "timer")  # The countdown restarts
         engine.fail_with = None
         await host.send("1")
         await guest.send("2")
@@ -292,7 +292,7 @@ async def test_failed_timeout_round_restarts_the_countdown(isolated):
 
 
 class SlowOpeningEngine(FakeGroupEngine):
-    """開場分兩個階段、各花一點時間，模擬真的呼叫兩次 AI。"""
+    """The opening has two stages that each take a little time, simulating two real AI calls."""
 
     def start(self, state):
         import time
@@ -325,8 +325,8 @@ async def test_host_genre_choice_reaches_the_core(isolated):
         host, guest = await gather(lobby, "阿明", "小華")
         await host.send("1")
         premise_reply = await host.reply()
-        assert premise_reply.genres[-1] == ["武俠", "題材：武俠", "江湖恩怨"]  # 經過 JSON，tuple 變成 list
-        await host.send("/genre 武俠")  # 前提對話框裡的選擇：不需要回覆
+        assert premise_reply.genres[-1] == ["武俠", "題材：武俠", "江湖恩怨"]  # Through JSON, tuples become lists
+        await host.send("/genre 武俠")  # Choices in the premise dialog: no reply needed
         await host.send("鏢局")
         await guest.reply(lambda r: bool(r.narration))
         assert room_of(lobby).core.state.genre == "武俠"
@@ -338,11 +338,11 @@ async def test_only_commands_asking_for_an_answer_get_one(lobby):
     host, guest = await gather(lobby, "阿明", "小華")
     await host.send("1")
     await host.reply()
-    await host.conn.send({"type": "send", "text": "/timed on", "form": True})  # 對話框裡的操作，沒有要求回覆
+    await host.conn.send({"type": "send", "text": "/timed on", "form": True})  # An action in the dialog, with no reply requested
     await host.conn.send({"type": "send", "text": "/random", "form": True, "answer": True})
     answer = await host.expect(lambda m: m["type"] == "premise")
     assert Reply.from_dict(answer["reply"]).phase == "setup"
-    assert not any(m["type"] == "premise" for m in host.messages)  # 只有一個回覆
+    assert not any(m["type"] == "premise" for m in host.messages)  # Only one reply
 
 
 async def test_one_player_can_start_alone(lobby):
@@ -357,7 +357,7 @@ async def test_one_player_can_start_alone(lobby):
 
 
 class StreamingGroupEngine(FakeGroupEngine):
-    """推進回合時慢慢寫劇情（更新 draft），像真的 AI 在串流。"""
+    """Writes narration slowly while advancing a turn (updating draft), like a real AI streaming."""
 
     def act(self, state, actions):
         import time
@@ -377,7 +377,7 @@ async def test_everyone_sees_the_narration_while_it_is_written(isolated):
         await guest.reply()
         await guest.send("1")
         await host.send("1")
-        draft = await guest.expect(lambda m: m["type"] == "draft")  # 寫完之前就收到
+        draft = await guest.expect(lambda m: m["type"] == "draft")  # Received before the writing finishes
         assert "大家往上爬".startswith(draft["text"])
         await guest.reply(lambda r: bool(r.narration))
     finally:
@@ -385,7 +385,7 @@ async def test_everyone_sees_the_narration_while_it_is_written(isolated):
 
 
 async def test_two_rooms_play_at_the_same_time(lobby):
-    """不同的人各自組隊：兩個房間各玩各的，大廳列出還在等人的房間。"""
+    """Different people form their own teams: two rooms play separately, and the lobby lists rooms still waiting for players."""
     a = await join(lobby, "阿明")
     await open_room(a)
     b = await join(lobby, "小華")
@@ -394,7 +394,7 @@ async def test_two_rooms_play_at_the_same_time(lobby):
     screen = await watcher.expect(lambda m: is_lobby()(m) and len(m["choices"]) == 3)
     assert screen["choices"][1:] == ["加入 阿明 的房間（1/4 人）", "加入 小華 的房間（1/4 人）"]
     for player, premise in ((a, "燈塔"), (b, "古堡")):
-        await player.send("1")  # 開始冒險
+        await player.send("1")  # Start the adventure
         await player.reply(lambda r: r.phase == "setup")
         await player.send(premise)
     for player in (a, b):
@@ -405,12 +405,12 @@ async def test_two_rooms_play_at_the_same_time(lobby):
 
 async def test_leaving_a_room_goes_back_to_the_lobby_and_empty_rooms_close(lobby):
     host, guest = await gather(lobby, "阿明", "小華")
-    await guest.send("1")  # 小華的選項只有「離開房間」
+    await guest.send("1")  # Hua's only option is "leave room"
     await guest.expect(lambda m: is_lobby()(m) and m["clear"])
     await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["members"] == ["阿明"])
     await host.send("/leave")
     await host.expect(lambda m: is_lobby()(m) and m["choices"] == ["開一個新房間"])
-    assert lobby.rooms == []  # 沒有人了，房間關閉
+    assert lobby.rooms == []  # No one left, so the room closes
 
 
 async def test_rooms_are_limited(lobby, monkeypatch):
@@ -418,12 +418,12 @@ async def test_rooms_are_limited(lobby, monkeypatch):
     await open_room(await join(lobby, "阿明"))
     late = await join(lobby, "小華")
     await late.expect(lambda m: is_lobby()(m) and len(m["choices"]) == 2)
-    await late.send("1")  # 開新房間
+    await late.send("1")  # Open a new room
     await late.expect(lambda m: m["type"] == "notice" and "最多 1 間" in m["text"])
 
 
 def test_rate_limit_queues_calls_beyond_the_limit_and_retries(monkeypatch):
-    """所有房間共用的 AI 次數限制：一分鐘內超過的要等；被 Gemini 擋下（429）時等它說的秒數再送。"""
+    """The AI call limit shared by all rooms: calls over it within a minute wait; when Gemini refuses (429), wait the seconds it asks for and resend."""
     from google.genai import errors
 
     import story.core.ratelimit as ratelimit
@@ -435,7 +435,7 @@ def test_rate_limit_queues_calls_beyond_the_limit_and_retries(monkeypatch):
     limit, queued = ratelimit.RateLimit(2), []
     for _ in range(3):
         limit.wait(queued.append)
-    assert slept == [60] and queued == [True, False]  # 第三次排隊等到第一次滿一分鐘
+    assert slept == [60] and queued == [True, False]  # The third waits until the first is a minute old
 
     calls = []
 
@@ -449,19 +449,19 @@ def test_rate_limit_queues_calls_beyond_the_limit_and_retries(monkeypatch):
 
 
 async def test_a_room_plays_turtle_soup_together(lobby):
-    """房主選海龜湯、從題庫抽一題；每回合大家同時提問或猜湯底，大家都看到每個人的問答；說中全部關鍵點就獲勝。"""
+    """The host picks turtle soup and draws from the bank; each turn everyone asks or guesses at once and sees everyone's questions and answers; stating every key point wins."""
     host, guest = await gather(lobby, "阿明", "小華")
     await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["members"] == ["阿明", "小華"])
-    await host.send("2")  # 開始海龜湯
+    await host.send("2")  # Start turtle soup
     ask = await host.reply()
     assert ask.phase == "setup" and ask.choices == ["從題庫抽一題", "請 AI 出一題"]
     await guest.expect(lambda m: m["type"] == "notice" and "房主正在準備這一局" in m["text"])
     await host.send("1")
-    await guest.expect(lambda m: m["type"] == "new_story" and m["premise"] == "")  # 先清空畫面，湯面等抽好題目
+    await guest.expect(lambda m: m["type"] == "new_story" and m["premise"] == "")  # Clear the screen first; the scenario waits until the puzzle is drawn
     mine, theirs = await host.reply(), await guest.reply()
     assert "【空號】" in mine.narration and mine.narration == theirs.narration
     assert theirs.actor == "小華" and [m.label for m in theirs.inputs] == ["提問", "猜湯底", "放棄"]
-    assert lobby.rooms[0].game == "海龜湯"  # 房間卡片顯示的名稱
+    assert lobby.rooms[0].game == "海龜湯"  # The name shown on the room card
 
     await guest.send("/guess 全部都說出來")
     await host.send("/ask 是電話嗎")
@@ -469,4 +469,4 @@ async def test_a_room_plays_turtle_soup_together(lobby):
     assert "阿明 問：是電話嗎\n→ 是" in result.narration and "小華 說中了所有關鍵點" in result.narration
     ended = await guest.reply(lambda r: r.phase == "ended")
     assert ended.ending.title == "小華 解開了謎題" and ended.ending.epilogue == PUZZLE.truth
-    await host.expect(is_lobby("阿明 的房間"))  # 結束後回到等人的畫面，可以再選一次玩法
+    await host.expect(is_lobby("阿明 的房間"))  # Afterwards back to the waiting screen, where the game can be chosen again

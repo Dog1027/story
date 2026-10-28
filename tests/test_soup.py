@@ -1,5 +1,5 @@
-"""海龜湯：出題、每回合大家同時提問或猜湯底、說中所有關鍵點才算解開（同一回合可以一起獲勝）、放棄、讀檔，
-以及裁判（真的 SoupJudge 配假的 Gemini）、題庫。不會呼叫真的 AI。"""
+"""Turtle soup: making the puzzle, everyone asking or guessing at the same time each turn, solving only by stating every key point (several can win together in one turn), giving up, loading,
+plus the judge (a real SoupJudge with a fake Gemini) and the puzzle bank. Never calls the real AI."""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,7 +21,7 @@ def soup(isolated, players=("阿明",), judge=None, puzzles=(PUZZLE,)) -> SoupCo
 def started(isolated, **kw) -> tuple[SoupCore, object]:
     core = soup(isolated, **kw)
     assert core.start().phase == "setup"
-    return core, core.send("1")  # 從題庫抽一題
+    return core, core.send("1")  # Draw a puzzle from the bank
 
 
 def test_one_player_asks_then_solves_it(isolated):
@@ -31,7 +31,7 @@ def test_one_player_asks_then_solves_it(isolated):
     assert reply.characters[0].items == [("問 0", "muted"), ("說中 0/3", "muted")] and reply.turn == 1
 
     reply = core.send("/ask 他死了嗎")
-    assert reply.narration == "你 問：他死了嗎\n→ 是" and reply.phase == "playing"  # 一個人玩寫「你」
+    assert reply.narration == "你 問：他死了嗎\n→ 是" and reply.phase == "playing"  # Playing alone says 「你」 ("you")
     reply = core.send("/guess 跟母親有關")
     assert "說中 1/3 個關鍵點" in reply.narration and reply.characters[0].items[1] == ("說中 1/3", "good")
     reply = core.send("/guess 全部說出來")
@@ -40,25 +40,25 @@ def test_one_player_asks_then_solves_it(isolated):
     assert ended.phase == "ended" and ended.ending.title == "你 解開了謎題" and ended.ending.epilogue == "那是母親錄的語音。"
     assert ended.ending.reveal == "按 Enter 看湯底"
     assert "共 3 回合，問了 1 個問題，猜了 2 次" in ended.ending.record and "- 母親過世了" in ended.ending.record
-    assert core.send("1").phase == "setup"  # 再玩一次
+    assert core.send("1").phase == "setup"  # Play again
 
 
 def test_typing_without_choosing_is_a_question_and_choices_switch_the_way(isolated):
     core, _ = started(isolated)
     assert core.action_for("他死了嗎") == "/ask 他死了嗎"
-    assert core.action_for("2") is None and core.send("2").notice  # 選了「猜湯底」還要寫內容
+    assert core.action_for("2") is None and core.send("2").notice  # Picking "guess" still needs text
     assert core.action_for("3") == "/give_up"
-    assert core.send("/guess   ").notice  # 沒寫內容
+    assert core.send("/guess   ").notice  # No text
 
 
 def test_everyone_acts_at_once_and_sees_everything(isolated):
     judge = FakeJudge()
     core, _ = started(isolated, players=("阿明", "小華"), judge=judge)
     mine = core.send_as("阿明", "/ask 有人死了嗎")
-    assert mine.narration == "" and mine.inputs == [] and core.waiting() == ["小華"]  # 行動完：沒有選項，等其他人
+    assert mine.narration == "" and mine.inputs == [] and core.waiting() == ["小華"]  # Done acting: no choices, waiting for the others
     assert core.view("小華").inputs and core.view("小華").choices == ["提問", "猜湯底", "放棄"]
     reply = core.send_as("小華", "/guess 跟電話有關")
-    assert judge.rounds == [[("阿明", "ask", "有人死了嗎"), ("小華", "guess", "跟電話有關")]]  # 一次判斷整回合
+    assert judge.rounds == [[("阿明", "ask", "有人死了嗎"), ("小華", "guess", "跟電話有關")]]  # The whole turn is judged at once
     assert reply.narration == "阿明 問：有人死了嗎\n→ 是\n\n小華 猜：跟電話有關\n→ 說中 1/3 個關鍵點"
     assert [s.name for s in reply.characters] == ["阿明", "小華"]
 
@@ -89,7 +89,7 @@ def test_a_failed_ruling_takes_back_the_whole_round(isolated):
     judge.fail_with = RuntimeError("裁判當機")
     core.send_as("阿明", "/ask 一")
     reply = core.send_as("小華", "/ask 二")
-    assert reply.error == "api" and core.waiting() == ["阿明", "小華"]  # 大家重新行動
+    assert reply.error == "api" and core.waiting() == ["阿明", "小華"]  # Everyone acts again
     judge.fail_with = None
     core.send_as("阿明", "/ask 一")
     assert core.send_as("小華", "/ask 二").narration
@@ -100,10 +100,10 @@ def test_ai_puzzles_and_falling_back_to_the_bank(isolated):
     core = soup(isolated, judge=judge)
     core.start()
     reply = core.send("2")
-    assert "【AI 的題目】" in reply.narration and judge.avoided == ["空號"]  # 不要跟題庫的題目重複
+    assert "【AI 的題目】" in reply.narration and judge.avoided == ["空號"]  # Don't repeat a puzzle from the bank
 
     for made, note in ((None, "不夠合理"), (RuntimeError("額度用完"), "額度用完")):
-        (isolated / "soup.json").unlink()  # 上一局的存檔：不然會先問要不要繼續
+        (isolated / "soup.json").unlink()  # The last game's save: otherwise it first asks whether to continue
         core = soup(isolated, judge=FakeJudge(puzzle=made))
         core.start()
         reply = core.send("2")
@@ -117,8 +117,8 @@ def test_continuing_a_saved_soup_shows_the_scenario_and_earlier_rounds(isolated)
     found = again.start()
     assert found.phase == "ask_continue" and "空號" in found.notice
     reply = again.send("1")
-    assert reply.resumed and reply.narration == "你 問：他死了嗎\n→ 是"  # 最近一回合在最後
-    (surface, _), = reply.history  # 湯面在最前面
+    assert reply.resumed and reply.narration == "你 問：他死了嗎\n→ 是"  # The latest turn comes last
+    (surface, _), = reply.history  # The scenario comes first
     assert "【空號】" in surface
     assert "第 1 回" in again.send("/state").info[1]
 
@@ -130,11 +130,11 @@ def test_reply_inputs_survive_the_trip_to_the_browser(isolated):
     assert Reply.from_dict(reply.to_dict()).inputs == reply.inputs
 
 
-# ---------- 裁判：真的 SoupJudge，假的 Gemini ----------
+# ---------- The judge: a real SoupJudge, a fake Gemini ----------
 
 
 class FakeClient:
-    """假的 Gemini：依 response_schema 依序回傳排好的結果。"""
+    """A fake Gemini: returns the queued results in order by response_schema."""
 
     def __init__(self, *results):
         self.results, self.prompts = list(results), []
@@ -146,14 +146,14 @@ class FakeClient:
 
 
 def test_judge_counts_only_points_stated_with_a_real_quote(isolated):
-    """每個關鍵點都要引用猜測的原文並判斷說中了才算：沒說中的、引用不到原文的、不存在的編號、重複的都不算。"""
+    """Each key point counts only if the guess is quoted and judged a hit: misses, quotes not found in the guess, nonexistent numbers and repeats don't count."""
     guess = "那段語音是他媽媽錄的，她已經過世了"
     points = [
         PointCheck(point=1, quote="那段語音是他媽媽錄的", stated=True),
-        PointCheck(point=1, quote="那段語音是他媽媽錄的", stated=True),  # 重複
+        PointCheck(point=1, quote="那段語音是他媽媽錄的", stated=True),  # Repeated
         PointCheck(point=2, quote="她已經過世了", stated=True),
-        PointCheck(point=3, quote="他想聽媽媽的聲音", stated=True),  # 猜測裡沒有這句話
-        PointCheck(point=9, quote="她已經過世了", stated=True),  # 不存在的關鍵點
+        PointCheck(point=3, quote="他想聽媽媽的聲音", stated=True),  # The guess doesn't contain this sentence
+        PointCheck(point=9, quote="她已經過世了", stated=True),  # A key point that doesn't exist
     ]
     client = FakeClient(Judgement(rulings=[Ruling(move=1, answer="是也不是", points=[]), Ruling(move=2, answer="無關", points=points)]))
     judge = SoupJudge(client=client, log_path=isolated / "log.jsonl")
@@ -192,7 +192,7 @@ def test_ai_puzzles_are_checked_and_rewritten_once(isolated):
     assert SoupJudge(client=client, log_path=isolated / "log.jsonl").make_puzzle(avoid=[]) is None
 
 
-# ---------- 題庫 ----------
+# ---------- The puzzle bank ----------
 
 
 def test_every_language_has_the_same_puzzles():
@@ -203,7 +203,7 @@ def test_every_language_has_the_same_puzzles():
         assert sorted(p.name for p in lang.glob("*.md")) == base, lang.name
         puzzles, problems = load_puzzles([lang])
         assert len(puzzles) == len(base) and not problems, (lang.name, problems)
-        for f in lang.glob("*.md"):  # 關鍵點的個數也要一樣
+        for f in lang.glob("*.md"):  # The number of key points must match too
             assert len(prompts.items(prompts.sections(f.stem, lang)["key_points"])) == len(
                 prompts.items(prompts.sections(f.stem, root / "zh-TW")["key_points"])
             ), (lang.name, f.name)

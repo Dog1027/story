@@ -1,13 +1,13 @@
-"""玩家的設定：~/.config/story/config.toml，可以手動編輯。
+"""Settings: ~/.config/story/config.toml, which can be edited by hand.
 
-    language = "en"          # 語言：zh-TW（預設）或 en
+    language = "en"          # Language: zh-TW (default) or en
     api_key = "…"            # Gemini API key
 
-程式裡用「區塊.名稱」指一項設定，例如 get("api_key")；有區塊的設定寫在 [區塊] 底下。
+In code, a setting is named "section.name", e.g. get("api_key"); settings with a section are written under [section].
 
-環境變數優先於這個檔案：STORY_LANG 蓋過 language，GEMINI_API_KEY（或 GOOGLE_API_KEY）蓋過 api_key，
-所以臨時換語言或 key 時不用改檔案。第一次啟動時輸入的語言與 API key 會寫進這個檔案（手寫的註解會不見）。
-核心、玩法與外殼都會讀它；個人的題材包與海龜湯題目也放在同一個資料夾（~/.config/story/genres/語言/、puzzles/語言/）。
+Environment variables win over this file: STORY_LANG overrides language, GEMINI_API_KEY (or GOOGLE_API_KEY) overrides api_key,
+so you can switch language or key temporarily without editing the file. The language and API key entered on first launch are written here (handwritten comments are lost).
+The core, games and shells all read it; personal genre packs and turtle soup puzzles live in the same folder (~/.config/story/genres/<lang>/, puzzles/<lang>/).
 """
 
 import json
@@ -18,17 +18,17 @@ from pathlib import Path
 CONFIG_DIR = Path.home() / ".config" / "story"
 CONFIG_PATH = CONFIG_DIR / "config.toml"
 KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
-OLD_FILES = {"api_key": "api_key"}  # 以前每個設定各存一個檔案，讀取時搬進 config.toml
+OLD_FILES = {"api_key": "api_key"}  # Each setting used to have its own file; moved into config.toml when read
 
 
 def load() -> dict:
-    """讀取設定檔，攤平成 {"區塊.名稱": 值}；沒有就是空的。舊的 api_key 檔案會先搬進來。"""
+    """Read the config, flattened to {"section.name": value}; empty if there is none. An old api_key file is moved in first."""
     try:
         data = _flatten(tomllib.loads(CONFIG_PATH.read_text(encoding="utf-8")))
     except FileNotFoundError:
         data = {}
     except tomllib.TOMLDecodeError as e:
-        raise SystemExit(f"{CONFIG_PATH} 的格式有誤：{e}")
+        raise SystemExit(f"{CONFIG_PATH} is not valid TOML: {e}")
     if _migrate(data):
         _write(data)
     return data
@@ -39,7 +39,7 @@ def get(key: str) -> str | None:
 
 
 def put(key: str, value: str | None) -> None:
-    """寫入一項設定；None 代表刪掉這一項。"""
+    """Write one setting; None deletes it."""
     data = load()
     if value is None:
         data.pop(key, None)
@@ -53,7 +53,7 @@ def language() -> str:
 
 
 def api_key() -> str | None:
-    """環境變數或設定檔裡的 API key；都沒有就回傳 None（交給介面詢問玩家）。"""
+    """The API key from the environment or the config; None if neither has one."""
     for var in KEY_ENV_VARS:
         if key := os.environ.get(var, "").strip():
             return key
@@ -86,7 +86,7 @@ def _flatten(table: dict, prefix: str = "") -> dict:
 
 def _write(data: dict) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    # 沒有區塊的設定在前，「區塊.名稱」寫到各自的 [區塊] 底下。值都是字串：JSON 的字串寫法也是合法的 TOML
+    # Settings without a section come first; "section.name" goes under its own [section]. Values are all strings: a JSON string is also valid TOML
     line = lambda key, value: f"{key} = {json.dumps(value, ensure_ascii=False)}\n"  # noqa: E731
     sections: dict[str, dict] = {}
     for key, value in data.items():
@@ -95,7 +95,7 @@ def _write(data: dict) -> None:
     text = "".join(line(k, v) for k, v in sections.pop("", {}).items())
     for section, values in sections.items():
         text += ("\n" if text else "") + f"[{section}]\n" + "".join(line(k, v) for k, v in values.items())
-    # 裡面有 API key：只有自己能讀，建檔時就設好，避免寫入過程中被別人讀到
+    # It holds the API key: only the owner can read it, set when the file is created so no one can read it mid-write
     fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     os.chmod(CONFIG_PATH, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:

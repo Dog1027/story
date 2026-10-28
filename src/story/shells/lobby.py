@@ -1,31 +1,31 @@
-"""網頁版的大廳：整台伺服器只有一個大廳，裡面有好幾個房間（room.py），每個房間各自玩一局。
+"""The web lobby: the whole server has one lobby holding several rooms (room.py), each playing its own game.
 
-每個瀏覽器分頁的共用層 Client 用 connect() 連進大廳，拿到一端 Connection。先輸入名字（整台伺服器不重複），
-接著在大廳看到房間列表：開一個新房間，或加入等人中的房間。一個人玩就是開一個只有自己的房間。
-進了房間之後，訊息交給那個房間處理；離開房間（/leave，或在等人的畫面選「離開房間」）回到大廳。
-遊戲中斷線的人，用同一個名字回來時直接回到原本的房間。
-同一個瀏覽器帶著同一個名字與 token 再連進來時（重新整理、手機切回來時舊的連線還沒斷），新的連線直接取代舊的，
-坐回原本的位置，不用等舊的斷線；token 不同的人用這個名字還是會被拒絕。房間裡沒有人在線就關閉（存檔還在，同一組人再開房間可以接著玩）。
+Each browser tab's shared-layer Client connects with connect() and gets one end of a Connection. First it enters a name (unique on the whole server),
+then sees the room list in the lobby: open a new room or join one that's waiting for players. Playing alone means opening a room with just you.
+Inside a room, messages go to that room; leaving (/leave, or choosing "Leave room" on the waiting screen) goes back to the lobby.
+Someone who disconnected mid-game goes straight back to their room when they return with the same name.
+When the same browser connects again with the same name and token (a reload, or a phone coming back before the old connection dropped), the new connection replaces the old one
+and takes the same seat without waiting for the old one to drop; anyone with a different token is still refused that name. A room closes when no one in it is online (the save stays, so the same people can continue in a new room).
 
-所有房間共用架站者的 API key，呼叫 AI 受同一個次數限制（RateLimit），超過的排隊。
+Every room shares the host's API key, and AI calls are under one shared limit (RateLimit); calls over it queue.
 
-訊息是可以轉成 JSON 的 dict。
-玩家 → 大廳
-  {"type": "join", "name": "阿明", "token": "..."}   第一則訊息；token 是瀏覽器記住的識別碼（可以是空的）
-  {"type": "send", "text": "1"}           在大廳：選房間；在房間裡：交給房間（見 room.py）
-  其他訊息在房間裡時交給房間
-大廳 → 玩家
-  {"type": "joined"} 或 {"type": "rejected", "reason": "..."}
-  {"type": "replaced"}                    同一個瀏覽器（同名、同 token）從別的分頁或重新連線進來了：這條連線被取代，接著會關閉
-  {"type": "lobby", "view": "lobby", "title": "大廳", "you": "阿明", "choices": [...], "hint": "...", "clear": true,
-   "rooms": [{"title": "小華 的房間", "host": "小華", "members": [...], "state": "open", "game": "", "choice": "2"}, ...],
-   "people": [{"name": "阿明", "room": "", "playing": false}, ...], "max_rooms": 10, "seats": 4}
-      大廳的畫面：所有房間（state 是 open 等人中、full 已滿、playing 遊戲中，game 是遊戲中的玩法的名稱；
-      choice 是加入它要送的選項，不能加入時是空的）、
-      所有在線的人與他們在哪裡（room 是房主的名字，在大廳時是空的）、可以選的、輸入框的提示；clear 時先清空畫面（剛進來或剛離開房間）
-      房間的等人畫面也是 "type": "lobby"，"view": "room"，見 room.py
+Messages are dicts that can be converted to JSON.
+Player → lobby
+  {"type": "join", "name": "Ming", "token": "..."}   The first message; token is an ID the browser remembers (may be empty)
+  {"type": "send", "text": "1"}           In the lobby: pick a room; in a room: passed to the room (see room.py)
+  Other messages go to the room while in one
+Lobby → player
+  {"type": "joined"} or {"type": "rejected", "reason": "..."}
+  {"type": "replaced"}                    The same browser (same name, same token) came in from another tab or reconnected: this connection is replaced and will close
+  {"type": "lobby", "view": "lobby", "title": "Lobby", "you": "Ming", "choices": [...], "hint": "...", "clear": true,
+   "rooms": [{"title": "Hua's room", "host": "Hua", "members": [...], "state": "open", "game": "", "choice": "2"}, ...],
+   "people": [{"name": "Ming", "room": "", "playing": false}, ...], "max_rooms": 10, "seats": 4}
+      The lobby screen: every room (state is open: waiting for players, full, or playing; game is the name of the game being played;
+      choice is the option to send to join it, empty if it can't be joined),
+      everyone online and where they are (room is the host's name, empty in the lobby), the options, and the input box hint; with clear, wipe the screen first (just arrived or just left a room)
+      A room's waiting screen is also "type": "lobby", with "view": "room"; see room.py
   {"type": "notice", "text": "..."}
-  其他訊息見 room.py
+  Other messages: see room.py
 """
 
 import asyncio
@@ -38,34 +38,34 @@ from story.shells.players import SAVES_DIR, InvalidName, check_name
 from story.shells.connection import Connection
 from story.shells.room import Room
 
-UI = ui_text("shells")  # story/shells/ui/語言/shells.md
-MAX_ROOMS = 10  # 同時最多幾個房間：大家共用一把 key，房間太多就會一直排隊
-AI_PER_MINUTE = 15  # 所有房間加起來，每分鐘最多呼叫幾次 AI（免費方案 flash-lite 的上限；付費方案可以調高）
+UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
+MAX_ROOMS = 10  # Most rooms at once: everyone shares one key, and too many rooms means constant queuing
+AI_PER_MINUTE = 15  # Most AI calls per minute across all rooms (the free tier's flash-lite limit; raise it on a paid plan)
 
 
 def team_save(players: list[str], game: str):
-    """一組人的存檔與紀錄：同一組人（不管順序）再開房間時可以接著玩。每種玩法各一份，檔名後面是玩法的代號。
-    名字只有文字、數字、底線、連字號，可以直接當檔名。"""
+    """A team's save and log: the same people (in any order) can continue when they open a room again. One per game, with the game's code at the end of the file name.
+    Names only have letters, digits, underscores and hyphens, so they work as file names directly."""
     team = "+".join(sorted(players)) + f".{game}"
     return SAVES_DIR / f"team-{team}.json", SAVES_DIR / f"team-{team}.log.jsonl"
 
 
 class Lobby:
     def __init__(self, make_core: Callable[[list[str], Callable[[bool], None], str], Game]):
-        """make_core(玩家, on_queue, 玩法) 建立一局的核心，見 Room。"""
+        """make_core(players, on_queue, game) builds a game's core; see Room."""
         self.make_core = make_core
-        self.people: dict[str, Connection] = {}  # 在線的人（大廳這一端的連線）
-        self.where: dict[str, Room | None] = {}  # 每個人在哪個房間；None 是在大廳
-        self.tokens: dict[str, str] = {}  # 每個人的瀏覽器識別碼：同一個瀏覽器再連進來時取代舊的連線
-        self.rooms: list[Room] = []  # 依開房的順序
-        self.options: dict[str, list[Room | None]] = {}  # 每個人在大廳看到的選項：None 是「開新房間」
-        self.shown: dict[str, dict] = {}  # 每個人最後收到的大廳畫面（沒變就不重送）
-        self.lock = asyncio.Lock()  # 大廳的進出一次處理一件
+        self.people: dict[str, Connection] = {}  # People online (the lobby's end of each connection)
+        self.where: dict[str, Room | None] = {}  # Which room each person is in; None is the lobby
+        self.tokens: dict[str, str] = {}  # Each person's browser ID: the same browser connecting again replaces the old connection
+        self.rooms: list[Room] = []  # In the order they were opened
+        self.options: dict[str, list[Room | None]] = {}  # The options each person sees in the lobby: None is "open a new room"
+        self.shown: dict[str, dict] = {}  # The last lobby screen each person got (not resent if unchanged)
+        self.lock = asyncio.Lock()  # Handle comings and goings one at a time
         self.links: dict[Connection, asyncio.Task] = {}
 
     @staticmethod
     def for_server(api_key: str) -> "Lobby":
-        """網頁伺服器用：每個房間的核心都用架站者的 key，共用同一個次數限制。"""
+        """For the web server: every room's core uses the host's key and shares one call limit."""
         SAVES_DIR.mkdir(exist_ok=True)
         limit, client = RateLimit(AI_PER_MINUTE), new_client(api_key)
 
@@ -76,7 +76,7 @@ class Lobby:
         return Lobby(make_core)
 
     def connect(self) -> Connection:
-        """一位玩家連進來：回傳玩家那一端，大廳這一端交給 serve() 處理。"""
+        """A player connects: returns the player's end; the lobby's end is handled by serve()."""
         player_end, lobby_end = Connection.pair()
         self.links[lobby_end] = asyncio.create_task(self.serve(lobby_end))
         return player_end
@@ -89,12 +89,12 @@ class Lobby:
             task.cancel()
         await asyncio.gather(*self.links.values(), return_exceptions=True)
 
-    # ---------- 連線 ----------
+    # ---------- Connections ----------
 
     async def serve(self, conn: Connection) -> None:
         name = None
         try:
-            while name is None:  # 名字不能用時讓玩家換一個再試
+            while name is None:  # If the name can't be used, let the player try another
                 message = await conn.receive()
                 if not message or message.get("type") != "join":
                     return
@@ -105,7 +105,7 @@ class Lobby:
                         await conn.send({"type": "rejected", "reason": error})
                         continue
                     name = check_name(raw)
-                    if old is not None:  # 取代舊的連線：坐回原本的位置，不經過離開，房間才不會因為沒人而關掉
+                    if old is not None:  # Replace the old connection: take the same seat without leaving, so the room doesn't close for being empty
                         await self._send_to(old, {"type": "replaced"})
                         old.close()
                     else:
@@ -117,7 +117,7 @@ class Lobby:
                 if room is not None:
                     self.shown.pop(name, None)
                     await room.add(name, conn)
-                elif back:  # 遊戲中斷線的人回來了：直接回到原本的房間
+                elif back:  # Someone who disconnected mid-game is back: straight to their room
                     await self._enter(name, back)
                 else:
                     await self._show_rooms(clear_for=name)
@@ -126,7 +126,7 @@ class Lobby:
         except ConnectionError:
             pass
         finally:
-            if name and self.people.get(name) is conn:  # 被新的連線取代了就不用收拾：位置已經交給新的連線
+            if name and self.people.get(name) is conn:  # Replaced by a new connection: nothing to clean up, the seat already belongs to it
                 await self._leave_room(name, back_to_lobby=False)
                 async with self.lock:
                     del self.people[name], self.where[name], self.tokens[name]
@@ -137,7 +137,7 @@ class Lobby:
             self.links.pop(conn, None)
 
     def _same_browser(self, raw: str, token: str) -> Connection | None:
-        """同名、同 token 的人已經在線：回傳他舊的連線（要被取代）。"""
+        """Someone with the same name and token is already online: return their old connection (to be replaced)."""
         try:
             name = check_name(raw)
         except InvalidName:
@@ -153,7 +153,7 @@ class Lobby:
             return str(e)
         return UI["room_name_taken"] if name in self.people else ""
 
-    # ---------- 輸入 ----------
+    # ---------- Input ----------
 
     async def _on_message(self, name: str, message: dict) -> None:
         room = self.where.get(name)
@@ -165,7 +165,7 @@ class Lobby:
             await self._leave_room(name)
         else:
             await room.handle(name, message)
-            await self._show_rooms()  # 房間的狀態可能變了（開始遊戲、回到等人）
+            await self._show_rooms()  # The room's state may have changed (a game started, back to waiting)
 
     async def _choose(self, name: str, text: str) -> None:
         options = self.options.get(name, [])
@@ -184,7 +184,7 @@ class Lobby:
                 self.rooms.append(room)
         await self._enter(name, room)
 
-    # ---------- 進出房間 ----------
+    # ---------- Entering and leaving rooms ----------
 
     async def _enter(self, name: str, room: Room) -> None:
         if room not in self.rooms:
@@ -195,7 +195,7 @@ class Lobby:
             await self._notice(name, error)
             return
         self.where[name] = room
-        self.shown.pop(name, None)  # 回到大廳時要重送
+        self.shown.pop(name, None)  # Must be resent when they come back to the lobby
         await room.add(name, self.people[name])
         await self._show_rooms()
 
@@ -205,7 +205,7 @@ class Lobby:
             return
         self.where[name] = None
         await room.remove(name)
-        if not room.online:  # 沒有人在線了：關閉（存檔還在，同一組人再開房間可以接著玩）
+        if not room.online:  # No one online: close it (the save stays, so the same people can continue in a new room)
             await room.close()
             self.rooms.remove(room)
         if back_to_lobby:
@@ -213,7 +213,7 @@ class Lobby:
         else:
             await self._show_rooms()
 
-    # ---------- 大廳的畫面 ----------
+    # ---------- The lobby screen ----------
 
     def _labels(self, options: list[Room | None]) -> list[str]:
         labels = []
@@ -232,10 +232,10 @@ class Lobby:
         }
 
     async def _show_rooms(self, clear_for: str = "") -> None:
-        """把大廳的畫面送給在大廳的人：所有房間（還在等人、還沒滿的才能加入）與所有在線的人。內容沒變就不重送，畫面才不會一直閃。"""
+        """Send the lobby screen to everyone in the lobby: every room (only those waiting and not full can be joined) and everyone online. Not resent if unchanged, so the screen doesn't flicker."""
         joinable = [r for r in self.rooms if not r.playing and len(r.online) < MAX_PLAYERS]
         in_lobby = [n for n, room in self.where.items() if room is None]
-        options = [None, *joinable]  # 選項 1 是開新房間，之後是能加入的房間
+        options = [None, *joinable]  # Option 1 opens a new room; the rest are rooms that can be joined
         rooms = [self._room_card(r, str(options.index(r) + 1) if r in joinable else "") for r in self.rooms]
         people = [{"name": n, "room": room.host if room else "", "playing": bool(room and room.playing)} for n, room in self.where.items()]
         for name in in_lobby:
@@ -262,4 +262,4 @@ class Lobby:
         try:
             await conn.send(message)
         except ConnectionError:
-            pass  # 對方已經斷線，serve() 結束時會處理
+            pass  # They already disconnected; handled when serve() ends

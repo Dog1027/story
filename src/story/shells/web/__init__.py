@@ -1,11 +1,11 @@
-"""網頁版：瀏覽器打開就能玩，手機和電腦用同一個頁面。
+"""The web version: open it in a browser and play, with the same page on phones and computers.
 
-伺服器（aiohttp）對每個瀏覽器分頁建立一個共用層的 Client，介面是 WebView（view.py）：
-共用層的每個呼叫變成一則 JSON 訊息，經由 WebSocket 送到瀏覽器，瀏覽器（static/）只負責畫出來。
-流程都在共用層（client.py）。
+The server (aiohttp) creates a shared-layer Client for each browser tab, with WebView (view.py) as its interface:
+each call from the shared layer becomes a JSON message sent over a WebSocket to the browser, and the browser (static/) only draws it.
+The flow is all in the shared layer (client.py).
 
-伺服器裡有一個大廳（lobby.py）：每個分頁的 Client 都連進大廳，輸入名字後開房間或加入別人的房間，
-每個房間各自玩一局（一個人玩就是只有自己的房間）。呼叫 AI 用架站者的 Gemini API key（設定檔或環境變數），玩家不用輸入。
+The server has one lobby (lobby.py): each tab's Client connects to it, enters a name, then opens a room or joins someone else's;
+each room plays its own game (playing alone is a room with just you). The AI is called with the host's Gemini API key (config or environment variable); players never enter one.
 """
 
 import argparse
@@ -25,14 +25,14 @@ from story.shells.lobby import MAX_ROOMS, Lobby
 from story.shells.text import ui_text
 from story.shells.web.view import WebView
 
-DEFAULT_HOST, DEFAULT_PORT = "127.0.0.1", 8080  # 預設只接受本機連線
-UI = ui_text("shells")  # story/shells/ui/語言/shells.md
-MAX_SESSIONS = MAX_ROOMS * MAX_PLAYERS  # 同時在線的人數上限：每個房間都坐滿的人數，避免太多連線把主機資源用光
+DEFAULT_HOST, DEFAULT_PORT = "127.0.0.1", 8080  # By default only accept connections from this computer
+UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
+MAX_SESSIONS = MAX_ROOMS * MAX_PLAYERS  # Most people online at once: every room full, so too many connections can't exhaust the host
 STATIC = Path(__file__).parent / "static"
 
 
 def render_page() -> str:
-    """index.html 換上這個語言的文字：{{名稱}} 換成 web.md、dialogs.md 的文字，{{texts}} 換成整份字串表（給 app.js）。"""
+    """index.html with this language's text: a key in double braces becomes that text from web.md or dialogs.md, and the texts placeholder the whole string table (for app.js)."""
     texts = ui_text("dialogs") | ui_text("web")
     page = (STATIC / "index.html").read_text(encoding="utf-8")
     page = page.replace("{{texts}}", json.dumps(texts, ensure_ascii=False).replace("</", "<\\/"))
@@ -43,16 +43,16 @@ PAGE = render_page()
 
 
 def make_app(lobby: Lobby) -> web.Application:
-    """建立網頁伺服器：每個分頁都連進 lobby（大廳）。伺服器關閉時大廳跟著關閉。"""
+    """Build the web server: every tab connects to lobby. The lobby closes with the server."""
     app = web.Application()
-    sessions = 0  # 目前在線的分頁數
+    sessions = 0  # Tabs online now
 
     async def index(request: web.Request) -> web.Response:
         return web.Response(text=PAGE, content_type="text/html")
 
     async def no_stale_files(request: web.Request, response: web.StreamResponse) -> None:
-        # 頁面與 JS、CSS 每次都先問伺服器有沒有更新（沒變就不用重新下載）。
-        # 不然瀏覽器可能沿用快取的舊 app.js，跟更新後的伺服器對不上，劇情和選項就出不來
+        # The page, JS and CSS always ask the server for updates first (no download if unchanged).
+        # Otherwise the browser may keep a cached old app.js that doesn't match the updated server, and the story and choices never appear
         if not request.path.startswith("/ws"):
             response.headers["Cache-Control"] = "no-cache"
 

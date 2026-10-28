@@ -1,6 +1,6 @@
-"""推進一局遊戲：規劃大綱、請 AI 寫每一回合、驗證並套用 AI 提議的變化、寫尾聲、壓縮記憶。
+"""Advancing a game: plan the outline, have the AI write each turn, check and apply the changes it proposes, write the epilogue, compact memory.
 
-規則在 rules.py，提示詞在 prompting.py（文字在 prompts/語言/），呼叫 AI 的共用部分在 story/core/ai.py。
+Rules are in rules.py, prompts in prompting.py (with text in prompts/<lang>/), and the shared AI-calling code in story/core/ai.py.
 """
 
 from pathlib import Path
@@ -28,7 +28,7 @@ from story.games.adventure.text import UI
 
 
 class EndingTooEarly(StopStream):
-    """串流時發現 AI 太早宣告結局：還沒有任何劇情顯示出來就中斷，請它重寫。"""
+    """Found while streaming that the AI declared the ending too early: stop before any narration is shown and have it rewrite."""
 
     reason = "early_ending"
 
@@ -42,15 +42,15 @@ class Engine(AICaller):
         genres: dict[str, Genre] | None = None,
     ):
         super().__init__(api_key, client, log_path)
-        self.genres = load_genres()[0] if genres is None else genres  # 題材包（見 genres.py）
-        self.build = PromptBuilder(self.genres)  # 組提示詞
-        self.stage = ""  # 開新故事時目前在做什麼，外殼顯示在等待畫面上（例如「規劃故事大綱」）
+        self.genres = load_genres()[0] if genres is None else genres  # Genre packs (see genres.py)
+        self.build = PromptBuilder(self.genres)  # Builds the prompts
+        self.stage = ""  # What's happening while a new story starts, shown on the waiting screen (e.g. "planning the story outline")
 
-    # ---------- 對外介面 ----------
+    # ---------- Public interface ----------
 
     def start(self, state: GameState) -> None:
-        """先規劃隱藏的故事大綱，再產生開場（題材選「自動」時，最前面再多一次挑題材）。
-        要呼叫好幾次 AI，比一般回合久，所以用 stage 告訴外殼進度。"""
+        """Plan the hidden story outline first, then write the opening (with the "auto" genre, pick a genre before everything else).
+        This calls the AI several times and takes longer than a normal turn, so stage tells the shells how far along it is."""
         try:
             if state.genre_pending and self.genres:
                 self.stage = UI["stage_genre"]
@@ -63,7 +63,7 @@ class Engine(AICaller):
             self.stage, self.draft = "", ""
 
     def pick_genre(self, state: GameState) -> None:
-        """玩家選「自動」：給 AI 題材目錄，請它依故事前提挑一個。先挑好，規劃大綱時才用得上題材的指引與轉折靈感。"""
+        """The players chose "auto": give the AI the genre catalog and have it pick one for the premise. Pick first so the outline can use the genre's guide and twist ideas."""
         picked = ""
         if self.genres:
             response = self.generate(
@@ -78,10 +78,10 @@ class Engine(AICaller):
             )
             if isinstance(response.parsed, GenrePick):
                 picked = response.parsed.genre.strip()
-        state.genre, state.genre_pending = (picked if picked in self.genres else ""), False  # 不在目錄裡（或留空）就不套用
+        state.genre, state.genre_pending = (picked if picked in self.genres else ""), False  # Not in the catalog (or blank): no genre
 
     def plan_arc(self, state: GameState) -> None:
-        """請 AI 規劃故事大綱。開場前規劃失敗時，之後的回合會依目前的劇情補一份，並依回合數決定從哪一幕接著走。"""
+        """Have the AI plan the story outline. If it fails before the opening, a later turn makes one from the story so far and picks which act to continue from by the turn number."""
         if state.genre_pending:
             self.pick_genre(state)
         response = self.generate(
@@ -95,23 +95,23 @@ class Engine(AICaller):
             ),
         )
         if not isinstance(response.parsed, StoryArc) or len(response.parsed.acts) < 4:
-            return  # 規劃失敗就先不用大綱，下回合再試
+            return  # Planning failed: go without an outline for now and retry next turn
         state.arc = response.parsed
         state.arc.acts = state.arc.acts[:4]
-        state.act, state.act_turns = min(3, state.turn // ACT_TURNS), 0  # 補的大綱：依回合數推估目前在哪一幕
+        state.act, state.act_turns = min(3, state.turn // ACT_TURNS), 0  # A late outline: estimate the current act from the turn number
 
     def act(self, state: GameState, actions: dict[str, str]) -> None:
-        """每位角色都行動了（{名字: 行動}），推進一回合。"""
+        """Every character has acted ({name: action}): advance a turn."""
         if state.arc is None:
             self.plan_arc(state)
-        state.recent.append(Turn(narration=state.current_narration, action=format_actions(actions)))  # 只往後追加
+        state.recent.append(Turn(narration=state.current_narration, action=format_actions(actions)))  # Append only
         try:
             self._advance(state, actions)
         finally:
             self.draft = ""
 
     def suggest_premise(self, avoid: str = "", genre: str = "") -> str:
-        """請 AI 想一個新的故事開頭。題材由程式隨機挑選（玩家指定了題材就用那個），AI 負責發揮。"""
+        """Have the AI come up with a new story opening. The program picks the genre at random (or the one the players chose); the AI fills it in."""
         response = self.generate(
             "suggest",
             model=MODEL,
@@ -124,7 +124,7 @@ class Engine(AICaller):
         return text
 
     def write_epilogue(self, state: GameState) -> None:
-        """故事結束後，請 AI 回顧整段旅程寫出尾聲與結局名稱。"""
+        """After the story ends, have the AI look back over the whole journey and write the epilogue and the ending's title."""
         response = self.generate(
             "epilogue",
             model=MODEL,
@@ -136,13 +136,13 @@ class Engine(AICaller):
         state.ending_title, state.epilogue = response.parsed.title.strip(), response.parsed.text.strip()
         self.write_log({"turn": state.turn, "epilogue": state.ending_title})
 
-    # ---------- 一回合 ----------
+    # ---------- A turn ----------
 
     def _next_beat(self, state: GameState, actions: dict[str, str] | None) -> StoryBeat:
-        """請 AI 寫這一回合。太早寫出結局時請它重寫一次；重寫後還是結局的話，_apply() 會忽略結局的宣告。"""
+        """Have the AI write this turn. If it writes the ending too early, have it rewrite once; if the rewrite still ends, _apply() ignores the ending."""
         prompt = self.build.turn(state, actions)
         try:
-            # game_over 是 AI 第一個輸出的欄位：太早的結局在劇情出現之前就會發現，玩家不會看到被換掉的版本
+            # game_over is the first field the AI writes: an early ending is caught before any narration appears, so players never see the discarded version
             return self.stream_beat(SYSTEM_PROMPT, prompt, stop_on_ending=not ending_allowed(state, state.turn + 1))
         except EndingTooEarly:
             self.draft = ""
@@ -156,18 +156,18 @@ class Engine(AICaller):
             self._write_deaths(state, newly_dead)
 
     def _apply(self, state: GameState, beat: StoryBeat) -> list[str]:
-        """AI 只能「提議」變化，由程式決定接受多少：每位角色各自套用規則。回傳這回合傷重死亡的角色名字。"""
+        """The AI can only propose changes; the program decides how much to accept, applying the rules to each character. Returns the characters who died of wounds this turn."""
         elapsed, is_opening_turn = advance_clock(state, beat.time_passed, beat.start_time_of_day)
-        may_end = ending_allowed(state, state.turn)  # 在推進幕數之前判斷：剛進最後一幕的那回合還不能結束
-        updates = {u.name.strip(): u for u in beat.character_updates}  # 不在隊伍裡的名字自然被忽略
+        may_end = ending_allowed(state, state.turn)  # Checked before advancing the act: the turn that enters the last act can't end yet
+        updates = {u.name.strip(): u for u in beat.character_updates}  # Names not on the team are simply ignored
         if state.solo and beat.character_updates and state.characters[0].name not in updates:
-            updates[state.characters[0].name] = beat.character_updates[0]  # 只有一位角色時，AI 寫錯名字也算他的
+            updates[state.characters[0].name] = beat.character_updates[0]  # With one character, a wrong name from the AI still counts as theirs
         newly_dead = []
         for c in state.characters:
             if not c.alive:
                 continue
             u = updates.get(c.name)
-            if u is None:  # AI 漏掉這位角色：時間照樣經過，選項留空（玩家可以自由行動）
+            if u is None:  # The AI left this character out: time still passes, and choices are empty (the player can act freely)
                 apply_condition_changes(c, [], [], elapsed)
                 c.choices = []
                 continue
@@ -185,10 +185,10 @@ class Engine(AICaller):
         return newly_dead
 
     def _write_deaths(self, state: GameState, names: list[str]) -> None:
-        """程式判定有角色傷重死亡：請 AI 接著寫一小段倒下的場景，接在這回合的劇情後面。"""
+        """The program found a character died of their wounds: have the AI write a short scene of them falling, after this turn's narration."""
         prefix = state.current_narration + "\n\n"
 
-        def on_text(text: str) -> None:  # 串流時接在剛才的劇情後面
+        def on_text(text: str) -> None:  # While streaming, follow on from the narration just shown
             self.draft = prefix + text.lstrip()
 
         text, _ = self.stream(
@@ -202,7 +202,7 @@ class Engine(AICaller):
             state.current_narration += "\n\n" + text
 
     def _log_turn(self, state: GameState, actions: dict[str, str] | None, beat: StoryBeat) -> None:
-        """把 AI 這回合提議的變化和程式套用後的結果記到檔案，方便事後查「為什麼會這樣」。"""
+        """Log the changes the AI proposed this turn and what the program applied, to look into "why did that happen" later."""
         self.write_log({
             "turn": state.turn,
             "actions": actions,
@@ -212,8 +212,8 @@ class Engine(AICaller):
         })
 
     def stream_beat(self, system: str, prompt: str, kind: str = "turn", stop_on_ending: bool = False, prefix: str = "") -> StoryBeat:
-        """串流呼叫，取得一回合的結構化回傳（StoryBeat）。收到劇情的同時更新 draft（前面接上 prefix），外殼可以先顯示。
-        stop_on_ending 時，AI 一宣告結局就中斷（EndingTooEarly）。"""
+        """A streaming call returning one turn's structured response (StoryBeat). Updates draft (with prefix in front) as narration arrives, so shells can show it early.
+        With stop_on_ending, stops as soon as the AI declares the ending (EndingTooEarly)."""
 
         def on_text(text: str) -> None:
             if stop_on_ending and partial_bool(text, "game_over") is True:
@@ -234,14 +234,14 @@ class Engine(AICaller):
             reason = last.candidates[0].finish_reason if last is not None and last.candidates else UI["no_content"]
             raise RuntimeError(UI["unparsable"].format(reason=reason))
 
-    # ---------- 記憶壓縮 ----------
+    # ---------- Memory compaction ----------
 
     def needs_compaction(self, state: GameState) -> bool:
         return needs_compaction(state)
 
     def compact_memory(self, state: GameState) -> None:
-        """劇情紀錄太長時，把最舊的回合（壓到剩一半）、較舊的重大事件與事實併入長期摘要。
-        由核心在背景呼叫，玩家讀劇情時順便完成。很少發生：30 回合的故事大約只有七、八千字。"""
+        """When the story log gets too long, fold the oldest turns (down to half), older key events and facts into the long-term summary.
+        The core calls this in the background while players read. Rare: a 30-turn story is only about 7,000–8,000 characters."""
         if not needs_compaction(state):
             return
         turns, old_events, old_flags = to_compact(state)
@@ -253,8 +253,8 @@ class Engine(AICaller):
         )
         text = (response.text or "").strip()
         if not text:
-            return  # 失敗就先保留原樣，下次再試
-        # 只移除這次確實併入摘要的部分（壓縮期間不會有新回合，但仍以數量為準比較保險）
+            return  # On failure keep things as they are and retry next time
+        # Remove only what was folded into the summary this time (no new turns arrive during compaction, but counting is safer)
         state.summary = text
         del state.recent[: len(turns)]
         del state.key_events[: len(old_events)]

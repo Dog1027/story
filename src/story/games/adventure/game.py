@@ -1,10 +1,10 @@
-"""冒險：一支隊伍在 AI 寫的故事裡冒險。送文字進來、拿回覆出去。
+"""Adventure: a team adventures through a story the AI writes. Text goes in, a reply comes out.
 
-外面看起來就像呼叫一個 LLM：`reply = core.send("往上爬")`（好幾位角色時是 `core.send_as("阿明", "往上爬")`）。
-記憶、規則、存檔都藏在這裡；隊伍、存檔接續、收集行動這些每種玩法共用的流程在 story/core/team.py。
-回覆是劇情加上附帶資料（選項、狀態列、倒數……），外殼照欄位畫出來。
+From outside it looks like calling an LLM: `reply = core.send("climb up")` (with several characters, `core.send_as("Ming", "climb up")`).
+Memory, rules and saves are hidden in here; the flow every game shares (the team, continuing saves, collecting actions) is in story/core/team.py.
+A reply is the narration plus extra data (choices, the status bar, the countdown…), and shells draw it from those fields.
 
-API key、玩家名字、倒數計時、打字效果屬於外殼，不在這裡處理。
+The API key, player names, the countdown and the typing effect belong to the shells, not here.
 """
 
 import random
@@ -20,17 +20,17 @@ from story.games.adventure.records import DEFAULT_PREMISE, change_groups, ending
 from story.games.adventure.rules import condition_list, warning_level
 from story.games.adventure.text import UI
 
-GENRE_AUTO, GENRE_NONE = "auto", "none"  # 題材的兩個特別選項：依前提由 AI 挑、不套用題材（顯示的字是 genre_label()）
+GENRE_AUTO, GENRE_NONE = "auto", "none"  # The two special genre options: AI picks from the premise, or no genre (shown as genre_label())
 
 
 def genre_label(choice: str) -> str:
-    """題材選擇顯示的字：特別選項換成這個語言的詞，題材包就是它的名稱。"""
+    """The text shown for a genre choice: special options become this language's words; a genre pack shows its name."""
     return {GENRE_AUTO: UI["genre_auto"], GENRE_NONE: UI["genre_none"]}.get(choice, choice)
 
 
 class StoryCore(TeamGame):
-    """一局冒險：一支一到四位角色的隊伍，每位由一位玩家扮演（一個人玩就是只有一位）。
-    所有還活著的角色都行動了才請 AI 寫這一回合。共用的流程見 TeamGame。"""
+    """One adventure: a team of one to four characters, each played by one player (one when playing alone).
+    The AI writes a turn only once every living character has acted. The shared flow is in TeamGame."""
 
     title = UI["title"]
     state_class = GameState
@@ -47,15 +47,15 @@ class StoryCore(TeamGame):
         engine: Engine | None = None,
         client=None,
     ):
-        """client：要共用的 Gemini client（例如受 RateLimit 限制的），沒給就用 api_key 建一個。"""
+        """client: a Gemini client to share (e.g. one limited by RateLimit); without one, a client is made from api_key."""
         super().__init__(players, save_path)
         self.engine = engine or Engine(api_key=api_key, client=client, log_path=log_path)
         self.state: GameState | None = None
-        self.timed = False  # 開新局時的模式，沿用上一局的選擇
-        self.genre = GENRE_AUTO  # 開新局時的題材選擇，沿用上一局的選擇
+        self.timed = False  # The mode for new games, kept from the last game
+        self.genre = GENRE_AUTO  # The genre choice for new games, kept from the last game
         self.last_premise = ""
-        self.suggested = ""  # /suggest 想出來的前提，留白送出時優先使用
-        self.drawn = ""  # 從題材包的開頭靈感隨機抽到的前提；再玩一次時不抽，延續上一局的前提
+        self.suggested = ""  # The premise /suggest came up with, used first when the premise is left blank
+        self.drawn = ""  # A premise drawn at random from the genre packs' opening ideas; not drawn on play again, which keeps the last premise
         self._compaction: threading.Thread | None = None
 
     @property
@@ -66,11 +66,11 @@ class StoryCore(TeamGame):
     def draft(self) -> str:
         return self.engine.draft
 
-    # ---------- 開新局：故事前提 ----------
+    # ---------- New game: the story premise ----------
 
     def _new_game(self) -> Reply:
         if self.state is not None:
-            self.last_premise = self.state.premise  # 再玩一次時延續上一局的前提
+            self.last_premise = self.state.premise  # Play again keeps the last game's premise
         return self._ask_premise()
 
     def _on_setup(self, raw: str) -> Reply:
@@ -91,13 +91,13 @@ class StoryCore(TeamGame):
             return self._ask_premise(notice=UI["mode_switched_timed" if self.timed else "mode_switched_normal"])
         if raw.startswith("/genre"):
             typed = raw.removeprefix("/genre").strip()
-            choice = {UI["genre_auto"]: GENRE_AUTO, UI["genre_none"]: GENRE_NONE}.get(typed, typed)  # 打字的也可以用顯示的詞
+            choice = {UI["genre_auto"]: GENRE_AUTO, UI["genre_none"]: GENRE_NONE}.get(typed, typed)  # Typing the displayed word works too
             if choice not in (GENRE_AUTO, GENRE_NONE, *self.engine.genres):
                 options = join(genre_label(g) for g in (GENRE_AUTO, GENRE_NONE, *self.engine.genres))
                 return self._ask_premise(notice=UI["genre_unknown"].format(choice=typed, options=options))
             self.genre = choice
             if self.drawn and not self.suggested and self.drawn not in self._premise_pool():
-                self.drawn = self._draw_premise()  # 抽到的開頭跟著換成新題材的
+                self.drawn = self._draw_premise()  # The drawn opening switches to the new genre's
             return self._ask_premise(notice=UI["genre_chosen"].format(choice=genre_label(choice)))
         if raw.startswith("/"):
             return self._ask_premise(notice=UI["unknown_command"].format(command=raw))
@@ -114,7 +114,7 @@ class StoryCore(TeamGame):
 
     def _ask_premise(self, suggestion: str = "", notice: str = "", error=None) -> Reply:
         self._phase = "setup"
-        if not (self.suggested or self.drawn or self.last_premise):  # 第一次開新故事：隨機抽一個開頭
+        if not (self.suggested or self.drawn or self.last_premise):  # The first new story: draw an opening at random
             self.drawn = self._draw_premise()
         return self._reply(
             premise_default=self._default_premise(),
@@ -131,13 +131,13 @@ class StoryCore(TeamGame):
         return GameState(premise=premise, characters=characters, timed_mode=self.timed, **self._genre_fields())
 
     def _genre_fields(self) -> dict:
-        """新局的題材欄位：指定題材就直接套用；選「自動」時，規劃大綱時由 AI 從目錄挑。"""
+        """The new game's genre fields: a chosen genre applies directly; with "auto", the AI picks from the catalog when planning the outline."""
         if self.genre in self.engine.genres:
             return {"genre": self.genre}
         return {"genre_pending": self.genre == GENRE_AUTO and bool(self.engine.genres)}
 
     def _genre_menu(self) -> list[tuple[str, str, str]]:
-        """新故事對話框的題材選單：(值, 顯示的字, 介紹)，自動、不套用在最前面；沒有題材包時不顯示選單。"""
+        """The new story dialog's genre menu: (value, text shown, description), with auto and none first; no menu without genre packs."""
         if not self.engine.genres:
             return []
         return [
@@ -146,11 +146,11 @@ class StoryCore(TeamGame):
         ] + [(g.name, UI["genre_option"].format(name=g.name), g.description) for g in self.engine.genres.values()]
 
     def _default_premise(self) -> str:
-        """留白時使用的前提：AI 想的 → 隨機抽的 → 上一局的（再玩一次）→ 預設的。"""
+        """The premise used if left blank: the AI's suggestion → the random draw → the last game's (play again) → the default."""
         return self.suggested or self.drawn or self.last_premise or DEFAULT_PREMISE
 
     def _premise_pool(self) -> list[str]:
-        """可以隨機抽的開頭：指定了題材就用那個題材包的，否則用所有題材包的，再加上預設的前提。"""
+        """Openings to draw from: the chosen genre pack's, or every pack's if no genre is chosen, plus the default premise."""
         genres = self.engine.genres
         if self.genre in genres and genres[self.genre].premises:
             return list(genres[self.genre].premises)
@@ -160,7 +160,7 @@ class StoryCore(TeamGame):
         pool = self._premise_pool()
         return random.choice([p for p in pool if p != avoid] or pool)
 
-    # ---------- 一回合 ----------
+    # ---------- A turn ----------
 
     def _action(self, raw: str, actor: str | None) -> str | None:
         if raw.startswith("/"):
@@ -168,7 +168,7 @@ class StoryCore(TeamGame):
         return pick_choice(raw, self._choices(actor) if actor else []) or raw
 
     def _play_round(self, actions: dict[str, str]) -> Reply:
-        """請 AI 寫這一回合，存檔，回傳這回合的回覆。"""
+        """Have the AI write this turn, save, and return this turn's reply."""
         self._wait_compaction()
         before = {c.name: snapshot(c) for c in self.state.characters}
         self.engine.act(self.state, actions)
@@ -181,7 +181,7 @@ class StoryCore(TeamGame):
         return self._turn_reply(before)
 
     def _on_ending(self, raw: str) -> Reply:
-        """故事結束後的下一次輸入：寫尾聲。尾聲寫失敗也照樣進到結束階段，可以再玩一次。"""
+        """The next input after the story ends: write the epilogue. If the epilogue fails, still move on to the end so players can play again."""
         s = self.state
         notice = ""
         if not s.epilogue:
@@ -206,7 +206,7 @@ class StoryCore(TeamGame):
                     changes.append((c.name, groups))
         return self._reply(narration=s.current_narration, changes=changes, **self._screen())
 
-    # ---------- 給 TeamGame 的資料 ----------
+    # ---------- Data for TeamGame ----------
 
     def _active(self) -> list[str]:
         return [c.name for c in self.state.characters if c.alive]
@@ -232,7 +232,7 @@ class StoryCore(TeamGame):
         return {"narration": s.current_narration, "resumed": True, "history": self._history(), "history_trimmed": bool(s.summary)}
 
     def _history(self) -> list[tuple[str, str]]:
-        """之前的劇情（劇情紀錄的原文）：(劇情, 看完之後的行動)。只有一位角色時，行動前面不寫名字，跟平常顯示的一樣。"""
+        """Earlier narration (the story log's original text): (narration, the actions taken after it). With one character, actions have no name in front, as usual."""
         s = self.state
         prefix = TURN["action_entry"].format(name=s.characters[0].name, action="") if s.solo else ""
         return [(t.narration, t.action.removeprefix(prefix)) for t in s.recent]
@@ -243,10 +243,10 @@ class StoryCore(TeamGame):
     def _memory(self) -> str:
         return memory_text(self.state)
 
-    # ---------- 背景壓縮記憶 ----------
+    # ---------- Background memory compaction ----------
 
     def _start_compaction(self) -> None:
-        """玩家讀劇情時，在背景把舊的記憶壓縮進摘要。下一次需要呼叫 LLM 前會先等它完成。"""
+        """While players read, compact old memory into the summary in the background. The next LLM call waits for it to finish."""
         if not self.engine.needs_compaction(self.state):
             return
         state = self.state
@@ -255,8 +255,8 @@ class StoryCore(TeamGame):
             try:
                 self.engine.compact_memory(state)
             except Exception:
-                return  # 失敗沒關係，下回合會再試
-            if state is self.state:  # 期間開了新局的話，不要用舊局覆蓋存檔
+                return  # A failure is fine; it's retried next turn
+            if state is self.state:  # If a new game started meanwhile, don't overwrite the save with the old one
                 self._save()
 
         self._compaction = threading.Thread(target=run, daemon=True)
@@ -269,7 +269,7 @@ class StoryCore(TeamGame):
 
 
 def character_status(c: Character) -> Status:
-    """給外殼顯示的一位角色的狀態（Reply.characters 裡的一項）。"""
+    """One character's status for the shells to show (one item in Reply.characters)."""
     warning = warning_level(c) if c.alive else ""
     return Status(items=condition_list(c) or [(word("level", "healthy"), "healthy")], warning=warning, name=c.name,
                   alive=c.alive, warning_text=word("level", warning) if warning else "")

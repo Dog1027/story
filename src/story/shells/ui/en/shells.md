@@ -42,11 +42,11 @@ Press Enter to see the ending
 The End
 
 ## history_trimmed
-<!-- 讀檔、重新連線時，之前的劇情最前面：更早的部分已經壓縮成摘要 -->
+<!-- When loading or reconnecting, before the earlier story: older parts were compacted into a summary -->
 (Earlier parts of the story were condensed into a summary; see /state)
 
 ## history_end
-<!-- 讀檔、重新連線時，之前的劇情與目前這一段之間 -->
+<!-- When loading or reconnecting, between the earlier story and the current passage -->
 ── The story so far ──
 
 ## hint_input
@@ -58,7 +58,7 @@ The End
 {names} acted. {hint}
 
 ## input_echo
-<!-- 有輸入方式時（海龜湯），故事區顯示的自己的行動。變數：{label} 方式（提問、猜湯底）、{text} -->
+<!-- With input modes (turtle soup), your own action shown in the story area. Variables: {label} the mode (ask, guess), {text} -->
 {label}: {text}
 
 ## acted

@@ -1,4 +1,4 @@
-"""冒險：一支隊伍在 AI 寫的故事裡冒險。見 game.py。"""
+"""Adventure: a team adventures through a story the AI writes. See game.py."""
 
 from story.games.adventure.game import GENRE_AUTO, GENRE_NONE, StoryCore
 

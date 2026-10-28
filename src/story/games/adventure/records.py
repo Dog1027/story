@@ -1,4 +1,4 @@
-"""冒險的紀錄工具：回合變化、結局紀錄、記憶文字。只處理資料，不管外觀。存讀檔在 story/core/saves.py。"""
+"""The adventure's record helpers: changes between turns, the ending record, the memory text. Data only, no looks. Saving and loading are in story/core/saves.py."""
 
 from collections import Counter
 
@@ -10,7 +10,7 @@ from story.games.adventure.text import UI
 
 join = UI["list_sep"].join
 
-DEFAULT_PREMISE = PREMISE["default"]  # 沒有題材包可以抽、玩家也沒輸入時用的前提
+DEFAULT_PREMISE = PREMISE["default"]  # The premise used when there's no genre pack to draw from and the player typed nothing
 
 
 def memory_text(state: GameState) -> str:
@@ -29,7 +29,7 @@ def memory_text(state: GameState) -> str:
 
 
 def ending_record(state: GameState) -> str:
-    """結局的旅程紀錄。遊戲內時間只在這裡揭曉。"""
+    """The journey record at the ending. The in-game time is only revealed here."""
     days = (state.minutes or 0) // DAY + 1
     record = UI["record"].format(turns=state.turn, days=days) + "\n"
     fallen = [c.name for c in state.characters if not c.alive]
@@ -47,9 +47,9 @@ def ending_record(state: GameState) -> str:
     return record
 
 
-# ---------- 回合間的變化 ----------
+# ---------- Changes between turns ----------
 
-Snapshot = tuple[dict[str, str], Counter]  # (狀態名稱 → 程度, 背包物品數量)
+Snapshot = tuple[dict[str, str], Counter]  # (condition name → severity, item counts in the bag)
 
 
 def snapshot(who: Character) -> Snapshot:
@@ -57,7 +57,7 @@ def snapshot(who: Character) -> Snapshot:
 
 
 def change_groups(before: Snapshot, who: Character) -> ChangeGroups:
-    """比較一位角色回合前後的狀態與背包，列出變化。只回傳有內容的分組。"""
+    """Compare a character's conditions and bag before and after a turn and list the changes. Returns only non-empty groups."""
     old_conds, old_items = before
     new_conds, new_items = snapshot(who)
     rank, w = SEVERITY_ORDER.index, lambda v: word("severity", v)

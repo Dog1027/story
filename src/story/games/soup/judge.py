@@ -1,6 +1,6 @@
-"""海龜湯的裁判：請 AI 判斷每一回合的提問與猜測、出題、檢查題目。提示詞在 prompts/語言/soup.md。
+"""The turtle soup judge: has the AI rule on each turn's questions and guesses, write puzzles, and check them. The prompts are in prompts/<lang>/soup.md.
 
-AI 只提議：回答與說中了哪幾個關鍵點由 AI 判斷，算不算解開由程式依關鍵點決定（game.py）。
+The AI only proposes: it judges the answers and which key points were hit; whether that solves the puzzle is decided by the program from the key points (game.py).
 """
 
 from pathlib import Path
@@ -15,8 +15,8 @@ from story.games.soup.puzzles import MAX_POINTS, MIN_POINTS
 from story.games.soup.text import TEXT, UI
 
 SOUP = TEXT.sections("soup")
-MAKE_ATTEMPTS = 2  # AI 出的題目檢查沒通過時，最多出幾次
-WRITER_MODEL = "gemini-3.5-flash"  # 出題用比較強的模型：一局只出一次題，flash-lite 寫的湯底常常前後矛盾
+MAKE_ATTEMPTS = 2  # How many times to write a puzzle when the AI's puzzle fails the check
+WRITER_MODEL = "gemini-3.5-flash"  # A stronger model writes puzzles: it's only once a game, and flash-lite's truths often contradict themselves
 
 
 def points_text(puzzle: Puzzle) -> str:
@@ -24,7 +24,7 @@ def points_text(puzzle: Puzzle) -> str:
 
 
 def past_text(state: SoupState) -> str:
-    """之前的問答，給裁判保持一致。"""
+    """Earlier questions and answers, so the judge stays consistent."""
     total = len(state.puzzle.key_points)
     lines = []
     for move in (m for r in state.rounds for m in r):
@@ -36,7 +36,7 @@ def past_text(state: SoupState) -> str:
 
 
 def quoted(quote: str, guess: str) -> bool:
-    """裁判引用的原文真的出自這個猜測（容許標點、空白不同，或少數幾個字的出入）。沒有引用到原文的關鍵點不算說中。"""
+    """Whether the text the judge quotes really comes from this guess (allowing different punctuation, spacing, or a few characters off). A key point without a real quote doesn't count."""
     squash = lambda text: "".join(ch for ch in text if ch.isalnum()).lower()  # noqa: E731
     quote, guess = squash(quote), squash(guess)
     if not quote:
@@ -48,10 +48,10 @@ def quoted(quote: str, guess: str) -> bool:
 class SoupJudge(AICaller):
     def __init__(self, api_key: str | None = None, client=None, log_path: Path | None = None):
         super().__init__(api_key, client, log_path)
-        self.stage = ""  # 出題時目前在做什麼，外殼顯示在等待畫面上
+        self.stage = ""  # What's happening while writing a puzzle, shown on the waiting screen
 
     def judge(self, state: SoupState, moves: list[Move]) -> None:
-        """判斷這一回合的提問與猜測，把回答與說中的關鍵點數寫進 moves。"""
+        """Rule on this turn's questions and guesses, writing the answers and key points hit into moves."""
         listed = "\n".join(
             SOUP["move_ask" if m.kind == "ask" else "move_guess"].format(n=i, name=m.name, text=m.text) for i, m in enumerate(moves, 1)
         )
@@ -66,7 +66,7 @@ class SoupJudge(AICaller):
                 system_instruction=SOUP["system"],
                 response_mime_type="application/json",
                 response_schema=Judgement,
-                thinking_config=types.ThinkingConfig(thinking_level="medium"),  # 逐點對照湯底，想清楚比較不會鬆緊不一
+                thinking_config=types.ThinkingConfig(thinking_level="medium"),  # Comparing point by point with the truth; thinking it through keeps rulings consistent
             ),
         )
         if not isinstance(response.parsed, Judgement):
@@ -76,7 +76,7 @@ class SoupJudge(AICaller):
         for i, move in enumerate(moves, 1):
             ruling = rulings.get(i)
             if ruling is None:
-                raise RuntimeError(UI["soup_no_ruling"])  # 漏掉了某個人：這回合重來，不要亂猜一個回答
+                raise RuntimeError(UI["soup_no_ruling"])  # Someone was left out: redo the turn rather than guess an answer
             if move.kind == "ask":
                 move.answer = code("soup_answer", ruling.answer)
             else:
@@ -84,7 +84,7 @@ class SoupJudge(AICaller):
         self.write_log({"turn": state.turn + 1, "soup": [m.model_dump() for m in moves]})
 
     def make_puzzle(self, avoid: list[str]) -> Puzzle | None:
-        """請 AI 出一題，再請它檢查合不合理；檢查沒通過就帶著問題重出，都不行時回傳 None。"""
+        """Have the AI write a puzzle, then check whether it holds up; if not, rewrite it with the problem attached. Returns None if every attempt fails."""
         prompt = SOUP["make"].format(avoid="\n".join(f"- {t}" for t in avoid) or "-")
         try:
             for _ in range(MAKE_ATTEMPTS):
@@ -95,7 +95,7 @@ class SoupJudge(AICaller):
                     continue
                 self.stage = UI["soup_stage_check"]
                 problem = self._problem(draft)
-                self.write_log({"puzzle": draft.title, "problem": problem})  # 出題的每次嘗試都記下來，方便調整檢查的標準
+                self.write_log({"puzzle": draft.title, "problem": problem})  # Log every attempt, to help tune the check
                 if not problem:
                     return draft
                 prompt += "\n\n" + SOUP["retry"].format(problem=problem)
@@ -112,7 +112,7 @@ class SoupJudge(AICaller):
                 system_instruction=SOUP["make_system"],
                 response_mime_type="application/json",
                 response_schema=PuzzleDraft,
-                thinking_config=types.ThinkingConfig(thinking_level="low"),  # medium 常常超過請求的時限
+                thinking_config=types.ThinkingConfig(thinking_level="low"),  # medium often runs past the request timeout
             ),
         )
         draft = response.parsed
@@ -124,7 +124,7 @@ class SoupJudge(AICaller):
         return Puzzle(title=draft.title.strip(), surface=draft.surface.strip(), truth=draft.truth.strip(), key_points=points)
 
     def _problem(self, puzzle: Puzzle) -> str:
-        """檢查題目：合理時回傳空字串，否則是問題所在。"""
+        """Check a puzzle: an empty string if it holds up, otherwise what's wrong."""
         response = self.generate(
             "puzzle_check",
             model=MODEL,
@@ -133,7 +133,7 @@ class SoupJudge(AICaller):
                 system_instruction=SOUP["make_system"],
                 response_mime_type="application/json",
                 response_schema=PuzzleCheck,
-                thinking_config=types.ThinkingConfig(thinking_level="medium"),  # 要仔細找矛盾
+                thinking_config=types.ThinkingConfig(thinking_level="medium"),  # Look carefully for contradictions
             ),
         )
         check = response.parsed

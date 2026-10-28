@@ -1,4 +1,4 @@
-"""核心的文字協定：送文字進去、檢查回覆。用 FakeEngine 精準控制每回合的結果。"""
+"""The core's text protocol: send text in and check the replies. FakeEngine controls each turn's result exactly."""
 
 import pytest
 from conftest import HERO, FakeEngine, InvalidKeyError
@@ -24,10 +24,10 @@ def new_game(core, *inputs):
     core.start()
     for text in inputs:
         core.send(text)
-    return core.send("")  # 用預設前提開始
+    return core.send("")  # Start with the default premise
 
 
-# ---------- 開新局 ----------
+# ---------- New game ----------
 
 
 def test_first_reply_asks_for_premise(core):
@@ -62,7 +62,7 @@ def test_timed_toggle(core):
     core.start()
     assert core.send("/timed on").timed
     assert not core.send("/timed off").timed
-    assert core.send("/timed").timed  # 沒有參數就切換
+    assert core.send("/timed").timed  # No argument toggles it
     reply = core.send("")
     assert reply.timed and core.state.timed_mode and reply.time_limit == 10
 
@@ -73,7 +73,7 @@ def test_unknown_command_while_asking_premise(core):
     assert reply.phase == "setup" and "沒有 /xyz" in reply.notice
 
 
-# ---------- 遊戲中 ----------
+# ---------- In a game ----------
 
 
 def test_choosing_by_number_and_reply_fields(core):
@@ -112,24 +112,24 @@ def test_info_commands_do_not_advance_the_story(core):
     new_game(core)
     reply = core.send("/state")
     assert reply.info[0] == "程式記住的東西" and reply.narration == ""
-    assert "[背包]\n  鑰匙" in reply.info[1]  # 狀態列不顯示背包，完整內容在這裡
+    assert "[背包]\n  鑰匙" in reply.info[1]  # The status bar doesn't show the bag; the full contents are here
     assert reply.choices == ["往上爬", "檢查鑰匙"]
     assert core.send("/help").info[0] == "說明"
     assert core.state.turn == 1
 
 
 def test_status_warns_only_when_the_next_wound_could_kill(core):
-    """哪些程度要警告是遊戲規則（跟死亡門檻一起定義在冒險裡），外殼直接使用 Status.warning 與顯示的詞。"""
+    """Which severities to warn about is a game rule (defined in the adventure along with the death threshold); shells use Status.warning and its word directly."""
     from story.games.adventure.models import Condition
 
     new_game(core)
     fine = core.send("/state").characters[0]
-    assert fine.warning == "" and fine.items == [("良好", "healthy")]  # 沒有狀態時顯示的詞也由玩法給
+    assert fine.warning == "" and fine.items == [("良好", "healthy")]  # The word shown with no conditions also comes from the game
     core.state.characters[0].conditions = [Condition(name="失血", kind="body", severity="severe")]
     reply = core.send("/state")
     assert reply.characters[0].warning == "serious" and reply.characters[0].warning_text == "重傷"
     core.state.characters[0].conditions = [Condition(name="疲勞", kind="body", severity="moderate"), Condition(name="恐懼", kind="mind", severity="severe")]
-    assert core.send("/state").characters[0].warning == ""  # 中度的疲勞、精神狀態都不會致命
+    assert core.send("/state").characters[0].warning == ""  # Moderate fatigue and mind conditions are never fatal
 
 
 def test_unknown_command_and_empty_input_while_playing(core):
@@ -147,20 +147,20 @@ def test_each_turn_is_saved(core, isolated):
 
 def test_compaction_runs_in_background_and_is_awaited(core, engine):
     new_game(core)
-    core.send("1")  # FakeEngine 在第 2 回合要求壓縮
-    core.send("2")  # 下一回合前會先等壓縮完成
+    core.send("1")  # FakeEngine asks for compaction on turn 2
+    core.send("2")  # The next turn waits for compaction to finish first
     assert engine.compacted == 1
 
 
-# ---------- 錯誤 ----------
+# ---------- Errors ----------
 
 
 def test_invalid_key_keeps_state_and_can_retry(core, engine, isolated):
     new_game(core)
     engine.fail_with = InvalidKeyError()
     reply = core.send("1")
-    assert reply.error == "api" and reply.phase == "playing" and "架站的人" in reply.notice  # 玩家沒辦法換伺服器的 key
-    assert core.state.turn == 1  # 改了一半的狀態已從存檔還原
+    assert reply.error == "api" and reply.phase == "playing" and "架站的人" in reply.notice  # Players can't change the server's key
+    assert core.state.turn == 1  # The half-changed state was restored from the save
     engine.fail_with = None
     assert core.send("1").narration == "你選擇了「往上爬」。"
 
@@ -172,7 +172,7 @@ def test_other_api_error(core, engine):
     assert reply.error == "api" and "模型輸出無法解析" in reply.notice
 
 
-# ---------- 重新開始、結局、讀檔 ----------
+# ---------- Restart, ending, loading ----------
 
 
 def test_restart_asks_for_confirmation(core):
@@ -209,7 +209,7 @@ def test_resume_from_save(engine, isolated):
     reply = second.send("1")
     assert reply.resumed and reply.narration == "你選擇了「往上爬」。"
     assert reply.choices == ["點亮油燈", "躲起來"]
-    (opening, action), = reply.history  # 之前的劇情也一起送回來；一個人玩，行動前面不寫名字
+    (opening, action), = reply.history  # The earlier story comes back too; playing alone, actions have no name in front
     assert opening and action == "往上爬" and not reply.history_trimmed
     assert not second.send("1").resumed
 
@@ -232,7 +232,7 @@ def test_new_game_from_continue_prompt_reuses_premise(engine, isolated):
 
 
 def test_progress_tells_what_the_opening_is_doing(isolated):
-    """開新故事要呼叫兩次 AI：progress 依序是「規劃故事大綱」「寫開場」，結束後清空。"""
+    """Starting a new story calls the AI twice: progress is "planning the story outline", then "writing the opening", and is cleared afterwards."""
     from conftest import beat, make_engine
 
     engine, gemini = make_engine(beat(narration="燈塔的門吱呀一聲打開。"))

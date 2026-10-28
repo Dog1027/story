@@ -1,4 +1,4 @@
-"""題材包：讀取與檢查格式、個人的覆蓋內建的、AI 依前提挑選、提示詞裡的位置、「幫我想」與 /genre 指令。"""
+"""Genre packs: reading and checking the format, personal packs overriding built-in ones, the AI picking by premise, where they go in prompts, "suggest one" and the /genre command."""
 
 from conftest import HERO, FakeEngine, beat, make_engine, solo
 
@@ -28,11 +28,11 @@ def pack(**fields):
     return {"武俠": Genre(**{**base, **fields})}
 
 
-# ---------- 讀取與檢查 ----------
+# ---------- Reading and checking ----------
 
 
 def test_builtin_genres_are_all_valid():
-    """內建的題材包都要通過檢查：改了內建題材包卻寫錯格式時，這裡會提醒。"""
+    """Every built-in genre pack must pass the checks: this catches a format mistake when a built-in pack is edited."""
     genres, problems = load_genres([BUILTIN_DIR])
     assert problems == [] and len(genres) >= 3
 
@@ -67,16 +67,16 @@ def test_personal_genre_overrides_builtin_with_same_name(tmp_path):
     assert genres["武俠"].guide == "自己改的指引"
 
 
-# ---------- engine：題材怎麼進到提示詞 ----------
+# ---------- engine: how a genre gets into the prompts ----------
 
 
 def test_chosen_genre_guide_sits_in_the_stable_part_of_the_prompt():
-    """指引整局固定，放在劇情紀錄前面不影響快取；命名素材只在開場給。"""
+    """The guidance is fixed for the whole game and placed before the story log, so caching isn't affected; naming material is only given at the opening."""
     engine, gemini = make_engine(beat(), beat(), genres=pack())
     state = solo(premise="鏢局", genre="武俠")
     engine.start(state)
     arc_prompt, opening = gemini.prompts[0], gemini.prompts[1]
-    assert "用古白話" in arc_prompt and "題材目錄" not in arc_prompt  # 已經指定題材：大綱照題材規劃，不用再挑
+    assert "用古白話" in arc_prompt and "題材目錄" not in arc_prompt  # A genre is already chosen: the outline follows it, with no need to pick
     assert "# 轉折靈感" in arc_prompt and "師父才是元兇" in arc_prompt
     assert "命名素材" in opening and "沈青衣" in opening
     engine.act(state, {HERO: "上路"})
@@ -92,7 +92,7 @@ def test_auto_genre_is_picked_before_planning_the_arc():
     pick, arc_prompt, opening = gemini.prompts
     assert "# 題材目錄\n- 武俠：江湖恩怨" in pick
     assert state.genre == "武俠" and not state.genre_pending
-    assert "用古白話" in arc_prompt and "師父才是元兇" in arc_prompt  # 先挑好，大綱就能用上指引與轉折靈感
+    assert "用古白話" in arc_prompt and "師父才是元兇" in arc_prompt  # Picked first, so the outline can use the guidance and twist ideas
     assert "用古白話" in opening
 
 
@@ -111,7 +111,7 @@ def test_suggest_premise_uses_the_genre_pack():
     assert "題材：武俠" in prompt and "題材說明：江湖恩怨" in prompt and "你是鏢師。" in prompt
 
 
-# ---------- 核心：/genre 指令 ----------
+# ---------- Core: the /genre command ----------
 
 
 class GenreEngine(FakeEngine):
@@ -122,7 +122,7 @@ def test_genre_command_and_new_story_fields(isolated):
     core = StoryCore("test", [HERO], engine=GenreEngine(), save_path=isolated / "save.json")
     reply = core.start()
     assert reply.genre == GENRE_AUTO and [v for v, _, _ in reply.genres] == [GENRE_AUTO, GENRE_NONE, "武俠"]
-    assert reply.genres[2] == ("武俠", "題材：武俠", "江湖恩怨")  # 題材選單：值、顯示的字、介紹
+    assert reply.genres[2] == ("武俠", "題材：武俠", "江湖恩怨")  # The genre menu: value, text shown, description
     assert "沒有「太空」這個題材" in core.send("/genre 太空").notice
     assert core.send("/genre 武俠").genre == "武俠"
     core.send("鏢局的故事")
@@ -138,10 +138,10 @@ def test_genre_command_and_new_story_fields(isolated):
     core.send("1")
     core.send(f"/genre {GENRE_AUTO}")
     core.send("第三個故事")
-    assert core.state.genre_pending  # 規劃大綱時由 AI 挑
+    assert core.state.genre_pending  # The AI picks one when planning the outline
 
 
-# ---------- 隨機前提 ----------
+# ---------- Random premises ----------
 
 
 def two_packs():
@@ -161,7 +161,7 @@ def test_first_new_story_draws_a_premise_from_the_packs(isolated):
     core = StoryCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     reply = core.start()
     assert reply.premise_default in ("你是鏢師。", "你是捕快。", "你收到舅舅的包裹。", DEFAULT_PREMISE)
-    core.send("")  # 留白：用抽到的那個開始
+    core.send("")  # Blank: start with the drawn one
     assert core.state.premise == reply.premise_default
 
 
@@ -169,9 +169,9 @@ def test_random_draws_a_different_premise_and_genre_change_redraws(isolated):
     core = StoryCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     core.start()
     reply = core.send("/genre 武俠")
-    assert reply.premise_default in ("你是鏢師。", "你是捕快。")  # 換題材：抽到的開頭跟著換
+    assert reply.premise_default in ("你是鏢師。", "你是捕快。")  # Changing the genre: the drawn opening changes with it
     other = core.send("/random").premise_default
-    assert other in ("你是鏢師。", "你是捕快。") and other != reply.premise_default  # 換一個：不會抽到同一個
+    assert other in ("你是鏢師。", "你是捕快。") and other != reply.premise_default  # Another one: never draws the same one
     assert core.send("/genre 克蘇魯").premise_default == "你收到舅舅的包裹。"
 
 
@@ -181,8 +181,8 @@ def test_play_again_keeps_the_last_premise_unless_rerolled(isolated):
     core.send("自己寫的前提")
     core.send("/restart")
     reply = core.send("1")
-    assert reply.premise_default == "自己寫的前提"  # 再玩一次：延續上一局的前提
-    assert core.send("/genre 武俠").premise_default == "自己寫的前提"  # 換題材也不換掉
+    assert reply.premise_default == "自己寫的前提"  # Play again: keeps the last game's premise
+    assert core.send("/genre 武俠").premise_default == "自己寫的前提"  # Changing the genre doesn't replace it either
     assert core.send("/random").premise_default in ("你是鏢師。", "你是捕快。")
 
 
@@ -193,7 +193,7 @@ def test_ai_suggestion_wins_over_drawn_premise(isolated):
 
 
 def test_every_language_has_valid_genre_packs():
-    """每種語言的內建題材包（story/genres/語言/）都通過檢查。英文用詞數算長度，同樣的上限也放得下。"""
+    """Every language's built-in genre packs (story/genres/<lang>/) pass the checks. English counts length in words, so the same limits fit too."""
     for folder in BUILTIN_DIR.parent.iterdir():
         genres, problems = load_genres([folder])
         assert genres and not problems, (folder.name, problems)

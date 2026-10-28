@@ -1,13 +1,13 @@
-"""預覽送給 AI 的完整提示詞：用範例情境把每一種 AI 呼叫的提示詞組出來印出，不會呼叫 AI、不花錢。
+"""Preview the full prompts sent to the AI: build the prompt for each kind of AI call from sample scenarios and print them, without calling the AI or spending anything.
 
-改了冒險的提示詞（story/games/adventure/prompts/）之後，用這個看拼起來的樣子：
+After changing the adventure's prompts (story/games/adventure/prompts/), use this to see how they fit together:
 
-    just prompts              列出所有情境
-    just prompts turn         只看「一般回合」
-    just prompts --players 2  兩位角色的隊伍（預設一位）
-    just prompts --genre 克蘇魯 opening   換一個題材包
+    just prompts              every scenario
+    just prompts turn         only "a normal turn"
+    just prompts --players 2  a team of two characters (one by default)
+    just prompts --genre <genre name> opening   use a genre pack (names are in the current language)
 
-範例的故事內容在 story/games/adventure/samples/語言.md（不是提示詞，只是讓預覽看起來像真的一局）。
+The sample story is in story/games/adventure/samples/<lang>.md (not a prompt, just so the preview looks like a real game).
 """
 
 import random
@@ -23,11 +23,11 @@ from story.games.adventure.prompting import SYSTEM_PROMPT
 from story.games.adventure.rules import ACT_TURNS, MIN_ACT_TURNS, TARGET_TURNS
 
 SAMPLES_DIR = Path(__file__).resolve().parent / "games" / "adventure" / "samples"
-SAMPLE = prompts.sections(prompts.LANGUAGE, SAMPLES_DIR)  # 這個語言的範例故事（samples/語言.md）
+SAMPLE = prompts.sections(prompts.LANGUAGE, SAMPLES_DIR)  # This language's sample story (samples/<lang>.md)
 
 
 def items(name: str) -> list[list[str]]:
-    """範例裡一行一項的段落；每一項用 | 分成幾個欄位。"""
+    """A sample section with one item per line; each item splits into fields on |."""
     return [[field.strip() for field in item.split("|")] for item in prompts.items(SAMPLE[name])]
 
 
@@ -51,7 +51,7 @@ PREMISE = SAMPLE["premise"]
 
 
 def sample_state(players: int, genre: str, **fields) -> GameState:
-    """範例故事的第 8 回合（第二幕）；players 是隊伍有幾位角色。第一位角色帶著範例的傷勢。"""
+    """Turn 8 of the sample story (act two); players is how many characters are on the team. The first character carries the sample wounds."""
     characters = [Character(name=name, inventory=[item]) for name, item in items("players")[:players]]
     characters[0].conditions = conditions("wounds")
     if players == 1:
@@ -76,12 +76,12 @@ def sample_state(players: int, genre: str, **fields) -> GameState:
 
 
 def sample_actions(players: int) -> dict[str, str]:
-    """這回合每位角色的行動。"""
+    """Each character's action this turn."""
     return dict(items("actions")[:players])
 
 
 def scenarios(engine: Engine, players: int, genre: str) -> dict[str, tuple[str, str]]:
-    """{代號: (說明, 提示詞)}"""
+    """{code: (description, prompt)}"""
     state = lambda **fields: sample_state(players, genre, **fields)  # noqa: E731
     build, action = engine.build, sample_actions(players)
     opening = state(turn=0, minutes=None, recent=[], key_events=[], flags=[], act=0, act_turns=0)
@@ -89,47 +89,47 @@ def scenarios(engine: Engine, players: int, genre: str) -> dict[str, tuple[str, 
     events = [f"{SAMPLE['event']} {i}" for i in range(10)]
     long_story = state(turn=40, recent=HISTORY * 40, key_events=events, summary=SAMPLE["summary"])
     return {
-        "system": ("寫作與遊戲規則（system prompt，每次寫劇情都會送出）", SYSTEM_PROMPT),
-        "schema": ("回傳格式的欄位說明（跟著回傳格式送出）", "\n".join(f"{key}：{text}" for key, text in SCHEMA.items())),
-        "genre": ("題材選「自動」時，挑題材", build.pick_genre(opening)),
-        "arc": ("規劃隱藏的大綱", build.arc(opening)),
-        "opening": ("開場", build.turn(opening, None)),
-        "turn": ("一般回合（第二幕）", build.turn(state(), action)),
-        "early": (f"一幕剛開始（還沒演滿 {MIN_ACT_TURNS} 回合）", build.turn(state(act_turns=0), action)),
-        "dragging": (f"這一幕拖太久（超過 {ACT_TURNS} 回合）", build.turn(state(act_turns=ACT_TURNS), action)),
-        "reveal": ("第三幕：揭露隱藏的真相", build.turn(state(act=2, turn=16), action)),
-        "final": (f"最後一幕，超過預定的 {TARGET_TURNS} 回合", build.turn(state(act=3, turn=TARGET_TURNS), action)),
-        "timed": ("限時模式", build.turn(state(timed_mode=True), action)),
-        "death": ("傷重倒下", build.death(dying, [dying.characters[0].name])),
-        "epilogue": ("尾聲", build.epilogue(state(act=3, turn=26))),
-        "premise": ("幫我想", build.premise(genre=genre)),
-        "compaction": ("記憶壓縮（劇情紀錄太長時）", build.compaction(long_story)),
+        "system": ("Writing and game rules (the system prompt, sent every time narration is written)", SYSTEM_PROMPT),
+        "schema": ("Field descriptions for the response format (sent with the format)", "\n".join(f"{key}: {text}" for key, text in SCHEMA.items())),
+        "genre": ("Picking a genre when it's set to auto", build.pick_genre(opening)),
+        "arc": ("Planning the hidden outline", build.arc(opening)),
+        "opening": ("The opening", build.turn(opening, None)),
+        "turn": ("A normal turn (act two)", build.turn(state(), action)),
+        "early": (f"An act just started (fewer than {MIN_ACT_TURNS} turns in)", build.turn(state(act_turns=0), action)),
+        "dragging": (f"An act dragging on (over {ACT_TURNS} turns)", build.turn(state(act_turns=ACT_TURNS), action)),
+        "reveal": ("Act three: revealing the hidden truth", build.turn(state(act=2, turn=16), action)),
+        "final": (f"The last act, past the planned {TARGET_TURNS} turns", build.turn(state(act=3, turn=TARGET_TURNS), action)),
+        "timed": ("Timed mode", build.turn(state(timed_mode=True), action)),
+        "death": ("Falling from wounds", build.death(dying, [dying.characters[0].name])),
+        "epilogue": ("The epilogue", build.epilogue(state(act=3, turn=26))),
+        "premise": ("Suggest one", build.premise(genre=genre)),
+        "compaction": ("Memory compaction (when the story log gets too long)", build.compaction(long_story)),
     }
 
 
 def main(argv: list[str] | None = None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
     players = 1
-    if "--players" in args:  # 隊伍有幾位角色（預設一位，也就是一個人玩）
+    if "--players" in args:  # How many characters on the team (one by default, i.e. playing alone)
         players = int(args.pop(args.index("--players") + 1))
         args.remove("--players")
     genres = load_genres()[0]
-    genre = ""  # 預設不套用題材，畫面比較短；要看題材包的指引時加 --genre
+    genre = ""  # No genre by default, which keeps the output shorter; add --genre to see a genre pack's guidance
     if "--genre" in args:
         genre = args[args.index("--genre") + 1]
         if genre not in genres:
-            sys.exit(f"沒有「{genre}」這個題材包。可以用：{'、'.join(genres)}")
+            sys.exit(f"No genre pack named {genre!r}. Available: {', '.join(genres)}")
     names = [a for a in args if not a.startswith("--") and a != genre]
-    random.seed(0)  # 隨機抽的轉折靈感、幫我想的題材每次都一樣，方便比較改之前與之後
+    random.seed(0)  # The random twist ideas and suggested genre are the same every time, to compare before and after a change
     engine = Engine(client=SimpleNamespace(), genres=genres)
     found = scenarios(engine, players, genre)
     unknown = [n for n in names if n not in found]
     if unknown:
-        sys.exit(f"沒有這個情境：{'、'.join(unknown)}。可以用：{'、'.join(found)}")
-    mode = f"{players} 位角色"
+        sys.exit(f"No such scenario: {', '.join(unknown)}. Available: {', '.join(found)}")
+    mode = f"{players} character(s)"
     for name in names or found:
         title, text = found[name]
-        print(f"\n{'═' * 60}\n{name}：{title}（{mode}，題材：{genre or '不套用'}）\n{'═' * 60}\n{text}")
+        print(f"\n{'═' * 60}\n{name}: {title} ({mode}, genre: {genre or 'none'})\n{'═' * 60}\n{text}")
 
 
 if __name__ == "__main__":

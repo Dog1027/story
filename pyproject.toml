@@ -1,7 +1,7 @@
 [project]
 name = "story"
 version = "0.1.0"
-description = "AI 即時生成劇情的文字冒險遊戲"
+description = "A text adventure game whose story an AI writes as you play"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [

@@ -1,7 +1,7 @@
-"""AI 呼叫的次數限制：好幾局遊戲（網頁版的房間、just eval 的情境）共用一把 API key 時，一分鐘內最多呼叫幾次。
+"""A limit on AI calls: how many calls a minute when several games (web rooms, just eval scenarios) share one API key.
 
-Gemini 的免費方案每個模型每分鐘有次數上限（flash-lite 是 15 次）。超過上限的呼叫在這裡排隊，等最早的那次滿一分鐘再送；
-沒超過就立刻送，一個人玩的時候不會變慢。還是被 Gemini 擋下（429）時，等它說的秒數再送。
+Gemini's free tier limits calls per model per minute (15 for flash-lite). Calls over the limit queue here until the oldest one is a minute old;
+under the limit they go out at once, so playing alone is never slower. If Gemini still refuses (429), wait the seconds it asks for and resend.
 """
 
 import re
@@ -13,20 +13,20 @@ from types import SimpleNamespace
 
 from google.genai import errors
 
-WINDOW = 60  # 秒
-RETRIES = 3  # 被 Gemini 擋下（429）時最多再送幾次
+WINDOW = 60  # Seconds
+RETRIES = 3  # How many times to resend when Gemini refuses (429)
 
 
 class RateLimit:
-    """會在背景執行緒被呼叫（核心在背景執行緒呼叫 AI），所以用 threading 的鎖。"""
+    """Called from background threads (the core calls the AI in a background thread), so it uses a threading lock."""
 
     def __init__(self, per_minute: int):
         self.per_minute = per_minute
-        self.sent: deque[float] = deque()  # 最近一分鐘內送出的時間
+        self.sent: deque[float] = deque()  # When calls went out in the last minute
         self.lock = threading.Lock()
 
     def wait(self, on_queue: Callable[[bool], None] | None = None) -> None:
-        """等到可以送出為止。要排隊時先呼叫 on_queue(True)，輪到時呼叫 on_queue(False)，讓畫面顯示「排隊中」。"""
+        """Wait until a call may go out. Calls on_queue(True) before queuing and on_queue(False) when it's our turn, so the page can show "queued"."""
         queued = False
         while True:
             with self.lock:
@@ -56,7 +56,7 @@ class RateLimit:
                 time.sleep(float(delay.group(1)) if delay else 30)
 
     def wrap(self, client, on_queue: Callable[[bool], None] | None = None):
-        """包住 Gemini client，經過它的呼叫都受次數限制。串流的請求在讀第一段時才送出，所以讀第一段也包進來。"""
+        """Wrap a Gemini client so every call through it is limited. A streaming request is only sent when the first chunk is read, so reading the first chunk is wrapped too."""
         models = client.models
 
         def stream(**request):
@@ -69,7 +69,7 @@ class RateLimit:
                 yield head
                 yield from chunks
 
-        return SimpleNamespace(client=client, models=SimpleNamespace(  # client 要留著，被回收時會關掉連線
+        return SimpleNamespace(client=client, models=SimpleNamespace(  # Keep client: when it's collected, it closes the connection
             generate_content=lambda **request: self.call(lambda: models.generate_content(**request), on_queue),
             generate_content_stream=stream,
         ))

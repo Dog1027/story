@@ -1,4 +1,4 @@
-"""網頁版的玩家名字：怎樣的名字可以用（同名不能同時在線由大廳負責，見 test_room.py）。"""
+"""Player names on the web: which names are allowed (the lobby keeps two people from using one name at once; see test_room.py)."""
 
 import pytest
 

@@ -1,4 +1,4 @@
-"""網頁版：用 aiohttp 的測試工具連上 WebSocket，扮演瀏覽器走完流程。大廳與房間是真的，核心用真的 StoryCore，engine 用假的。"""
+"""The web version: connect to the WebSocket with aiohttp's test tools and play the browser's part. The lobby and rooms are real, the core is a real StoryCore, and the engine is fake."""
 
 from pathlib import Path
 
@@ -14,7 +14,7 @@ from story.shells.lobby import Lobby
 
 @pytest.fixture(autouse=True)
 def fake_core(monkeypatch) -> list[str]:
-    """大廳建立核心時換成假的 engine；回傳每次建立核心時拿到的 API key。"""
+    """Swap in a fake engine when the lobby builds a core; returns the API key each core got."""
     keys: list[str] = []
 
     def make(api_key, players, *, save_path, log_path, client=None):
@@ -30,7 +30,7 @@ def app():
 
 
 class Browser:
-    """一個瀏覽器分頁：收到的訊息都留著；劇情一律當作立刻顯示完。"""
+    """One browser tab: keeps every message received; narration always counts as shown at once."""
 
     def __init__(self, ws):
         self.ws = ws
@@ -54,12 +54,12 @@ class Browser:
 
 async def enter_name(client, name: str) -> Browser:
     browser = Browser(await client.ws_connect("/ws"))
-    await browser.answer((await browser.expect("name"))["id"], name)  # 玩家不用輸入 API key：用架站者的
+    await browser.answer((await browser.expect("name"))["id"], name)  # Players don't enter an API key: the host's is used
     return browser
 
 
 async def enter_own_room(client) -> Browser:
-    """一個人玩：在大廳開一個自己的房間、按開始、輸入前提。"""
+    """Playing alone: open your own room in the lobby, press start, and enter a premise."""
     browser = await enter_name(client, "阿明")
     await browser.expect("lobby", lambda m: m["screen"]["title"] == "大廳" and m["screen"]["choices"] == ["開一個新房間"])
     await browser.send("act", text="1")
@@ -76,40 +76,40 @@ async def test_page_is_served_with_phone_support():
         page = await (await client.get("/")).text()
         assert '<meta name="viewport" content="width=device-width' in page and "/static/app.js" in page
         script = await client.get("/static/app.js")
-        assert script.status == 200 and script.headers["Cache-Control"] == "no-cache"  # 更新後不會用到快取的舊檔
+        assert script.status == 200 and script.headers["Cache-Control"] == "no-cache"  # After an update, no stale cached file is used
 
 
 async def test_playing_alone_in_own_room(isolated, fake_core):
     async with TestClient(TestServer(app())) as client:
         browser = await enter_own_room(client)
-        assert fake_core == ["server-key"]  # 用架站者的 key，玩家不用輸入
-        assert any(m["t"] == "clear" and m["premise"] == "燈塔" for m in browser.seen)  # 先顯示前提，再寫開場
+        assert fake_core == ["server-key"]  # Uses the host's key; players don't enter one
+        assert any(m["t"] == "clear" and m["premise"] == "燈塔" for m in browser.seen)  # Show the premise first, then write the opening
         await browser.send("act", text="1")
         assert (await browser.expect("action"))["text"] == "阿明往上爬"
-        await browser.expect("changes", lambda m: m["name"] == "" and m["groups"][0][0] == "獲得")  # 一個人玩不寫名字
+        await browser.expect("changes", lambda m: m["name"] == "" and m["groups"][0][0] == "獲得")  # No name when playing alone
         status = (await browser.expect("status", lambda m: m["status"] and m["status"]["turn"] == 2))["status"]
         assert [c["name"] for c in status["characters"]] == ["阿明"]
-        assert (Path("saves") / "team-阿明.adventure.json").exists()  # 存檔跟著隊伍（一個人也是一隊）
+        assert (Path("saves") / "team-阿明.adventure.json").exists()  # The save follows the team (one person is a team too)
 
 
 async def test_continuing_a_save_starts_from_a_clean_screen(isolated):
-    """讀檔時先清掉房間的等人畫面，再顯示上次的劇情。"""
+    """When loading, clear the room's waiting screen first, then show the last story."""
     async with TestClient(TestServer(app())) as client:
         browser = await enter_own_room(client)
         await browser.send("act", text="1")
         await browser.expect("status", lambda m: m["status"] and m["status"]["turn"] == 2)
-        await browser.ws.close()  # 離開：房間關了，存檔還在
+        await browser.ws.close()  # Leaving: the room closes, but the save stays
         browser = await enter_name(client, "阿明")
         await browser.expect("lobby", lambda m: m["screen"]["title"] == "大廳")
         await browser.send("act", text="1")
         await browser.expect("lobby", lambda m: m["screen"]["view"] == "room")
-        await browser.send("act", text="1")  # 開始冒險：找到存檔
+        await browser.send("act", text="1")  # Start the adventure: a save is found
         await browser.answer((await browser.expect("confirm"))["id"], True)
         await browser.expect("choices", lambda m: m["choices"])
         kinds = [m["t"] for m in browser.seen]
         after = kinds[kinds.index("confirm"):]
         past = [m["text"] for m in browser.seen if m["t"] == "past_narration"]
-        assert past == ["兩人在燈塔醒來。", "阿明阿明往上爬"]  # 之前的劇情與目前這一段，都直接顯示，不再打字
+        assert past == ["兩人在燈塔醒來。", "阿明阿明往上爬"]  # The earlier story and the current passage are both shown at once, without typing again
         assert "clear" in after and after.index("clear") < after.index("past_narration") and "narration_start" not in after
 
 
@@ -121,7 +121,7 @@ async def test_name_problems_are_shown_and_asked_again(isolated):
         await second.answer(name["id"], "../x")
         assert "只能包含" in (await second.expect("name"))["error"]
         name = second.seen[-1]
-        await second.answer(name["id"], "阿明")  # 有人正在用這個名字
+        await second.answer(name["id"], "阿明")  # Someone is already using this name
         assert "已經有人在用" in (await second.expect("name"))["error"]
         await first.ws.close()
 
@@ -129,15 +129,15 @@ async def test_name_problems_are_shown_and_asked_again(isolated):
 async def test_premise_dialog_can_ask_the_core_while_open(isolated):
     async with TestClient(TestServer(app())) as client:
         browser = await enter_name(client, "阿明")
-        for _ in range(2):  # 開房間、開始遊戲
+        for _ in range(2):  # Open a room, start the game
             await browser.expect("lobby", lambda m: m["screen"]["choices"][0] in ("開一個新房間", "開始冒險"))
             await browser.send("act", text="1")
         premise = await browser.expect("premise")
-        assert premise["default"] and "options" in premise and "hints" in premise  # 選單與介紹由共用層給
+        assert premise["default"] and "options" in premise and "hints" in premise  # The menu and descriptions come from the shared layer
         await browser.send("premise_event", req=1, action="suggest", text="")
         update = await browser.expect("premise_update")
         assert update["req"] == 1 and update["text"] == "AI 想的開頭"
-        await browser.answer(premise["id"], ["", True])  # 留白：用預設的前提
+        await browser.answer(premise["id"], ["", True])  # Blank: use the default premise
         assert (await browser.expect("status", lambda m: m["status"]))["status"]["mode"] == "限時模式"
 
 
@@ -165,9 +165,9 @@ async def test_friends_join_the_same_room(isolated):
         await host.expect("lobby", lambda m: m["screen"]["title"] == "阿明 的房間")
         guest = await enter_name(client, "小華")
         lobby = (await guest.expect("lobby", lambda m: m["screen"]["view"] == "lobby"))["screen"]
-        assert lobby["choices"] == ["開一個新房間", "加入 阿明 的房間（1/4 人）"]  # 輸入框打編號也能選
+        assert lobby["choices"] == ["開一個新房間", "加入 阿明 的房間（1/4 人）"]  # Typing a number in the input box works too
         assert lobby["rooms"] == [{"title": "阿明 的房間", "host": "阿明", "members": ["阿明"], "state": "open", "game": "", "choice": "2"}]
-        assert {p["name"]: p["room"] for p in lobby["people"]} == {"阿明": "阿明", "小華": ""}  # 誰在哪裡
+        assert {p["name"]: p["room"] for p in lobby["people"]} == {"阿明": "阿明", "小華": ""}  # Who is where
         await guest.send("act", text="2")
         await host.expect("lobby", lambda m: m["screen"]["members"] == ["阿明", "小華"] and m["screen"]["host"] == "阿明")
         await guest.expect("lobby", lambda m: m["screen"]["view"] == "room" and m["screen"]["choices"] == ["離開房間"])
@@ -179,5 +179,5 @@ async def test_friends_join_the_same_room(isolated):
         status = (await guest.expect("status", lambda m: m["status"]))["status"]
         assert status["named"] and [c["name"] for c in status["characters"]] == ["阿明", "小華"]
         await guest.send("act", text="2")
-        await host.expect("activity", lambda m: m["text"] == "小華 已行動")  # 別人行動了：短暫的通知，不擋住劇情
-        assert not any(m["t"] == "activity" for m in guest.seen)  # 自己行動不會通知自己
+        await host.expect("activity", lambda m: m["text"] == "小華 已行動")  # Someone else acted: a brief notice that doesn't cover the story
+        assert not any(m["t"] == "activity" for m in guest.seen)  # Your own action doesn't notify yourself

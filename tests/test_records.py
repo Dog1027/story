@@ -1,4 +1,4 @@
-"""存讀檔、回合變化、結局紀錄。"""
+"""Saving and loading, changes between turns, the ending record."""
 
 from conftest import hero, solo
 
@@ -46,7 +46,7 @@ def test_ending_record_reveals_days_and_recent_events():
     record = ending_record(state)
     assert "共 12 回合，歷時 4 天" in record
     assert "你走到了故事的盡頭" in record
-    assert "事件7" in record and "事件2" not in record  # 只列最近 5 件
+    assert "事件7" in record and "事件2" not in record  # Only the latest 5
 
 
 def test_ending_record_mentions_death():

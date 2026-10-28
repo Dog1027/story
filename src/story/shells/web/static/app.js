@@ -1,38 +1,38 @@
-// 網頁介面：只負責畫面。伺服器上的共用層決定什麼時候顯示什麼，這裡把每則訊息畫出來，再把玩家的輸入送回去。
-// 訊息格式見 story/shells/web/view.py。
+// The web interface: display only. The shared layer on the server decides what to show when; this draws each message and sends the player's input back.
+// The message format is in story/shells/web/view.py.
 "use strict";
 
-const CHAR_DELAY = 50; // 每個字的間隔（毫秒），大約一秒 20 個字（跟終端機版一樣）
-const FAST_FACTOR = 0.15; // 按一次 Enter 後，間隔縮成原本的幾倍
-// 標點後面多停一下（中文與英文的標點都有，跟終端機版一樣）
+const CHAR_DELAY = 50; // Delay per character (milliseconds), about 20 characters a second
+const FAST_FACTOR = 0.15; // After pressing Enter once, the delay shrinks to this fraction
+// Pause a little longer after punctuation (both Chinese and English punctuation)
 const PAUSE_AFTER = { "。": 250, "！": 250, "？": 250, "，": 100, "、": 80, "…": 150, "\n": 100, ".": 250, "!": 250, "?": 250, ",": 100, ";": 100 };
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
-// 手機、平板：不要自動把焦點移到輸入框，不然鍵盤會一直跳出來
+// Phones and tablets: don't move focus to the input box automatically, or the keyboard keeps popping up
 const TOUCH = matchMedia("(pointer: coarse)").matches || matchMedia("(hover: none)").matches;
 
 const $ = (id) => document.getElementById(id);
-// 介面文字：T 是伺服器放進頁面的字串表（story/shells/ui/語言/dialogs.md、web.md），{名稱} 換成 vars 裡的值
+// Interface text: T is the string table the server puts in the page (story/shells/ui/<lang>/dialogs.md, web.md); {name} is replaced with the value in vars
 const t = (key, vars = {}) => T[key].replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? "");
 const log = $("log"), input = $("input"), choicesList = $("choices");
 
 const state = {
   ws: null,
   busy: false,
-  typing: null, // 正在打字：{ speed, skip }
-  narration: null, // 正在顯示的劇情：{ el, text, done, finished }（AI 還在寫時 text 會越來越長）
-  waitingEnter: null, // 等玩家按 Enter 時：按下後要執行的函式
+  typing: null, // Typing in progress: { speed, skip }
+  narration: null, // The narration being shown: { el, text, done, finished } (text keeps growing while the AI is still writing)
+  waitingEnter: null, // While waiting for Enter: the function to run when it's pressed
   choices: [],
-  active: -1, // 用 ↑↓ 移到的選項
-  follow: true, // 故事區停在最底時，新內容出現就跟著捲
+  active: -1, // The choice moved to with ↑↓
+  follow: true, // While the story area is at the bottom, follow new content
   busyLine: null,
   timer: null, // { total, left, last }
-  lobbyPane: "rooms", // 手機上大廳顯示哪個分頁：rooms、people
-  premise: null, // 開著的前提對話框
+  lobbyPane: "rooms", // Which lobby tab shows on phones: rooms, people
+  premise: null, // The open premise dialog
   exited: false,
-  autoNamed: false, // 已經自動用記住的名字試過一次（失敗時改問玩家，不會一直重試）
+  autoNamed: false, // Already tried the remembered name once automatically (on failure, ask the player instead of retrying forever)
 };
 
-// ---------- 連線 ----------
+// ---------- Connection ----------
 
 function connect() {
   const scheme = location.protocol === "https:" ? "wss" : "ws";
@@ -40,7 +40,7 @@ function connect() {
   state.ws = ws;
   ws.onopen = () => {
     input.placeholder = "";
-    setBusy(false); // 頁面一開始的輸入框是停用的（還沒連上）。不能等到第一次「故事生成中」結束才打開：讀檔、大廳都不會呼叫 AI
+    setBusy(false); // The input box starts disabled (not connected yet). Can't wait for the first "writing the story" to end: loading a save and the lobby never call the AI
   };
   ws.onmessage = (event) => handle(JSON.parse(event.data));
   ws.onclose = () => {
@@ -58,7 +58,7 @@ function send(message) {
 
 const answer = (id, value = null) => send({ t: "answer", id, value });
 
-// ---------- 伺服器送來的訊息 ----------
+// ---------- Messages from the server ----------
 
 const handlers = {
   clear({ premise }) {
@@ -76,11 +76,11 @@ const handlers = {
   action({ text }) {
     const row = add("div", "action");
     row.append(tag("span", "", text));
-    scrollLog(true); // 自己剛行動：一定捲到最底看結果
+    scrollLog(true); // You just acted: always scroll to the bottom to see the result
   },
   note({ text }) { add("div", "note", text); },
   narration_start() { startNarration(); },
-  past_narration({ text }) { add("div", "narration", text); }, // 讀檔時之前的劇情：直接顯示，不打字
+  past_narration({ text }) { add("div", "narration", text); }, // Earlier narration when loading: shown at once, no typing
   narration_text({ text }) { if (state.narration) state.narration.text = text; },
   narration_end({ id, text }) {
     if (!state.narration) startNarration();
@@ -113,21 +113,21 @@ const handlers = {
     state.waitingEnter = () => { button.remove(); state.waitingEnter = null; input.placeholder = placeholder; answer(id); };
     button.onclick = state.waitingEnter;
     const placeholder = input.placeholder;
-    input.placeholder = hint; // 往上捲在看前面的劇情時，也知道接下來要按 Enter
+    input.placeholder = hint; // So you know to press Enter next even while scrolled up reading earlier story
     input.disabled = false;
     focusInput();
   },
   prepare_choices({ choices, timed }) {
-    state.typing = state.typing || { speed: 1, skip: false }; // 從現在起按 Enter 都算加速，不會選到還看不見的選項
+    state.typing = state.typing || { speed: 1, skip: false }; // From now on Enter only speeds up typing and never picks a choice that isn't visible yet
     renderChoices(choices, true);
     if (timed) { $("timer").hidden = false; $("timer").classList.add("reserved"); }
   },
   choices({ choices }) {
-    if (choices.length && choicesList.classList.contains("hidden") && same(choices, state.choices)) { // 劇情打完字：讓先放好的選項出現
+    if (choices.length && choicesList.classList.contains("hidden") && same(choices, state.choices)) { // The narration finished typing: reveal the choices placed earlier
       choicesList.classList.remove("hidden");
       choicesList.classList.add("reveal");
     } else if (!choices.length && choicesList.children.length) {
-      // 選完選項：保留原本選項的位置，只是完全看不見（連框線都不畫），故事區才不會忽高忽低、文字往下掉
+      // After picking: keep the old choices' space but fully invisible (not even borders), so the story area doesn't jump around and text doesn't drop
       state.choices = [];
       state.active = -1;
       choicesList.classList.add("hidden");
@@ -135,7 +135,7 @@ const handlers = {
       renderChoices(choices);
     }
   },
-  mark_choice({ index }) { // 海龜湯：標出目前選的輸入方式（提問、猜湯底），接下來打的字就用這個方式送出
+  mark_choice({ index }) { // Turtle soup: mark the input mode currently picked (ask, guess); what's typed next is sent in that mode
     choicesList.querySelectorAll(".choice").forEach((b, i) => b.classList.toggle("selected", i === index));
     focusInput();
   },
@@ -173,7 +173,7 @@ const handlers = {
     }, (value) => answer(id, value), false);
   },
   name(message) {
-    // 記得上次的名字：第一次問時直接用它進去；不能用（例如舊的連線還沒斷）才跳出對話框，說明原因並預先填好
+    // Remember the last name: on the first ask, go straight in with it; only if it can't be used (e.g. the old connection hasn't dropped yet) show the dialog, with the reason and the name filled in
     const saved = savedName();
     if (saved && !message.error && !state.autoNamed) {
       state.autoNamed = true;
@@ -199,7 +199,7 @@ function handle(message) {
   if (handler) handler(message);
 }
 
-// ---------- 故事區 ----------
+// ---------- Story area ----------
 
 function tag(name, className = "", text = "") {
   const el = document.createElement(name);
@@ -221,10 +221,10 @@ function scrollLog(force = false) {
   if (state.follow) log.scrollTop = log.scrollHeight;
 }
 
-// 停在最底就繼續跟著新內容，往上捲就不跟（文字還在打的時候也能往回看），捲回最底再恢復
+// Keep following new content while at the bottom; stop when scrolled up (so you can read back while text is typing), and resume when back at the bottom
 log.addEventListener("scroll", () => { state.follow = log.scrollTop + log.clientHeight >= log.scrollHeight - 4; });
 
-// 一段劇情：AI 還在寫時就開始打字，打字效果追著目前收到的文字；收完、打完才結束
+// A passage of narration: start typing while the AI is still writing, with the typing chasing the text received so far; done once it's all received and typed
 function startNarration() {
   if (state.busyLine) { state.busyLine.remove(); state.busyLine = null; }
   const narration = { el: add("div", "narration"), text: "", done: false };
@@ -235,7 +235,7 @@ function startNarration() {
     let shown = 0;
     while (!narration.discarded) {
       const text = narration.text;
-      // 分頁在背景、按了兩次 Enter、或不要動畫時：直接顯示目前收到的全部
+      // Tab in the background, Enter pressed twice, or reduced motion: show everything received so far at once
       if ((typing.skip || document.hidden || REDUCED_MOTION) && shown < text.length) {
         shown = text.length;
         narration.el.textContent = text;
@@ -249,7 +249,7 @@ function startNarration() {
       } else if (narration.done) {
         break;
       } else {
-        await sleep(50); // AI 還在寫
+        await sleep(50); // The AI is still writing
       }
     }
     if (state.narration === narration) state.narration = null;
@@ -265,14 +265,14 @@ function speedUp() {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-// 點故事區：打字中就加速，等 Enter 時就繼續
+// Clicking the story area: speeds up typing, or continues while waiting for Enter
 log.addEventListener("click", (event) => {
   if (event.target.closest("button")) return;
   if (state.waitingEnter) state.waitingEnter();
   else if (state.typing) speedUp();
 });
 
-// ---------- 狀態列 ----------
+// ---------- Status bar ----------
 
 function renderStatus(status) {
   const box = $("status");
@@ -299,15 +299,15 @@ function renderStatus(status) {
   }
 }
 
-// ---------- 大廳與房間的等人畫面 ----------
+// ---------- Lobby and room waiting screens ----------
 
-// 大廳：左邊（手機是第一個分頁）是房間，右邊是所有在線的人；房間：座位與開始、離開的按鈕。
-// 按鈕送出的是選項的編號，跟在輸入框打編號一樣
+// Lobby: rooms on the left (the first tab on phones) and everyone online on the right; room: seats plus start and leave buttons.
+// Buttons send the choice's number, the same as typing it in the input box
 function renderLobby(screen) {
   renderStatus(null);
-  if (screen.you) saveName(screen.you); // 伺服器接受的名字才記住
-  renderChoices([]); // 上一局留下來、看不見但還佔著位置的選項也清掉：等人的畫面的按鈕在面板裡
-  $("app").classList.toggle("wide", screen.view === "lobby"); // 大廳兩欄並排：上下的狀態列、輸入框跟著變寬
+  if (screen.you) saveName(screen.you); // Only remember a name the server accepted
+  renderChoices([]); // Also clear choices left over from the last game, invisible but still taking space: the waiting screen's buttons are in the panel
+  $("app").classList.toggle("wide", screen.view === "lobby"); // The lobby has two columns side by side: the status bar and input box widen with it
   log.querySelectorAll(".lobby-panel").forEach((el) => el.remove());
   const panel = screen.view === "room" ? roomPanel(screen) : lobbyPanel(screen);
   add("section", "lobby-panel").replaceWith(panel);
@@ -411,13 +411,13 @@ function roomPanel({ title, host, you, members, seats, choices }) {
     list.append(seat);
   }
   const actions = tag("div", "room-actions");
-  // 最後一個是「離開房間」，其他的（開始冒險、開始海龜湯）都是主要的按鈕
+  // The last one is "Leave room"; the others (start adventure, start turtle soup) are primary buttons
   choices.forEach((label, i) => actions.append(actionButton(label, String(i + 1), i < choices.length - 1)));
   panel.append(head, list, actions);
   return panel;
 }
 
-// ---------- 選項與輸入 ----------
+// ---------- Choices and input ----------
 
 function renderChoices(choices, hidden = false) {
   state.choices = choices.slice();
@@ -450,7 +450,7 @@ function setActive(index) {
 }
 
 function focusInput() {
-  if (!TOUCH) input.focus(); // 電腦：回到輸入框就能直接打字或按 Enter
+  if (!TOUCH) input.focus(); // Computers: back in the input box, ready to type or press Enter
 }
 
 function setBusy(busy) {
@@ -486,14 +486,14 @@ input.addEventListener("keydown", (event) => {
   setActive(state.active + (event.key === "ArrowDown" ? 1 : state.active < 0 ? 0 : -1));
 });
 
-// 對話框沒開時，在頁面任何地方按 Enter 都能加速打字或繼續
+// When no dialog is open, pressing Enter anywhere on the page speeds up typing or continues
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" || !$("overlay").hidden || event.target === input) return;
   if (state.waitingEnter) { event.preventDefault(); state.waitingEnter(); }
   else if (state.typing) { event.preventDefault(); speedUp(); }
 });
 
-// ---------- 限時 ----------
+// ---------- Timed mode ----------
 
 function startTimer(seconds) {
   state.timer = { total: seconds, left: seconds, last: performance.now() };
@@ -524,15 +524,15 @@ setInterval(() => {
   if (state.busy) return;
   timer.left = Math.max(0, timer.left - elapsed);
   renderTimer();
-  if (timer.left === 0) stopTimer(); // 時間到由房間處理，這裡只負責顯示
+  if (timer.left === 0) stopTimer(); // The room handles time's up; this only displays it
 }, 100);
 
-// ---------- 對話框 ----------
+// ---------- Dialogs ----------
 
 let closeCurrent = null;
-const sheetQueue = []; // 已經有對話框開著時，後來的排隊，不會蓋掉正在回答的那個
+const sheetQueue = []; // When a dialog is already open, later ones wait in line instead of covering the one being answered
 
-// top：要打字的對話框（名字、故事前提）出現在畫面上方，手機的鍵盤從下面彈出來才不會蓋住
+// top: dialogs that need typing (name, story premise) appear at the top of the screen, so the phone keyboard sliding up from below doesn't cover them
 function openSheet(build, onClose, dismissible = true, top = false) {
   if (closeCurrent) {
     sheetQueue.push([build, onClose, dismissible, top]);
@@ -560,7 +560,7 @@ function openSheet(build, onClose, dismissible = true, top = false) {
   if (heading) heading.id = "sheet-title";
   overlay.hidden = false;
   document.addEventListener("keydown", onKey);
-  // 要打字的對話框（名字）才聚焦到輸入框；手機上前提可以直接用預設的，不要一打開就跳出鍵盤
+  // Only dialogs that need typing (the name) focus the input; on phones the premise can just use the default, so don't pop up the keyboard on opening
   const focus = sheet.querySelector(TOUCH ? "input[type=text]" : "textarea, input:not([type=checkbox]), .btn.primary");
   if (focus) focus.focus();
 }
@@ -597,9 +597,9 @@ function helpSheet() {
   infoSheet(t("menu_help"), t("help"));
 }
 
-// 名字能不能用由伺服器判斷，不能用時會帶著原因（error）再問一次
-// 這個瀏覽器的識別碼：同一個瀏覽器用同一個名字再連進來時，伺服器讓新的連線取代舊的（不用等舊的斷線）。
-// 用 getRandomValues 而不是 randomUUID：區網的 http 網址不是安全環境，沒有 randomUUID
+// The server decides whether a name can be used; if not, it asks again with the reason (error)
+// This browser's ID: when the same browser connects again with the same name, the server lets the new connection replace the old one (without waiting for it to drop).
+// getRandomValues rather than randomUUID: a LAN http address isn't a secure context, so randomUUID isn't available
 function browserToken() {
   try {
     let token = localStorage.getItem("story-token");
@@ -609,11 +609,11 @@ function browserToken() {
     }
     return token;
   } catch (e) {
-    return ""; // 存不了（例如無痕模式）：就不取代，跟以前一樣要等舊的連線斷掉
+    return ""; // Can't store it (e.g. private browsing): no replacing, so as before, wait for the old connection to drop
   }
 }
 
-// 上次用的名字只存在這個瀏覽器（跟外觀一樣），讀寫失敗（例如無痕模式）就當作沒有
+// The last name used is stored only in this browser (like the appearance); if reading or writing fails (e.g. private browsing), treat it as none
 function savedName() {
   try { return localStorage.getItem("story-name") || ""; } catch (e) { return ""; }
 }
@@ -636,8 +636,8 @@ function nameSheet({ id, hint, error, max_len }) {
 }
 
 
-// 規則（題材選單、換不換掉文字框、送什麼指令）在伺服器的共用層（PremiseForm）：這裡只畫出來，把操作連同文字框的內容送過去，
-// 照回覆換上新的開頭（text 是 null 時保持原樣）
+// The rules (the genre menu, whether to replace the text box, which commands to send) are in the server's shared layer (PremiseForm): this only draws them and sends actions along with the text box content,
+// then puts in the new opening from the reply (leaving it as is when text is null)
 function premiseSheet({ id, default: initial, timed, genre, options, hints }) {
   openSheet((sheet, close) => {
     let nextReq = 0;
@@ -709,7 +709,7 @@ function premiseSheet({ id, default: initial, timed, genre, options, hints }) {
   }, false, true);
 }
 
-// ---------- 通知 ----------
+// ---------- Notices ----------
 
 function toast(text, { error = false, lasting = false, title = "" } = {}) {
   const el = tag("div", "toast" + (error ? " error" : ""));
@@ -719,7 +719,7 @@ function toast(text, { error = false, lasting = false, title = "" } = {}) {
   setTimeout(() => el.remove(), lasting ? 30000 : error ? 8000 : 3500);
 }
 
-// 別人的動態（例如「小華 已行動」）：在右上角、狀態列下面短暫出現，不擋住劇情與選項
+// Others' activity (e.g. "Hua acted"): shown briefly at the top right, below the status bar, without covering the story or choices
 function activity(text) {
   const box = $("activity");
   box.style.top = `${$("top").getBoundingClientRect().bottom + 8}px`;
@@ -730,7 +730,7 @@ function activity(text) {
   setTimeout(() => el.remove(), 2600);
 }
 
-// ---------- 選單 ----------
+// ---------- Menu ----------
 
 const menu = $("menu");
 $("menu-button").addEventListener("click", (event) => {
@@ -749,7 +749,7 @@ menu.addEventListener("click", (event) => {
     menu.hidden = true;
     helpSheet();
   } else if (button.dataset.local === "rename") {
-    saveName(""); // 忘掉名字再重新連線：會離開目前的房間，重新問名字
+    saveName(""); // Forget the name and reconnect: leaves the current room and asks for a name again
     state.exited = true;
     location.reload();
   } else if (button.dataset.themeChoice) {
@@ -766,7 +766,7 @@ function markTheme() {
   menu.querySelectorAll("[data-theme-choice]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeChoice === current)));
 }
 
-// 通知要出現在下方選項區的上面：記下選項區的高度
+// Notices must appear above the choice area at the bottom: record the choice area's height
 new ResizeObserver(() => document.documentElement.style.setProperty("--dock-height", `${$("dock").offsetHeight}px`)).observe($("dock"));
 
 connect();

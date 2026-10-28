@@ -1,12 +1,12 @@
-"""海龜湯：AI 當裁判，大家一起猜湯底。共用的流程（隊伍、存檔接續、收集行動、再玩一次）在 story/core/team.py。
+"""Turtle soup: the AI is the judge while everyone guesses the truth. The shared flow (the team, continuing saves, collecting actions, playing again) is in story/core/team.py.
 
-一局的流程：
-1. 房主選從題庫抽一題，或請 AI 出一題（AI 出的題目會先檢查，不合理就重出，還是不行就改從題庫抽）
-2. 大家看到湯面。每回合每個人同時行動：「提問」問一個是非題，或「猜湯底」說出推理，或「放棄」
-3. 大家都行動後，裁判（AI）一次判斷這一回合所有的提問與猜測，大家都看得到每個人問了什麼、猜了什麼、裁判怎麼回答
-4. 猜湯底說中所有關鍵點就解開了；同一回合有好幾個人說中，就一起獲勝。所有人同一回合都選放棄時公布湯底
+How a game goes:
+1. The host draws a puzzle from the bank or has the AI write one (an AI puzzle is checked first and rewritten if it doesn't hold up; if it still fails, one is drawn from the bank)
+2. Everyone sees the scenario. Each turn everyone acts at the same time: "ask" a yes/no question, "guess" the truth with their reasoning, or "give up"
+3. Once everyone has acted, the judge (the AI) rules on every question and guess this turn at once, and everyone sees what each person asked or guessed and how the judge answered
+4. A guess that states every key point solves it; several people who do in the same turn win together. When everyone gives up in the same turn, the truth is revealed
 
-輸入的方式（提問、猜湯底、放棄）用 Reply.inputs 告訴外殼：選項是切換方式，打的字用 /ask、/guess 送出。
+The input modes (ask, guess, give up) reach the shells through Reply.inputs: choices switch modes, and typed text is sent with /ask or /guess.
 """
 
 import random
@@ -31,7 +31,7 @@ INPUTS = [
 class SoupCore(TeamGame):
     title = UI["title"]
     state_class = SoupState
-    timeout_action = away_action = AWAY  # 沒有限時；斷線的人這回合算暫時離開
+    timeout_action = away_action = AWAY  # No time limit; someone who disconnected counts as away this turn
 
     def __init__(
         self,
@@ -48,13 +48,13 @@ class SoupCore(TeamGame):
         self.judge = judge or SoupJudge(api_key, client, log_path)
         self.puzzles = load_puzzles()[0] if puzzles is None else puzzles
         self.state: SoupState | None = None
-        self.played: set[str] = set()  # 這個房間玩過的題目：從題庫抽時先抽沒玩過的，AI 出題時避開
+        self.played: set[str] = set()  # Puzzles this room has played: drawing from the bank prefers unplayed ones, and the AI avoids them
 
     @property
     def progress(self) -> str:
         return self.judge.stage
 
-    # ---------- 開新局：出題 ----------
+    # ---------- New game: the puzzle ----------
 
     def _new_game(self) -> Reply:
         self._phase = "setup"
@@ -68,7 +68,7 @@ class SoupCore(TeamGame):
         if picked == PUZZLE_CHOICES[1]:
             try:
                 puzzle = self.judge.make_puzzle(avoid=[p.title for p in self.puzzles] + sorted(self.played))
-            except FAILURES as e:  # 連不上、額度用完……：改從題庫抽，不要卡在出題
+            except FAILURES as e:  # Unreachable, out of quota…: draw from the bank instead of getting stuck
                 note = UI["soup_ai_failed"].format(error=str(e)[:200])
             else:
                 note = "" if puzzle else UI["soup_ai_unsound"]
@@ -89,7 +89,7 @@ class SoupCore(TeamGame):
         p = self.state.puzzle
         return UI["soup_surface"].format(title=p.title, surface=p.surface, points=len(p.key_points))
 
-    # ---------- 一回合 ----------
+    # ---------- A turn ----------
 
     def _is_action(self, raw: str) -> bool:
         return raw.split(" ", 1)[0] in (ASK, GUESS, GIVE_UP) or super()._is_action(raw)
@@ -105,12 +105,12 @@ class SoupCore(TeamGame):
         picked = pick_choice(raw, [m.label for m in INPUTS])
         if picked == INPUTS[2].label:
             return GIVE_UP
-        return None if picked else f"{ASK} {' '.join(raw.split())}"  # 選了提問、猜湯底還要寫內容；直接打字就是提問
+        return None if picked else f"{ASK} {' '.join(raw.split())}"  # Picking ask or guess still needs text; typing directly is a question
 
     def _play_round(self, actions: dict[str, str]) -> Reply:
         moves = [self._move(name, action) for name, action in actions.items()]
         if judged := [m for m in moves if m.kind in ("ask", "guess")]:
-            self.judge.judge(self.state, judged)  # 失敗時 TeamGame 會撤回大家的行動，這回合重來
+            self.judge.judge(self.state, judged)  # On failure TeamGame takes back everyone's actions and the turn starts over
         s = self.state
         s.rounds.append(moves)
         s.turn += 1
@@ -131,8 +131,8 @@ class SoupCore(TeamGame):
         return Move(name=name, kind="guess" if command == GUESS else "ask", text=text)
 
     def _round_text(self, moves: list[Move], last: bool = False) -> str:
-        """一回合的結果：每個人問了什麼、猜了什麼、裁判怎麼回答。大家看到的都一樣。
-        last 是剛進行完的這一回合，要加上這一局的結果（誰解開了、大家都放棄了）。"""
+        """A turn's results: what each person asked or guessed and how the judge answered. Everyone sees the same thing.
+        last is the turn just played, which adds the game's result (who solved it, or that everyone gave up)."""
         s = self.state
         total = len(s.puzzle.key_points)
         lines = []
@@ -155,7 +155,7 @@ class SoupCore(TeamGame):
         return "\n\n".join(lines)
 
     def _who(self, name: str) -> str:
-        """一個人玩時寫「你」，好幾個人時寫名字。"""
+        """"You" when playing alone, the name with several players."""
         return UI["soup_you"] if len(self._players) == 1 else name
 
     def _on_ending(self, raw: str) -> Reply:
@@ -175,7 +175,7 @@ class SoupCore(TeamGame):
         self._phase = "ended"
         return self._reply(choices=PLAY_AGAIN_CHOICES, ending=Ending(title=title, epilogue=s.puzzle.truth, record=record, reveal=UI["soup_reveal"]))
 
-    # ---------- 給 TeamGame 的資料 ----------
+    # ---------- Data for TeamGame ----------
 
     def _choices(self, name: str) -> list[str]:
         return [m.label for m in INPUTS]
@@ -198,7 +198,7 @@ class SoupCore(TeamGame):
         return {"turn": s.turn + 1 if not s.game_over else s.turn, "timed": False, "characters": characters}
 
     def _replay(self) -> dict:
-        """湯面在最前面，之前的每一回合依序接在後面，最近一回合是目前這一段。"""
+        """The scenario comes first, then each earlier turn in order; the latest turn is the current part."""
         texts = [self._surface()] + [self._round_text(r) for r in self.state.rounds]
         return {"narration": texts[-1], "resumed": True, "history": [(t, "") for t in texts[:-1]]}
 

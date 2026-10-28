@@ -1,11 +1,11 @@
-"""測試共用的假物件與設定。所有測試都不會連到 Gemini，也不會動到你真的存檔或 API key。"""
+"""Fakes and setup shared by the tests. No test connects to Gemini or touches your real saves or API key."""
 
 import os
 from types import SimpleNamespace
 
 import pytest
 
-# 語言在 import 時就決定了：測試一律用中文，不管你的設定檔或環境變數選了什麼
+# The language is fixed at import time: tests always use Chinese, whatever your config or environment chooses
 os.environ["STORY_LANG"] = "zh-TW"
 
 from story.games.adventure.engine import Engine
@@ -16,31 +16,31 @@ from story.games.soup.models import Puzzle
 
 @pytest.fixture(autouse=True)
 def isolated(tmp_path, monkeypatch):
-    """每個測試都在暫存資料夾裡執行（save.json、saves/ 都寫在那裡），並且看不到真的 API key。"""
+    """Every test runs in a temp folder (saves/ and anything else are written there) and can't see the real API key."""
     monkeypatch.chdir(tmp_path)
     for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
         monkeypatch.delenv(var, raising=False)
-    monkeypatch.setattr("story.settings.CONFIG_DIR", tmp_path)  # 看不到你的設定檔（config.toml）
+    monkeypatch.setattr("story.settings.CONFIG_DIR", tmp_path)  # Can't see your config (config.toml)
     monkeypatch.setattr("story.settings.CONFIG_PATH", tmp_path / "config.toml")
-    monkeypatch.setattr("story.games.adventure.genres.PERSONAL_DIR", tmp_path / "genres")  # 看不到你個人的題材包
+    monkeypatch.setattr("story.games.adventure.genres.PERSONAL_DIR", tmp_path / "genres")  # Can't see your personal genre packs
     return tmp_path
 
 
-# ---------- 假的 AI 回覆 ----------
+# ---------- Fake AI replies ----------
 
 
-HERO = "主角"  # 一個人玩的測試裡，那位角色的名字
+HERO = "主角"  # The character's name in solo tests
 CHARACTER_FIELDS = {"choices", "conditions_changed", "conditions_removed", "items_gained", "items_lost"}
 
 
 def beat(**fields) -> StoryBeat:
-    """一個人玩的 AI 回覆：角色的變化（choices、conditions_changed……）直接寫在參數裡，沒指定的用「什麼都沒發生」的預設值。"""
+    """A solo AI reply: the character's changes (choices, conditions_changed…) go straight in the arguments; anything unspecified defaults to "nothing happened"."""
     update = upd(HERO, **{"choices": ["繼續"], **{k: fields.pop(k) for k in CHARACTER_FIELDS & fields.keys()}})
     return pbeat(update, **{"narration": "什麼事也沒發生。", **fields})
 
 
 def pbeat(*updates, **fields) -> StoryBeat:
-    """好幾位角色的 AI 回覆。updates 用 upd() 建立。"""
+    """An AI reply for several characters. Build updates with upd()."""
     base = dict(
         narration="大家各自行動。", character_updates=list(updates), time_passed="片刻", start_time_of_day="傍晚",
         time_limit=0, milestone_reached=False, flags_set=[], key_event="", game_over=False,
@@ -49,7 +49,7 @@ def pbeat(*updates, **fields) -> StoryBeat:
 
 
 def solo(**fields) -> GameState:
-    """一個人玩的遊戲狀態：一位叫 HERO 的角色。角色的欄位（conditions、inventory）直接寫在參數裡。"""
+    """A solo game state: one character named HERO. The character's fields (conditions, inventory) go straight in the arguments."""
     character = Character(name=HERO, **{k: fields.pop(k) for k in ("conditions", "inventory") if k in fields})
     return GameState(**{"premise": "x", **fields, "characters": [character]})
 
@@ -59,13 +59,13 @@ def hero(state: GameState) -> Character:
 
 
 def upd(name: str, **fields) -> dict:
-    """一位角色這回合的變化。"""
+    """One character's changes this turn."""
     base = dict(name=name, choices=["前進", "等待"], conditions_changed=[], conditions_removed=[], items_gained=[], items_lost=[])
     return {**base, **fields}
 
 
 def cond(name: str, severity: str, kind: str = "身體") -> dict:
-    """AI 回報狀態變化的格式。"""
+    """The format the AI reports condition changes in."""
     return {"name": name, "kind": kind, "severity": severity}
 
 
@@ -84,7 +84,7 @@ ARC = StoryArc(
 
 
 class FakeGemini:
-    """假的 Gemini client：依照呼叫的 response_schema 回傳排好的結果，並記下送出的提示詞。"""
+    """A fake Gemini client: returns the queued results by the call's response_schema and records the prompts sent."""
 
     def __init__(self, beats=(), arc=ARC, summary="新的摘要", premise="AI 想的開頭", genre=""):
         self.beats = list(beats)
@@ -93,7 +93,7 @@ class FakeGemini:
         self.models = SimpleNamespace(generate_content=self.generate_content, generate_content_stream=self.generate_content_stream)
 
     def generate_content_stream(self, model, contents, config, chunk_size=20):
-        """串流版：把 generate_content 的結果轉成文字，切成小段依序送出（結構化的回傳就是 JSON）。"""
+        """The streaming version: turns generate_content's result into text and sends it in small chunks (a structured response is JSON)."""
         response = self.models.generate_content(model=model, contents=contents, config=config)
         parsed = getattr(response, "parsed", None)
         text = parsed.model_dump_json() if parsed is not None else response.text
@@ -120,23 +120,23 @@ class FakeGemini:
 
 
 def make_engine(*beats, genres=None, **kwargs) -> tuple[Engine, FakeGemini]:
-    """用假的 Gemini 建立真的 Engine，所以 engine 的規則都會實際執行。
-    預設不載入題材包（結果才固定），要測題材時傳 genres。"""
+    """Builds a real Engine on a fake Gemini, so the engine's rules really run.
+    No genre packs by default (so results are fixed); pass genres to test genres."""
     gemini = FakeGemini(beats, **kwargs)
     return Engine(client=gemini, genres=genres or {}), gemini
 
 
-# ---------- 給核心與外殼用的假 engine（不跑規則，直接改狀態） ----------
+# ---------- Fake engines for the core and shells (no rules; change the state directly) ----------
 
 
 class FakeEngine:
-    """取代 Engine，讓核心與外殼的測試可以精準控制每回合的結果。一個人玩的燈塔故事。"""
+    """Stands in for Engine so core and shell tests can control each turn exactly. A solo lighthouse story."""
 
-    genres: dict = {}  # 子類別可以換成自己的題材包
-    stage = draft = ""  # 跟 Engine 一樣：開場的進度、串流中的劇情
+    genres: dict = {}  # Subclasses can swap in their own genre packs
+    stage = draft = ""  # Like Engine: the opening's progress, narration while streaming
 
     def __init__(self):
-        self.fail_with: Exception | None = None  # 下一次 act() 要拋出的錯誤
+        self.fail_with: Exception | None = None  # The error the next act() raises
         self.compacted = 0
 
     def suggest_premise(self, avoid="", genre=""):
@@ -157,9 +157,9 @@ class FakeEngine:
 
     def act(self, state, actions):
         if self.fail_with:
-            state.turn += 99  # 模擬改了一半就失敗
+            state.turn += 99  # Simulates failing halfway through changes
             raise self.fail_with
-        state.recent.append(Turn(narration=state.current_narration, action=format_actions(actions)))  # 跟真的 engine 一樣記下劇情紀錄
+        state.recent.append(Turn(narration=state.current_narration, action=format_actions(actions)))  # Records the story log like the real engine
         me, action = state.characters[0], next(iter(actions.values()))
         state.turn += 1
         state.current_narration = f"你選擇了「{action}」。"
@@ -176,7 +176,7 @@ class FakeEngine:
 
 
 class FakeGroupEngine:
-    """取代 Engine，精準控制每回合。阿明與小華兩個人的燈塔故事（一個人時就是阿明）。"""
+    """Stands in for Engine to control each turn exactly. A lighthouse story for Ming and Hua (just Ming when alone)."""
 
     genres: dict = {}
     stage = draft = ""
@@ -217,7 +217,7 @@ class FakeGroupEngine:
 
 
 class InvalidKeyError(RuntimeError):
-    """模擬 Gemini 回報 API key 無效。"""
+    """Simulates Gemini reporting an invalid API key."""
 
     code = 400
 
@@ -225,14 +225,14 @@ class InvalidKeyError(RuntimeError):
         return "API key not valid. Please pass a valid API key."
 
 
-# ---------- 海龜湯 ----------
+# ---------- Turtle soup ----------
 
 PUZZLE = Puzzle(title="空號", surface="他每晚撥同一個空號。", truth="那是母親錄的語音。", key_points=["語音是母親錄的", "母親過世了", "他想聽母親的聲音"])
 AI_PUZZLE = Puzzle(title="AI 的題目", surface="AI 的湯面", truth="AI 的湯底", key_points=["一", "二"])
 
 
 class FakeJudge:
-    """假的裁判：提問一律回答「是」；猜湯底時，文字裡有「全部」就說中所有關鍵點，否則說中一個。"""
+    """A fake judge: questions are always answered "yes"; a guess containing 「全部」 ("all") hits every key point, otherwise one."""
 
     def __init__(self, puzzle=None, fail_with=None):
         self.stage = ""

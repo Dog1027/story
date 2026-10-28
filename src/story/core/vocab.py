@@ -1,6 +1,6 @@
-"""遊戲詞彙：程式與存檔用代號；給 AI 看、AI 回傳、顯示給玩家時，換成這個語言的詞。
+"""Game vocabulary: code and saves use codes; text shown to the AI, returned by the AI, or shown to players uses this language's words.
 
-每種玩法有自己的詞彙（prompts/語言/vocab.md），用 Vocab 讀：一段是一個類別，一行「代號: 詞」。
+Each game has its own vocabulary (prompts/<lang>/vocab.md), read with Vocab: each section is a category, one "code: word" per line.
 """
 
 from typing import Literal, get_args
@@ -10,21 +10,21 @@ from story.core import prompts
 
 class Vocab:
     def __init__(self, sections: dict[str, str], codes: dict):
-        """sections 是 vocab.md 的每一段，codes 是 {類別: 代號的 Literal}。少了哪個代號的詞就報錯。"""
+        """sections are the sections of vocab.md; codes is {category: Literal of codes}. Raises if any code has no word."""
         self.codes = codes
-        self.table = {category: prompts.table(body) for category, body in sections.items()}  # {類別: {代號: 詞}}
+        self.table = {category: prompts.table(body) for category, body in sections.items()}  # {category: {code: word}}
         for category, options in codes.items():
             if missing := set(get_args(options)) - set(self.table.get(category, {})):
-                raise ValueError(f"vocab.md 的「{category}」少了：{'、'.join(sorted(missing))}")
+                raise ValueError(f"vocab.md category {category!r} is missing: {', '.join(sorted(missing))}")
 
     def word(self, category: str, code: str) -> str:
-        """代號 → 這個語言的詞，例如 word("severity", "severe") 是「重」。"""
+        """Code → this language's word, e.g. word("severity", "severe") is "severe" in English."""
         return self.table[category][code]
 
     def code(self, category: str, text: str) -> str:
-        """這個語言的詞 → 代號（AI 回傳的是詞）。"""
+        """This language's word → code (the AI returns words)."""
         return next(c for c, w in self.table[category].items() if w == text)
 
     def words(self, category: str):
-        """AI 回傳格式用的選項：這個類別所有的詞，依代號的順序。"""
+        """Options for the AI's response format: every word in this category, in code order."""
         return Literal[tuple(self.word(category, c) for c in get_args(self.codes[category]))]

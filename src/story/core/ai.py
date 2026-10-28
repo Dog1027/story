@@ -1,7 +1,7 @@
-"""呼叫 Gemini：建立 client、送出請求、串流時先取出劇情、記下每次呼叫的時間與 token 用量。
+"""Calling Gemini: build the client, send requests, pull out the narration while streaming, and record each call's time and token usage.
 
-每種玩法呼叫 AI 的類別都繼承 AICaller（冒險的 Engine、海龜湯的 SoupJudge），用 generate()、stream() 呼叫 AI；
-這裡不知道遊戲規則與提示詞的內容。
+Each game's AI-calling class inherits AICaller (the adventure's Engine, turtle soup's SoupJudge) and calls the AI with generate() and stream();
+this module knows nothing about game rules or what the prompts say.
 """
 
 import json
@@ -13,46 +13,46 @@ import httpx
 from google import genai
 from google.genai import types
 
-from story.core.prompts import UI  # 給玩家看的錯誤訊息（story/core/ui/語言/core.md）
+from story.core.prompts import UI  # Error messages shown to players (story/core/ui/<lang>/core.md)
 
 MODEL = "gemini-3.5-flash-lite"
-REQUEST_TIMEOUT = 40  # 一次 AI 請求最多等幾秒；Gemini 偶爾卡住一兩分鐘，重送通常比較快
-REQUEST_ATTEMPTS = 3  # 逾時或伺服器忙（429、5xx）時最多送幾次（含第一次）
+REQUEST_TIMEOUT = 40  # Seconds to wait for one AI request; Gemini sometimes hangs a minute or two, and resending is usually faster
+REQUEST_ATTEMPTS = 3  # How many times to send on a timeout or a busy server (429, 5xx), including the first
 
 
 def new_client(api_key: str | None) -> genai.Client:
-    """逾時或伺服器忙時自動重送（間隔約 1、2 秒），不讓玩家一直等一個卡住的請求。"""
+    """Resends automatically on a timeout or a busy server (about 1 and 2 seconds apart), so players don't wait on a stuck request."""
     return genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(
-            timeout=REQUEST_TIMEOUT * 1000,  # 毫秒
+            timeout=REQUEST_TIMEOUT * 1000,  # Milliseconds
             retry_options=types.HttpRetryOptions(attempts=REQUEST_ATTEMPTS),
         ),
     )
 
 
 def is_key_error(e: Exception) -> bool:
-    """判斷 Gemini 的錯誤是不是 API key 無效或沒有權限造成的。"""
+    """Whether a Gemini error comes from an invalid API key or missing permission."""
     code = getattr(e, "code", None)
     text = str(e)
     return code in (400, 401, 403) and ("API key" in text or "API_KEY" in text)
 
 
 def raise_friendly(e: Exception) -> None:
-    """重送幾次都逾時或連不上：轉成核心會處理的錯誤；其他錯誤照原樣丟出。"""
+    """Still timing out or unreachable after the resends: turn it into an error the core handles; re-raise anything else as is."""
     if isinstance(e, (httpx.TimeoutException, httpx.ConnectError)):
         raise RuntimeError(UI["timeout"]) from e
     raise e
 
 
 class StopStream(Exception):
-    """串流時發現不用再收下去（例如冒險的 AI 太早宣告結局）：從 stream() 的 on_text 丟出，中斷並往外丟。"""
+    """Raised from stream()'s on_text when there's no point receiving more (e.g. the adventure's AI declared the ending too early): stops the stream and propagates."""
 
-    reason = "stopped"  # 寫進紀錄的中斷原因
+    reason = "stopped"  # The reason written to the log
 
 
 def partial_string(text: str, key: str) -> str | None:
-    """從還沒生成完的 JSON 取出某個字串欄位目前收到的內容（例如串流中的 narration）。還沒出現時回傳 None。"""
+    """What a string field (e.g. narration while streaming) holds so far in JSON that isn't finished yet. None if the field hasn't appeared."""
     match = re.search(r'"%s"\s*:\s*"' % re.escape(key), text)
     if not match:
         return None
@@ -63,7 +63,7 @@ def partial_string(text: str, key: str) -> str | None:
             i += 1
             continue
         if i + 1 >= len(text) or (text[i + 1] == "u" and i + 6 > len(text)):
-            break  # 跳脫字元還沒收完整，等下一段
+            break  # The escape sequence isn't complete yet; wait for the next chunk
         escaped = text[i + 1]
         if escaped == "u":
             out.append(chr(int(text[i + 2 : i + 6], 16)))
@@ -75,34 +75,34 @@ def partial_string(text: str, key: str) -> str | None:
 
 
 def partial_bool(text: str, key: str) -> bool | None:
-    """從還沒生成完的 JSON 取出布林欄位；還沒出現時回傳 None。"""
+    """A boolean field from JSON that isn't finished yet; None if it hasn't appeared."""
     match = re.search(r'"%s"\s*:\s*(true|false)' % re.escape(key), text)
     return None if match is None else match.group(1) == "true"
 
 
 class AICaller:
-    """所有 AI 呼叫都經過這裡：記下種類、花了幾秒與 Gemini 回報的 token 用量（送出、命中快取、輸出、思考），
-    寫進每回合的紀錄，方便查等待時間花在哪裡。"""
+    """Every AI call goes through here: records the kind, the seconds it took, and the token usage Gemini reports (prompt, cached, output, thinking)
+    into each turn's log, to find out where waiting time goes."""
 
     def __init__(self, api_key: str | None, client, log_path: Path | None):
         self.client = client or new_client(api_key)
-        self.log_path = log_path  # 每一隊各自一份紀錄；None 時不寫（例如 just prompts）
-        self.calls: list[dict] = []  # 上次寫紀錄之後的 AI 呼叫（寫進紀錄後清空）
-        self.draft = ""  # AI 正在寫的劇情（串流中目前收到的部分），外殼可以先顯示；沒有在寫時是空字串
+        self.log_path = log_path  # One log per team; None writes nothing (e.g. just prompts)
+        self.calls: list[dict] = []  # AI calls since the last log line (cleared once written)
+        self.draft = ""  # The narration the AI is writing (what has streamed in so far), which shells can show early; empty when not writing
 
     def generate(self, kind: str, **request):
-        """一次拿完整結果的呼叫。"""
+        """A call that returns the whole result at once."""
         started = time.monotonic()
         try:
             response = self.client.models.generate_content(**request)
-        except Exception as e:  # 重送幾次都失敗：失敗的呼叫也記下來，跟下一回合的紀錄寫在一起
+        except Exception as e:  # Failed even after the resends: record the failed call too, written with the next turn's log line
             self.record(kind, started, None, error=str(e)[:200])
             raise_friendly(e)
         self.record(kind, started, response)
         return response
 
     def stream(self, kind: str, on_text, **request):
-        """串流的呼叫：每收到一段，就用目前為止的全文呼叫 on_text。回傳 (全文, 最後一段)。on_text 丟出 StopStream 時中斷並往外丟。"""
+        """A streaming call: on each chunk, calls on_text with the full text so far. Returns (full text, last chunk). If on_text raises StopStream, stops and propagates."""
         started, text, last, extra = time.monotonic(), "", None, {}
         chunks = None
         try:
@@ -120,7 +120,7 @@ class AICaller:
             raise_friendly(e)
         finally:
             if chunks is not None and hasattr(chunks, "close"):
-                chunks.close()  # 中斷時不再接收剩下的部分
+                chunks.close()  # Stop receiving the rest when interrupted
             self.record(kind, started, last, **extra)
         return text, last
 
@@ -138,7 +138,7 @@ class AICaller:
         self.calls.append(call | extra)
 
     def write_log(self, record: dict) -> None:
-        """寫一行紀錄，附上這段期間的 AI 呼叫。"""
+        """Write one log line, with the AI calls made since the last one."""
         record["calls"], self.calls = self.calls, []
         if self.log_path is None:
             return
@@ -146,4 +146,4 @@ class AICaller:
             with self.log_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
         except OSError:
-            pass  # 紀錄寫不進去不影響遊戲
+            pass  # A log that can't be written doesn't affect the game

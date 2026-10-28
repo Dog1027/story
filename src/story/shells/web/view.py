@@ -1,15 +1,15 @@
-"""網頁介面的 View：把共用層的每個呼叫變成一則 JSON 訊息送給瀏覽器，要等玩家回答的再等瀏覽器回覆。
+"""The web interface's View: turns each call from the shared layer into a JSON message for the browser, and waits for the browser's reply when the player must answer.
 
-瀏覽器那邊（static/app.js）只負責畫出來；流程都在共用層（story.shells.client）。
+The browser side (static/app.js) only draws; the flow is all in the shared layer (story.shells.client).
 
-伺服器 → 瀏覽器：{"t": 種類, ...}。要等回覆的訊息帶 "id"，瀏覽器用 {"t": "answer", "id": …, "value": …} 回答。
-瀏覽器 → 伺服器：
-  {"t": "answer", "id": 1, "value": …}       回答對話框，或回報劇情顯示完、按了 Enter（value 不用）
-  {"t": "act", "text": "1"}                  行動：選項編號或自由輸入
-  {"t": "command", "text": "/state"}         指令
-  {"t": "premise_event", "req": 3, "action": "genre", "genre": "武俠", "text": "…"}
-      前提對話框裡的操作：action 是 genre（換題材）、reroll（換一個）、suggest（幫我想），text 是文字框目前的內容。
-      回覆 {"t": "premise_update", "req": 3, "text": "…" 或 null（文字框保持原樣）, "error": "…"}
+Server → browser: {"t": kind, ...}. Messages that need a reply carry "id", and the browser answers with {"t": "answer", "id": …, "value": …}.
+Browser → server:
+  {"t": "answer", "id": 1, "value": …}       Answer a dialog, or report that narration finished showing or Enter was pressed (value unused)
+  {"t": "act", "text": "1"}                  An action: a choice number or free text
+  {"t": "command", "text": "/state"}         A command
+  {"t": "premise_event", "req": 3, "action": "genre", "genre": "Wuxia", "text": "…"}
+      An action in the premise dialog: action is genre (change genre), reroll (another one), or suggest (suggest one); text is the text box's current content.
+      Reply {"t": "premise_update", "req": 3, "text": "…" or null (leave the text box as is), "error": "…"}
 """
 
 import asyncio
@@ -20,21 +20,21 @@ from aiohttp import web
 from story.core import ChangeGroups
 from story.shells.client import MAX_NAME_LEN, Client, PremiseForm, StatusLine, View
 
-BUSY_POLL = 0.3  # 等待時每隔幾秒看一次進度文字有沒有變
+BUSY_POLL = 0.3  # While waiting, how often (seconds) to check whether the progress text changed
 
 
 class WebView(View):
     def __init__(self, ws: web.WebSocketResponse):
         self.ws = ws
         self.client: Client | None = None
-        self.outbox: asyncio.Queue[dict] = asyncio.Queue()  # 依序送出，不會因為同時送而交錯
+        self.outbox: asyncio.Queue[dict] = asyncio.Queue()  # Sent in order, so concurrent sends never interleave
         self.pending: dict[int, asyncio.Future] = {}
         self.next_id = 0
-        self.premise_form: PremiseForm | None = None  # 前提對話框開著時：它的規則（共用層）
+        self.premise_form: PremiseForm | None = None  # While the premise dialog is open: its rules (shared layer)
         self.busy_task: asyncio.Task | None = None
-        self.tasks: set[asyncio.Task] = set()  # 玩家輸入觸發的工作（連線結束時一起取消）
+        self.tasks: set[asyncio.Task] = set()  # Work started by player input (cancelled together when the connection ends)
 
-    # ---------- 收發 ----------
+    # ---------- Sending and receiving ----------
 
     def post(self, kind: str, **fields) -> None:
         self.outbox.put_nowait({"t": kind, **fields})
@@ -47,7 +47,7 @@ class WebView(View):
             await self.ws.send_json(message)
 
     async def ask(self, kind: str, **fields):
-        """送出要等回覆的訊息，回傳瀏覽器的回答。"""
+        """Send a message that needs a reply and return the browser's answer."""
         self.next_id += 1
         mine = self.next_id
         future = asyncio.get_running_loop().create_future()
@@ -87,7 +87,7 @@ class WebView(View):
                 premise = await form.suggest(text)
             else:
                 return
-        except Exception as e:  # 網路、key 等錯誤只提示，不中斷開新局
+        except Exception as e:  # Network, key and other errors only show a notice; they don't interrupt starting a new game
             self.post("premise_update", req=req, text=None, error=str(e)[:200])
             return
         self.post("premise_update", req=req, text=premise, error="")
@@ -121,7 +121,7 @@ class WebView(View):
         self.post("narration_text", text=text)
 
     async def finish_narration(self, text: str) -> None:
-        await self.ask("narration_end", text=text)  # 瀏覽器顯示完才回覆
+        await self.ask("narration_end", text=text)  # The browser replies once it has shown it all
 
     def discard_narration(self) -> None:
         self.post("narration_discard")
@@ -164,7 +164,7 @@ class WebView(View):
             self.busy_task = asyncio.create_task(self.follow_progress())
 
     async def follow_progress(self) -> None:
-        """等待時，進度文字（例如「規劃故事大綱」）變了就更新。"""
+        """While waiting, update the progress text (e.g. "planning the story outline") when it changes."""
         shown = None
         while True:
             text = self.client.busy_text()
@@ -174,7 +174,7 @@ class WebView(View):
             await asyncio.sleep(BUSY_POLL)
 
     def start_timer(self, seconds: int) -> None:
-        self.post("timer", seconds=seconds)  # 房間統一計時，時間到由房間送出，瀏覽器只負責顯示
+        self.post("timer", seconds=seconds)  # The room keeps time and sends time's up; the browser only displays it
 
     def stop_timer(self) -> None:
         self.post("stop_timer")
@@ -203,7 +203,7 @@ class WebView(View):
             self.premise_form = None
         if not answer:
             return None
-        text, timed = answer  # 瀏覽器回傳文字框的內容、要不要限時；題材在換的時候就交給 form 了
+        text, timed = answer  # The browser returns the text box content and whether it's timed; the genre went to form when it changed
         return form.finish(str(text), bool(timed))
 
     async def ask_ending(self, title: str, record: str) -> bool:

@@ -1,4 +1,4 @@
-"""冒險的資料結構：程式掌控的狀態（GameState）與 LLM 回傳的格式（StoryBeat）。"""
+"""The adventure's data: the state the program controls (GameState) and the format the LLM returns (StoryBeat)."""
 
 from typing import Literal
 
@@ -7,21 +7,21 @@ from pydantic import BaseModel, Field
 from story.core.vocab import Vocab
 from story.games.adventure.text import TEXT
 
-SCHEMA = TEXT.sections("schema")  # 欄位說明（prompts/語言/schema.md），跟著回傳格式送給 AI
+SCHEMA = TEXT.sections("schema")  # Field descriptions (prompts/<lang>/schema.md), sent to the AI with the response format
 
-# 遊戲詞彙：程式與存檔用代號；給 AI 看、AI 回傳、顯示給玩家時，換成 prompts/語言/vocab.md 裡這個語言的詞
-Severity = Literal["light", "moderate", "severe"]  # 由輕到重
+# Game vocabulary: code and saves use codes; text shown to the AI, returned by the AI, or shown to players uses this language's words from prompts/<lang>/vocab.md
+Severity = Literal["light", "moderate", "severe"]  # From light to severe
 ConditionKind = Literal["body", "mind"]
 TimeSpan = Literal["instant", "moment", "while", "hours", "night", "days"]
 TimeOfDay = Literal["dawn", "morning", "noon", "afternoon", "dusk", "evening", "late_night"]
-Level = Literal["healthy", "minor", "injured", "serious", "dying", "dead"]  # 身體的整體狀態，由好到壞
+Level = Literal["healthy", "minor", "injured", "serious", "dying", "dead"]  # The body's overall condition, from best to worst
 CODES = {"severity": Severity, "kind": ConditionKind, "time_span": TimeSpan, "time_of_day": TimeOfDay, "level": Level}
 VOCAB = Vocab(TEXT.sections("vocab"), CODES)
 word, code, words = VOCAB.word, VOCAB.code, VOCAB.words
 
 
 class ConditionChange(BaseModel):
-    """AI 回報的一個狀態：新出現的，或程度改變的。"""
+    """A condition the AI reports: a new one, or one whose severity changed."""
 
     name: str = Field(description=SCHEMA["ConditionChange.name"])
     kind: words("kind") = Field(description=SCHEMA["ConditionChange.kind"])
@@ -29,7 +29,7 @@ class ConditionChange(BaseModel):
 
 
 class Condition(BaseModel):
-    """角色身上的一個狀態。程式另外記錄在目前程度下經過了多少遊戲內時間，用來計算痊癒。"""
+    """A condition on a character. The program also tracks how much in-game time has passed at the current severity, to work out healing."""
 
     name: str
     kind: ConditionKind = "body"
@@ -38,7 +38,7 @@ class Condition(BaseModel):
 
 
 class CharacterUpdate(BaseModel):
-    """AI 回報某一位角色這回合的變化與下一步的選項。"""
+    """What the AI reports for one character this turn: changes and the next choices."""
 
     name: str = Field(description=SCHEMA["CharacterUpdate.name"])
     choices: list[str] = Field(description=SCHEMA["CharacterUpdate.choices"])
@@ -49,8 +49,8 @@ class CharacterUpdate(BaseModel):
 
 
 class StoryBeat(BaseModel):
-    """AI 每回合必須回傳的結構：一段包含所有角色的劇情，加上每位角色各自的變化。程式驗證後才套用到狀態。
-    欄位順序就是 AI 輸出的順序：先決定是不是結局，接著是劇情（串流時邊收邊顯示），其他變化最後由程式驗證後套用。"""
+    """What the AI must return each turn: one narration covering every character, plus each character's changes. The program checks them before applying them to the state.
+    The field order is the AI's output order: decide whether it's the ending first, then the narration (shown as it streams in), and the other changes last, checked and applied by the program."""
 
     game_over: bool = Field(description=SCHEMA["StoryBeat.game_over"])
     narration: str = Field(description=SCHEMA["StoryBeat.narration"])
@@ -69,7 +69,7 @@ class Act(BaseModel):
 
 
 class StoryArc(BaseModel):
-    """隱藏的故事大綱：AI 依照它推進劇情，程式依照它控制節奏。不顯示給玩家。"""
+    """The hidden story outline: the AI follows it to move the story on, and the program uses it to control pacing. Never shown to players."""
 
     goal: str = Field(description=SCHEMA["StoryArc.goal"])
     twist: str = Field(description=SCHEMA["StoryArc.twist"])
@@ -79,60 +79,60 @@ class StoryArc(BaseModel):
 
 
 class GenrePick(BaseModel):
-    """玩家選「自動」題材時，AI 依故事前提挑一個。"""
+    """When the players choose the "auto" genre, the AI picks one for the premise."""
 
     genre: str = Field(description=SCHEMA["GenrePick.genre"])
 
 
 class Epilogue(BaseModel):
-    """故事結束後的尾聲。"""
+    """The epilogue after the story ends."""
 
     title: str = Field(description=SCHEMA["Epilogue.title"])
     text: str = Field(description=SCHEMA["Epilogue.text"])
 
 
 class Turn(BaseModel):
-    """一回合的原文紀錄（劇情與玩家的行動）。"""
+    """One turn's verbatim record (the narration and the players' actions)."""
 
     narration: str
-    action: str  # 玩家們在看完 narration 之後做的事（每位角色一行）
+    action: str  # What the players did after reading narration (one line per character)
 
 
 class Character(BaseModel):
-    """隊伍裡的一位角色，由一位玩家扮演。"""
+    """One character on the team, played by one player."""
 
     name: str
-    conditions: list[Condition] = Field(default_factory=list)  # 身體與精神狀態，空的代表狀況良好
+    conditions: list[Condition] = Field(default_factory=list)  # Body and mind conditions; empty means fine
     inventory: list[str] = Field(default_factory=list)
-    choices: list[str] = Field(default_factory=list)  # 這位角色目前的選項
+    choices: list[str] = Field(default_factory=list)  # This character's current choices
     alive: bool = True
 
 
 class GameState(BaseModel):
-    """所有程式記住的東西。存檔就是把它序列化成 JSON。"""
+    """Everything the program remembers. A save is this serialized to JSON."""
 
     premise: str
-    characters: list[Character]  # 隊伍：一到四位角色，一個人玩就是只有一位
+    characters: list[Character]  # The team: one to four characters, one when playing alone
     turn: int = 0
-    timed_mode: bool = False  # 限時模式：緊急情況要在時間內做出決定
-    genre: str = ""  # 題材包的名稱（GENRE.md 的 name）；空的代表不套用題材
-    genre_pending: bool = False  # 玩家選「自動」：規劃大綱時由 AI 依前提從題材目錄挑一個
-    arc: StoryArc | None = None  # 隱藏的故事大綱（開場前規劃，失敗時下回合再補）
-    act: int = 0  # 目前在第幾幕（0-3）
-    act_turns: int = 0  # 在目前這一幕已經待了幾回合
-    minutes: int | None = None  # 遊戲內時鐘：從第 1 天 0:00 起算的分鐘數；None 代表還沒決定（開場前）。只給 AI 看，不顯示給玩家
+    timed_mode: bool = False  # Timed mode: decide within a time limit in urgent moments
+    genre: str = ""  # The genre pack's name (name in GENRE.md); empty means no genre
+    genre_pending: bool = False  # The players chose "auto": when planning the outline, the AI picks one from the catalog for the premise
+    arc: StoryArc | None = None  # The hidden story outline (planned before the opening; made next turn if that failed)
+    act: int = 0  # The current act (0-3)
+    act_turns: int = 0  # Turns spent in the current act so far
+    minutes: int | None = None  # The in-game clock: minutes since day 1, 0:00; None means not decided yet (before the opening). For the AI only, never shown to players
     flags: list[str] = Field(default_factory=list)
 
-    # 分層記憶
-    summary: str = ""  # 長期：較早劇情的壓縮摘要
-    key_events: list[str] = Field(default_factory=list)  # 長期：重大事件清單
-    recent: list[Turn] = Field(default_factory=list)  # 劇情紀錄：每回合的原文，只往後追加，太長時最舊的才壓縮進摘要
+    # Layered memory
+    summary: str = ""  # Long-term: a compacted summary of earlier story
+    key_events: list[str] = Field(default_factory=list)  # Long-term: the list of key events
+    recent: list[Turn] = Field(default_factory=list)  # The story log: each turn verbatim, append only; only the oldest are compacted into the summary when it gets too long
 
-    # 目前畫面（讀檔後能接續顯示）
+    # The current screen (so it can be shown again after loading)
     current_narration: str = ""
-    current_time_limit: int = 0  # 本回合的反應時間（秒），0 代表不限時
+    current_time_limit: int = 0  # This turn's reaction time (seconds); 0 means no limit
     game_over: bool = False
-    ending_title: str = ""  # 故事結束後才有：結局名稱與尾聲
+    ending_title: str = ""  # Only after the story ends: the ending's title and the epilogue
     epilogue: str = ""
 
     @property
@@ -141,5 +141,5 @@ class GameState(BaseModel):
 
     @property
     def solo(self) -> bool:
-        """只有一位角色：提示詞與畫面用第二人稱「你」、不列名字。"""
+        """Only one character: prompts and the screen use the second person ("you") and list no names."""
         return len(self.characters) == 1

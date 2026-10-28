@@ -1,4 +1,4 @@
-"""文字檔（每一層的 prompts/語言/、ui/語言/）：格式正確、每段都讀得到、組合後沒有留下沒填的變數。"""
+"""Text files (each layer's prompts/<lang>/ and ui/<lang>/): correct format, every section readable, no unfilled variables after combining."""
 
 import re
 from pathlib import Path
@@ -24,7 +24,7 @@ def test_every_prompt_file_loads():
 
 
 def test_vocabulary_has_a_word_for_every_code():
-    """vocab.md：每個代號都有這個語言的詞，同一類的詞不重複（AI 回傳詞，程式才換得回代號）。"""
+    """vocab.md: every code has a word in this language, with no repeats within a category (the AI returns words, so the program must be able to map them back to codes)."""
     from typing import get_args
 
     from story.games.adventure.models import VOCAB as ADVENTURE
@@ -43,7 +43,7 @@ def test_comments_are_not_sent_to_the_ai():
 
 
 def test_assembled_prompts_have_no_unfilled_variables():
-    """各種情境組出來的提示詞：變數都填好了（{名稱} 沒有留在送給 AI 的文字裡）。"""
+    """Prompts built for various scenarios: every variable is filled in (no {name} left in text sent to the AI)."""
     for act, act_turns in ((0, 0), (1, ACT_TURNS), (2, 6), (3, 2)):
         engine, gemini = make_engine(beat())
         engine.act(solo(premise="x", turn=8, minutes=0, arc=ARC, act=act, act_turns=act_turns, timed_mode=True), {HERO: "往上爬"})
@@ -54,7 +54,7 @@ def test_assembled_prompts_have_no_unfilled_variables():
 
 
 def test_epilogue_prompt_is_story_content_plus_its_own_instruction():
-    """尾聲不是從一般回合的提示詞切開的：不會帶到「本回合」的指示（開場、焦點）。"""
+    """The epilogue isn't cut from a normal turn's prompt: it carries none of the "this turn" instructions (opening, focus)."""
     from conftest import pbeat, upd
 
     from story.games.adventure.models import Character
@@ -69,7 +69,7 @@ def test_epilogue_prompt_is_story_content_plus_its_own_instruction():
 
 
 def test_preview_shows_every_scenario_without_calling_the_ai(capsys):
-    """just prompts：一位、兩位角色、套用題材包的每個情境都組得出來，沒有留下沒填的變數。"""
+    """just prompts: every scenario builds with one character, two characters, and a genre pack, with no unfilled variables."""
     from story.preview import main
 
     for args in ([], ["--players", "2"], ["--genre", "武俠"]):
@@ -79,7 +79,7 @@ def test_preview_shows_every_scenario_without_calling_the_ai(capsys):
 
 
 def test_every_ui_text_used_in_the_code_exists():
-    """程式用到的介面文字都在某一層的 ui/語言/ 裡：寫錯名稱或翻譯時漏了一段，測試會指出是哪一個。"""
+    """Every interface text the code uses exists in some layer's ui/<lang>/: a misspelled name or a section missed in translation is pointed out."""
     src = Path(prompts.__file__).resolve().parent.parent
     texts = {key for folder in text_folders("ui") for f in (folder / "zh-TW").glob("*.md") for key in prompts.sections(f.stem, f.parent)}
     used = set()
@@ -98,9 +98,9 @@ def test_web_page_is_filled_with_the_language_texts():
 
 
 def test_every_language_has_the_same_files_and_sections():
-    """每種語言（每一層的 prompts/語言/、ui/語言/）都要有一整套同名的檔案與段落，變數也要一樣。"""
+    """Every language (each layer's prompts/<lang>/, ui/<lang>/) has a full set of files and sections with the same names and the same variables."""
     folders = text_folders("prompts") + text_folders("ui")
-    assert len(folders) == 6, folders  # 核心與外殼的 ui，冒險與海龜湯的 prompts、ui
+    assert len(folders) == 6, folders  # The core's and shells' ui, the adventure's and turtle soup's prompts and ui
     for folder in folders:
         base = folder / "zh-TW"
         for lang in (p for p in folder.iterdir() if p.is_dir() and p != base):
@@ -111,14 +111,14 @@ def test_every_language_has_the_same_files_and_sections():
                 for key in ours:
                     variables = lambda text: set(re.findall(r"\{(\w+)[:}]", text))  # noqa: E731
                     assert variables(ours[key]) == variables(theirs[key]), (lang.name, f.name, key)
-    for samples in text_folders("samples"):  # 範例（just prompts、just eval）：每種語言一份，段落相同
+    for samples in text_folders("samples"):  # Samples (just prompts, just eval): one per language, with the same sections
         base = prompts.sections("zh-TW", samples).keys()
         for f in samples.glob("*.md"):
             assert prompts.sections(f.stem, samples).keys() == base, f.name
 
 
 def text_folders(kind: str) -> list[Path]:
-    """src/story 底下所有叫 kind（prompts、ui、samples）的文字資料夾。"""
+    """Every text folder named kind (prompts, ui, samples) under src/story."""
     root = Path(prompts.__file__).resolve().parent.parent
     return sorted(p for p in root.rglob(kind) if p.is_dir() and "__pycache__" not in p.parts)
 

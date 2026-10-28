@@ -1,4 +1,4 @@
-/* 版面：一欄閱讀區；上方固定狀態帶，下方固定選項與輸入。紙張是偏冷的灰藍，強調色是玉綠。 */
+/* Layout: one reading column, a fixed status strip on top, and fixed choices and input at the bottom. The paper is a cool blue-gray; the accent is jade green. */
 :root {
   --paper: #f2f4f6;
   --surface: #ffffff;
@@ -36,7 +36,7 @@
 }
 
 * { box-sizing: border-box; }
-[hidden] { display: none !important; } /* 元件自己設了 display 時，hidden 一樣要能藏起來 */
+[hidden] { display: none !important; } /* hidden must still hide elements that set their own display */
 html, body { height: 100%; margin: 0; }
 body { background: var(--paper); color: var(--ink); font: 15px/1.6 var(--sans); }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -45,7 +45,7 @@ button { cursor: pointer; }
 
 #app { height: 100dvh; display: grid; grid-template-rows: auto 1fr auto; }
 
-/* ---------- 上方：回合、模式、狀態 ---------- */
+/* ---------- Top: turn, mode, conditions ---------- */
 #top {
   background: var(--paper); border-bottom: 1px solid var(--line);
   padding: max(10px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px));
@@ -66,7 +66,7 @@ button { cursor: pointer; }
 .chip { font-size: 13px; padding: 0 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
 .chip.warning { background: var(--sev-3); border-color: var(--sev-3); color: var(--surface); font-weight: 600; }
 
-/* ---------- 大廳與房間的等人畫面（在故事區裡） ---------- */
+/* ---------- Lobby and room waiting screens (inside the story area) ---------- */
 #app.wide { --column: 52rem; }
 .lobby-panel { display: grid; gap: 16px; }
 .lobby-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; }
@@ -75,7 +75,7 @@ button { cursor: pointer; }
 .lobby-pane { display: grid; gap: 10px; align-content: start; min-width: 0; }
 .lobby-pane h2 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.12em; color: var(--muted); }
 
-/* 手機：房間與在線的人是兩個分頁；寬螢幕：左右並排，不用分頁 */
+/* Phones: rooms and people online are two tabs; wide screens: side by side, no tabs */
 .lobby-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: var(--line); }
 .lobby-tabs button { flex: 1; border: 0; background: none; border-radius: 9px; padding: 6px 10px; color: var(--muted); }
 .lobby-tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
@@ -132,14 +132,14 @@ button { cursor: pointer; }
 .room-actions .btn { padding: 10px 20px; }
 .room-actions .btn.primary { order: 2; }
 
-/* 程度與語氣（核心給的代號） */
+/* Severity and tone (codes from the core) */
 .t-light { color: var(--sev-1); }
 .t-moderate { color: var(--sev-2); }
 .t-severe, .t-bad { color: var(--sev-3); }
 .t-good, .t-healthy { color: var(--good); }
 .t-muted { color: var(--muted); }
 
-/* ---------- 故事區 ---------- */
+/* ---------- Story area ---------- */
 #log {
   overflow-y: auto; overscroll-behavior: contain;
   padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
@@ -164,7 +164,7 @@ button { cursor: pointer; }
 .continue:hover { border-color: var(--accent); color: var(--ink); }
 .fatal { color: var(--sev-3); text-align: center; }
 
-/* ---------- 下方：倒數、選項、輸入 ---------- */
+/* ---------- Bottom: countdown, choices, input ---------- */
 #dock {
   background: var(--paper);
   padding: 10px max(16px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
@@ -187,17 +187,17 @@ button { cursor: pointer; }
 }
 .choice .num { color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 600; }
 .choice:hover, .choice.active { border-color: var(--accent); background: var(--accent-soft); }
-.choice.selected { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); font-weight: 600; } /* 海龜湯：目前選的輸入方式 */
+.choice.selected { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); font-weight: 600; } /* Turtle soup: the input mode currently picked */
 .input-row { display: flex; gap: 8px; }
 .input-row input {
-  flex: 1; min-width: 0; font-size: 16px; /* 16px 以上手機才不會自動放大畫面 */
+  flex: 1; min-width: 0; font-size: 16px; /* 16px or more so phones don't zoom in */
   background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
 }
 .input-row input:focus { border-color: var(--accent); outline: none; }
 .send { border: 0; border-radius: 10px; padding: 0 16px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .send:disabled, .input-row input:disabled { opacity: 0.55; cursor: default; }
 
-/* ---------- 選單、對話框、通知 ---------- */
+/* ---------- Menu, dialogs, notices ---------- */
 .menu {
   position: fixed; z-index: 20; top: calc(env(safe-area-inset-top, 0px) + 48px); right: max(12px, env(safe-area-inset-right, 0px));
   background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
@@ -237,13 +237,13 @@ button { cursor: pointer; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .btn:disabled { opacity: 0.55; cursor: default; }
 
-.toasts { /* 通知出現在選項上方，不蓋住上面的狀態列 */
+.toasts { /* Notices appear above the choices, not over the status bar on top */
   position: fixed; z-index: 40; bottom: calc(var(--dock-height, 120px) + 12px); left: 50%; transform: translateX(-50%);
   display: grid; gap: 8px; width: min(26rem, calc(100% - 32px)); pointer-events: none;
 }
 .toast { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 10px 14px; animation: fade-in 0.25s ease-out; }
 .toast.error { border-color: var(--sev-3); }
-.activity { /* 別人的動態：右上角、狀態列下面（top 由 app.js 依狀態列的高度設定），短暫出現 */
+.activity { /* Others' activity: top right, below the status bar (app.js sets top from the status bar's height), shown briefly */
   position: fixed; z-index: 30; right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 6px; justify-items: end; pointer-events: none;
 }
 .activity-item {
@@ -259,7 +259,7 @@ button { cursor: pointer; }
   .narration { font-size: 1.05rem; line-height: 1.9; }
   .overlay { place-items: end center; padding: 0; }
   .sheet { border-radius: 16px 16px 0 0; width: 100%; padding-bottom: max(22px, env(safe-area-inset-bottom, 0px)); }
-  /* 要打字的對話框改從上方出現，鍵盤從下面彈出來才不會蓋住 */
+  /* Dialogs that need typing come in from the top, so the keyboard sliding up from below doesn't cover them */
   .overlay.top { place-items: start center; padding-top: 0; }
   .overlay.top .sheet { border-radius: 0 0 16px 16px; padding-top: max(22px, env(safe-area-inset-top, 0px)); padding-bottom: 22px; }
 }
