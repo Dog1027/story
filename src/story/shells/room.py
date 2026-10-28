@@ -129,9 +129,9 @@ class Room:
         On the way out, show people who came back meanwhile the current screen, and stand in for offline players if only they are left."""
         async with self.lock:
             yield
-            for member in [m for m in self._online_members() if m.behind]:
-                await self._catch_up(member.name)
-            await self._fill_offline()
+            await self._fill_offline()  # May call the AI again: catch people up only after it, or anyone coming back meanwhile is missed
+            while behind := [m for m in self._online_members() if m.behind]:
+                await self._catch_up(behind[0].name)
 
     # ---------- Coming and going ----------
 
@@ -191,9 +191,13 @@ class Room:
         if self.host_reply and name != self.host:
             await self._send_reply(self.host, self.host_reply)  # The old host left, so the new host answers
         await self._maybe_start_countdown()  # They might have been the last one still reading
-        if not self.lock.locked():  # If the core is busy, whoever is using it stands in for them on the way out
-            async with self._using_core():
-                pass  # Leaving _using_core stands in for offline players if only they are left
+        # Stand in for them in the background: that may call the AI, and leaving must not wait for it (the lobby frees their name only
+        # once this returns). If the core is busy, whoever is using it stands in for them on the way out anyway
+        self._spawn(self._stand_in())
+
+    async def _stand_in(self) -> None:
+        async with self._using_core():
+            pass  # Leaving _using_core stands in for offline players if only they are left
 
     # ---------- Input ----------
 
@@ -453,7 +457,8 @@ class Room:
         await self._broadcast({"type": "notice", "text": text}, skip=skip)
 
     async def _send_notice(self, name: str, text: str) -> None:
-        await self._safe_write(self.members[name], {"type": "notice", "text": text})
+        if member := self.members.get(name):  # Input is handled in the background, so they may have left the room meanwhile
+            await self._safe_write(member, {"type": "notice", "text": text})
 
     @staticmethod
     async def _safe_write(member: Member, message: dict) -> None:

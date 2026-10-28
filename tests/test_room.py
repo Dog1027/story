@@ -398,6 +398,30 @@ class StuckEngine(FakeGroupEngine):
         super().act(state, actions)
 
 
+async def test_coming_back_while_the_room_stands_in_for_you_still_gets_the_turn(isolated):
+    """Someone drops while the room is idle, so the room sends "away" for them and the AI writes the turn; they come back meanwhile.
+    They must still get the current screen once the AI is done (catching up happens after standing in, not before)."""
+    engine = StuckEngine()
+    lobby = make_lobby(isolated, engine)
+    try:
+        host, guest = await start_story(lobby)
+        await host.reply()
+        await guest.reply()
+        await host.send("1")
+        await host.reply(lambda r: not r.actor)  # Ming has acted and the room is idle again
+        guest.conn.close()  # Hua drops: the room stands in for them and the AI starts writing
+        await host.expect(lambda m: m["type"] == "notice" and "小華 離線了" in m["text"])
+        await host.expect(lambda m: m["type"] == "busy" and m["on"])
+        back = await join(lobby, "小華")
+        await back.expect(lambda m: m["type"] == "busy" and m["on"], timeout=1)
+        engine.release.set()
+        view = await back.reply(lambda r: bool(r.narration))
+        assert view.actor == "小華" and view.choices
+    finally:
+        engine.release.set()
+        await lobby.stop()
+
+
 async def test_leaving_and_coming_back_do_not_wait_for_the_ai(isolated):
     """While the AI writes a turn, someone leaving is handled at once, and someone coming back sees "writing the story" right away,
     then the current screen once it's done."""
@@ -601,3 +625,14 @@ async def test_the_host_picks_a_game_from_the_menu(lobby):
     assert (await guest.expect(lambda m: is_lobby("阿明 的房間")(m) and len(m["members"]) == 3))["games"] == []  # Only the host picks
     await host.send(next(g["choice"] for g in menu if g["code"] == "soup"))
     assert (await host.reply()).choices == ["從題庫抽一題", "請 AI 出一題"]
+
+
+async def test_input_from_someone_who_left_right_after_is_ignored(lobby, caplog):
+    """Input is handled in the background, so its sender may have left the room by then: nothing breaks and no one sees an error."""
+    host, guest = await gather(lobby, "阿明", "小華")
+    await guest.send("開始吧")  # A guest typing on the waiting screen gets "wait for the host"…
+    await guest.conn.send({"type": "send", "text": "/leave"})  # …but leaves before that's handled
+    await host.expect(lambda m: m["type"] == "lobby" and m["members"] == ["阿明"])
+    await asyncio.sleep(0.05)
+    assert "unexpected error" not in caplog.text
+    assert not [m for m in host.messages if m["type"] == "notice" and "伺服器出了點問題" in m["text"]]
