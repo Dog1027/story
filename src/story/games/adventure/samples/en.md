@@ -1,5 +1,5 @@
 <!--
-The sample story: the lighthouse story used by just prompts (story/preview.py) and just eval (story/evals.py). Not a prompt; it just makes previews and evals look like a real game.
+The sample story: the lighthouse story used by just prompts (preview.py) and just eval (evals.py). Not a prompt; it just makes previews and evals look like a real game.
 One file per language, with the same section names. Sections with one item per line may start each line with -; "A | B" separates the fields of one item.
 -->
 

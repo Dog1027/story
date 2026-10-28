@@ -1,5 +1,5 @@
 <!--
-Samples for evaluating turtle soup: used by just eval soup (story/evals.py). One per language, with the same sections.
+Samples for evaluating turtle soup: used by just eval soup (games/soup/evals.py). One per language, with the same sections.
 -->
 
 <!-- ---------- Judge calibration: deliberately bad samples (the judge must fail them) and fine ones (it must pass them) ---------- -->

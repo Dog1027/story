@@ -7,7 +7,7 @@ After changing the adventure's prompts (story/games/adventure/prompts/), use thi
     just prompts --players 2  a team of two characters (one by default)
     just prompts --genre <genre name> opening   use a genre pack (names are in the current language)
 
-The sample story is in story/games/adventure/samples/<lang>.md (not a prompt, just so the preview looks like a real game).
+The sample story is in samples/<lang>.md (not a prompt, just so the preview looks like a real game).
 """
 
 import random
@@ -22,7 +22,7 @@ from story.games.adventure.models import SCHEMA, Act, Character, Condition, Game
 from story.games.adventure.prompting import SYSTEM_PROMPT
 from story.games.adventure.rules import ACT_TURNS, MIN_ACT_TURNS, TARGET_TURNS
 
-SAMPLES_DIR = Path(__file__).resolve().parent / "games" / "adventure" / "samples"
+SAMPLES_DIR = Path(__file__).resolve().parent / "samples"
 SAMPLE = prompts.sections(prompts.LANGUAGE, SAMPLES_DIR)  # This language's sample story (samples/<lang>.md)
 
 

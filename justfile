@@ -39,7 +39,7 @@ stop:
 
 # Preview the full prompts sent to the AI (doesn't call the AI): just prompts, just prompts turn, just prompts --players 2, just prompts --genre <genre name> opening
 prompts *args:
-    @uv run python -m story.preview {{args}}
+    @uv run python -m story.games.adventure.preview {{args}}
 
 # Evaluate how well the AI writes (calls the real API; run by hand after changing prompts): just eval, just eval reveal agency, just eval --runs 5
 eval *args:

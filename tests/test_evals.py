@@ -6,14 +6,15 @@ import pytest
 from conftest import FakeGemini, beat, cond
 
 from story import evals
+from story.games.adventure import evals as adventure
 
 
 class JudgingGemini(FakeGemini):
     """A fake Gemini that answers the judge: always a pass."""
 
     def generate_content(self, model, contents, config):
-        if getattr(config, "response_schema", None) is evals.Verdict:
-            return type("Response", (), {"parsed": evals.Verdict(reason="沒問題", passed=True)})()
+        if getattr(config, "response_schema", None) is adventure.Verdict:
+            return type("Response", (), {"parsed": adventure.Verdict(reason="沒問題", passed=True)})()
         return super().generate_content(model, contents, config)
 
 
@@ -29,7 +30,7 @@ def test_agency_scenario_runs_checks_and_saves_results(monkeypatch, capsys, isol
     out = run(monkeypatch, capsys, ["agency", "--runs", "1"], beat(narration="燈" * 200, choices=["等", "走"]))
     assert "✓ doesn't decide for the player  1/1" in out and "Passed 4/4 checks" in out
     record = json.loads(next((isolated / "eval_results").glob("*.jsonl")).read_text(encoding="utf-8"))
-    assert record["scenario"] == "agency" and record["narration"] == "燈" * 200
+    assert record["scenario"] == "agency" and record["output"]["narration"] == "燈" * 200
     assert not (isolated / "story_log.jsonl").exists() and not (isolated / "save.json").exists()
 
 
@@ -46,7 +47,7 @@ def test_dying_scenario_passes_when_the_wound_is_fatal(monkeypatch, capsys):
 
 
 def test_every_genre_pack_has_a_tone_scenario():
-    found = evals.scenarios(evals.load_genres()[0])
+    found = adventure.scenarios()
     assert {"opening", "early", "reveal", "agency", "reckless", "dying", "judge", "武俠"} <= set(found)
 
 

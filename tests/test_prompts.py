@@ -70,7 +70,7 @@ def test_epilogue_prompt_is_story_content_plus_its_own_instruction():
 
 def test_preview_shows_every_scenario_without_calling_the_ai(capsys):
     """just prompts: every scenario builds with one character, two characters, and a genre pack, with no unfilled variables."""
-    from story.preview import main
+    from story.games.adventure.preview import main
 
     for args in ([], ["--players", "2"], ["--genre", "武俠"]):
         main(args)

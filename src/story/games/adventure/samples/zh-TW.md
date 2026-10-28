@@ -1,5 +1,5 @@
 <!--
-範例故事：just prompts（story/preview.py）與 just eval（story/evals.py）用的燈塔故事。不是提示詞，只是讓預覽與評估像真的一局。
+範例故事：just prompts（preview.py）與 just eval（evals.py）用的燈塔故事。不是提示詞，只是讓預覽與評估像真的一局。
 每種語言一份，段落名稱相同。一行一項的段落可以用 - 開頭；「A | B」是同一項的幾個欄位。
 -->
 

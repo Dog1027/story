@@ -1,6 +1,6 @@
 <!--
 The judge for evals (just eval): after the game's AI writes a turn, another AI call uses the criteria here to decide whether it got it right.
-Never used in the game itself, only in evals. Change this to make the judge stricter or more lenient; the scenarios themselves (states, player actions) are in story/evals.py.
+Never used in the game itself, only in evals. Change this to make the judge stricter or more lenient; the scenarios themselves (states, player actions) are in games/adventure/evals.py.
 The judge returns a reason and whether it passed (Verdict.reason and Verdict.passed describe those two fields).
 -->
 
