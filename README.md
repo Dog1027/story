@@ -15,7 +15,7 @@ The design rule is **the AI tells the story, the program keeps the memory and th
 - **Body and mind conditions**: no hit points, just conditions like "torn right arm (severe)" or "fear (moderate)" that heal over in-game time; only accumulated physical wounds can kill
 - **Timed mode**: decide before the countdown runs out when things get tense
 - **Long-term memory**: every turn is kept word for word; only the oldest parts are summarized once the story gets long
-- **Genre packs**: wuxia, Cthulhu, ghost story, creatures, cyberpunk, picked automatically or by you; write your own (see [docs/genres.md](docs/genres.md))
+- **Genre packs**: wuxia, Cthulhu, ghost story, creatures, cyberpunk, picked automatically or by you; write your own (see [docs/en/genres.md](docs/en/genres.md))
 - **Alone or with friends**: a team of 1 to 4, each with their own conditions, bag, and choices; the turn moves on once everyone has acted. Open rooms in the lobby, with several rooms playing at once
 - **Turtle soup**: each round everyone asks a yes/no question or guesses the truth at the same time and sees everyone's results; state every key point to solve it, and those who do in the same round win together. Puzzles come from the bank or are written by the AI
 
@@ -55,7 +55,7 @@ src/story/
 └── shells/      Shells: client.py is the flow players see, lobby.py and room.py the rooms, web/ the server and page
 ```
 
-Layers stack from the inside out: the core doesn't know which games exist, games don't depend on each other or know about screens, and shells only handle display and input. Using any game works like calling an LLM: send in a line of text, get a reply back. The architecture is explained in [docs/architecture.md](docs/architecture.md), and plans are in [docs/roadmap.md](docs/roadmap.md) (both in Chinese).
+Layers stack from the inside out: the core doesn't know which games exist, games don't depend on each other or know about screens, and shells only handle display and input. Using any game works like calling an LLM: send in a line of text, get a reply back. The architecture is explained in [docs/en/architecture.md](docs/en/architecture.md), and plans are in [docs/en/roadmap.md](docs/en/roadmap.md).
 
 ## Customizing
 

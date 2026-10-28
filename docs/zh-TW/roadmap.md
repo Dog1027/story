@@ -1,5 +1,7 @@
 # 待辦與改進方向
 
+[English](../en/roadmap.md) | 繁體中文
+
 跟目前主流 harness（Claude Code、Agent SDK 等）比較後整理的改進方向，以及其他還沒處理的項目。做完的項目直接刪掉，要查做過什麼看 git 紀錄。
 
 ## 改進方向

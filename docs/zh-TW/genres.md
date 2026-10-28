@@ -1,5 +1,7 @@
 # 怎麼寫題材包
 
+[English](../en/genres.md) | 繁體中文
+
 題材包讓不同的故事有不同的味道：武俠有江湖氣，克蘇魯有說不出的壓迫感。只要會寫 markdown，新增一個資料夾就能加入新的題材，不用改程式。
 
 結構仿照 [Agent Skills](https://code.claude.com/docs/en/skills)（Claude Code 的 skill）：每個題材一個資料夾，裡面一份 `GENRE.md`。

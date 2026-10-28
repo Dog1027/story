@@ -18,7 +18,7 @@ prompts/
     └── eval.md          評估（just eval）的評審標準，不會出現在遊戲裡
 ```
 
-題材包（武俠、克蘇魯……各自的寫作指引）不在這裡，在旁邊的 `genres/語言/`，寫法見 `docs/genres.md`。給玩家看的文字（通知、說明）也不在這裡，在旁邊的 `ui/語言/`（每種玩法都用到的在 `story/core/ui/`，介面的在 `story/shells/ui/`）。海龜湯的提示詞在 `story/games/soup/prompts/`。
+題材包（武俠、克蘇魯……各自的寫作指引）不在這裡，在旁邊的 `genres/語言/`，寫法見 `docs/zh-TW/genres.md`。給玩家看的文字（通知、說明）也不在這裡，在旁邊的 `ui/語言/`（每種玩法都用到的在 `story/core/ui/`，介面的在 `story/shells/ui/`）。海龜湯的提示詞在 `story/games/soup/prompts/`。
 
 ## 一次呼叫由哪些部分組成
 
