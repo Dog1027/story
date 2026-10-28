@@ -12,10 +12,10 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from story import settings
 from story.core.ratelimit import RateLimit
 
 WORKERS = 8  # How many scenarios run at once
-RESULTS_DIR = Path("eval_results")
 
 
 @dataclass
@@ -85,8 +85,9 @@ def report(found: dict[str, Scenario], results: dict[str, list[Run]]) -> None:
 
 
 def save_results(results: dict[str, list[Run]]) -> Path:
-    RESULTS_DIR.mkdir(exist_ok=True)
-    path = RESULTS_DIR / f"{datetime.now():%Y%m%d-%H%M%S}.jsonl"
+    results_dir = settings.DATA_DIR / "eval_results"  # In the project folder, whatever folder this runs from
+    results_dir.mkdir(exist_ok=True)
+    path = results_dir / f"{datetime.now():%Y%m%d-%H%M%S}.jsonl"
     with path.open("w", encoding="utf-8") as f:
         for name, runs in results.items():
             for i, run in enumerate(runs, 1):

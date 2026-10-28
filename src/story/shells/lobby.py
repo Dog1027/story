@@ -30,11 +30,13 @@ Lobby → player
 
 import asyncio
 from collections.abc import Callable
+from pathlib import Path
 
+from story import settings
 from story.core import MAX_PLAYERS, Game, RateLimit, new_client, pick_choice
 from story.games import GAMES
 from story.shells.text import ui_text
-from story.shells.players import SAVES_DIR, InvalidName, check_name
+from story.shells.players import InvalidName, check_name
 from story.shells.connection import Connection
 from story.shells.room import Room
 
@@ -43,11 +45,16 @@ MAX_ROOMS = 10  # Most rooms at once: everyone shares one key, and too many room
 AI_PER_MINUTE = 15  # Most AI calls per minute across all rooms (the free tier's flash-lite limit; raise it on a paid plan)
 
 
+def saves_dir() -> Path:
+    """Saves and game logs: saves/ in the project folder (settings.DATA_DIR)."""
+    return settings.DATA_DIR / "saves"
+
+
 def team_save(players: list[str], game: str):
     """A team's save and log: the same people (in any order) can continue when they open a room again. One per game, with the game's code at the end of the file name.
     Names only have letters, digits, underscores and hyphens, so they work as file names directly."""
     team = "+".join(sorted(players)) + f".{game}"
-    return SAVES_DIR / f"team-{team}.json", SAVES_DIR / f"team-{team}.log.jsonl"
+    return saves_dir() / f"team-{team}.json", saves_dir() / f"team-{team}.log.jsonl"
 
 
 class Lobby:
@@ -66,7 +73,7 @@ class Lobby:
     @staticmethod
     def for_server(api_key: str) -> "Lobby":
         """For the web server: every room's core uses the host's key and shares one call limit."""
-        SAVES_DIR.mkdir(exist_ok=True)
+        saves_dir().mkdir(exist_ok=True)
         limit, client = RateLimit(AI_PER_MINUTE), new_client(api_key)
 
         def make_core(players: list[str], on_queue: Callable[[bool], None], game: str) -> Game:

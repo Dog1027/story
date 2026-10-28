@@ -16,6 +16,8 @@ import tomllib
 from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".config" / "story"
+# The project folder (where pyproject.toml is): saves/ and eval_results/ go here, whatever folder the program is started from
+DATA_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = CONFIG_DIR / "config.toml"
 KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 OLD_FILES = {"api_key": "api_key"}  # Each setting used to have its own file; moved into config.toml when read

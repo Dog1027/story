@@ -1,13 +1,11 @@
 """Player names on the web: which names are allowed. A name becomes part of the save file name (see team_save in lobby.py)."""
 
 import re
-from pathlib import Path
 
 from story.shells.text import ui_text
 
 UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
 
-SAVES_DIR = Path("saves")
 MAX_NAME_LEN = 20
 # Names become file names: allow only letters, digits, underscores and hyphens (including CJK), blocking path characters like ../
 NAME_PATTERN = re.compile(r"^[\w\-]+$")
