@@ -637,3 +637,32 @@ async def test_input_from_someone_who_left_right_after_is_ignored(lobby, caplog)
     await asyncio.sleep(0.05)
     assert "unexpected error" not in caplog.text
     assert not [m for m in host.messages if m["type"] == "notice" and "伺服器出了點問題" in m["text"]]
+
+
+async def test_a_countdown_stopped_while_waiting_for_the_core_does_not_time_out(monkeypatch):
+    """If a turn advances while the time-up is still waiting for the core, stopping the countdown cancels it: the old time-up never lands on the new turn."""
+    from story.shells.rooms import countdown as module
+
+    monkeypatch.setattr(module, "TIMEOUT_GRACE", 0)
+    gate, acted, announced = asyncio.Event(), [], []
+
+    async def announce(seconds):
+        announced.append(seconds)
+
+    async def time_up():
+        await gate.wait()  # Waiting for the core, which someone else is using
+        countdown.over()
+        acted.append(True)
+
+    countdown = module.Countdown(announce, time_up)
+    countdown.start_now(0)
+    await asyncio.sleep(0.05)
+    assert announced == [0] and countdown.remaining() == 0
+    countdown.stop()  # The turn advanced meanwhile
+    gate.set()
+    await asyncio.sleep(0.05)
+    assert acted == []
+
+    countdown.start_now(0)  # Not stopped: it acts
+    await asyncio.sleep(0.05)
+    assert acted == [True] and countdown.task is None

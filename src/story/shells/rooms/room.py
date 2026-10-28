@@ -37,13 +37,13 @@ from dataclasses import dataclass
 
 from story.core import MAX_PLAYERS, Game, Reply, pick_choice
 from story.shells.connection import Connection
+from story.shells.rooms.countdown import Countdown
+from story.shells.rooms.runner import CoreRunner
 from story.shells.text import ui_text
 
 UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
 log = logging.getLogger(__name__)
 LEAVE = UI["leave_room"]
-READY_WAIT = 90  # Most seconds to wait for everyone to finish reading; after that the countdown starts anyway
-TIMEOUT_GRACE = 1  # Wait a little after the countdown ends to make up for network lag
 
 
 @dataclass(frozen=True)
@@ -76,22 +76,16 @@ class Room:
         self.starts = {UI["start_game"].format(game=g.title): g.code for g in games}  # The options that start each game
         self.make_core = make_core
         self.on_change = on_change
-        self.tasks: set[asyncio.Task] = set()  # Work in the background: input that uses the core (see handle()) and progress reports
+        self.tasks: set[asyncio.Task] = set()  # Input that uses the core, handled in the background (see handle())
         self.game = ""  # The name of this game (shown on the lobby's room card)
         self.members: dict[str, Member] = {}  # In the order they came in; people who disconnect mid-game are kept so they can reconnect
         self.host = ""
         self.core: Game | None = None
         self.host_reply: Reply | None = None  # The screen waiting for the host's answer (save, premise, confirm restart), resent when the host changes
         self.lock = asyncio.Lock()  # Held while using the core (see _using_core); messages that don't need the core never wait for it
-        self.busy = False  # Everyone sees "writing the story" (a call made with busy=True is running)
-        self.reported = ("", "")  # The progress and draft everyone was last told about during this call
-        self.loop: asyncio.AbstractEventLoop | None = None  # For news from the thread running the core (see _changed)
-        self.ready: set[str] = set()  # People who finished reading this turn's narration
-        self.countdown: asyncio.Task | None = None
-        self.waiting_ready = False  # The countdown hasn't started; waiting for everyone to finish reading
-        self.deadline = 0.0  # When the countdown ends (loop.time()), so people who connect midway can pick it up
-        self.time_limit = 0  # This turn's time limit in seconds (taken from the core's reply)
-        self.queued = False  # An AI call is queued (all rooms share one key's call limit)
+        self.runner = CoreRunner(self._broadcast)  # Calls the core in a background thread and tells everyone how it's going
+        self.countdown = Countdown(  # Timed mode: starts once everyone has read the narration; /timeout when it runs out
+            announce=lambda seconds: self._broadcast({"type": "timer", "seconds": seconds}), time_up=self._time_up)
 
     # ---------- For the lobby ----------
 
@@ -131,9 +125,10 @@ class Room:
             await self._on_message(name, message)
 
     async def close(self) -> None:
-        self._stop_countdown()
+        self.countdown.stop()
         for task in list(self.tasks):
             task.cancel()
+        self.runner.close()
 
     @asynccontextmanager
     async def _using_core(self):
@@ -158,8 +153,8 @@ class Room:
         await self._broadcast_notice(UI["room_back"].format(name=name), skip=name)
         if self.lock.locked():  # The core is busy (e.g. the AI is writing): don't wait here; they're caught up once it's done
             self.members[name].behind = True
-            if self.busy:
-                await self._safe_write(self.members[name], {"type": "busy", "on": True, "progress": self._progress()})
+            if self.runner.busy:
+                await self._safe_write(self.members[name], {"type": "busy", "on": True, "progress": self.runner.progress()})
             return
         async with self._using_core():
             await self._catch_up(name)
@@ -175,10 +170,8 @@ class Room:
         if self.core.phase == "playing":
             await self._send_reply(name, self.core.view(name))
             await self._broadcast_waiting()
-            if self.countdown and not self.waiting_ready:
-                left = round(self.deadline - asyncio.get_running_loop().time())
-                if left > 0:
-                    await member.conn.send({"type": "timer", "seconds": left})
+            if left := self.countdown.remaining():
+                await member.conn.send({"type": "timer", "seconds": left})
         elif name == self.host and self.host_reply:
             await self._send_reply(name, self.host_reply)
         else:
@@ -191,7 +184,6 @@ class Room:
             del self.members[name]
         else:
             self.members[name].online = False
-            self.ready.discard(name)
         online = self.online
         if name == self.host:
             self.host = online[0] if online else ""
@@ -203,7 +195,7 @@ class Room:
         await self._broadcast_notice(UI["room_left"].format(name=name))
         if self.host_reply and name != self.host:
             await self._send_reply(self.host, self.host_reply)  # The old host left, so the new host answers
-        await self._maybe_start_countdown()  # They might have been the last one still reading
+        self.countdown.left_room(name, online)  # They might have been the last one still reading
         # Stand in for them in the background: that may call the AI, and leaving must not wait for it (the lobby frees their name only
         # once this returns). If the core is busy, whoever is using it stands in for them on the way out anyway
         self._spawn(self._stand_in())
@@ -217,8 +209,7 @@ class Room:
     async def _on_message(self, name: str, message: dict) -> None:
         kind = message.get("type")
         if kind == "ready":
-            self.ready.add(name)
-            await self._maybe_start_countdown()
+            self.countdown.read(name, self.online)
 
     async def _on_send_message(self, name: str, message: dict) -> None:
         text = str(message.get("text", "")).strip()
@@ -255,40 +246,14 @@ class Room:
         game = self.starts.get(pick_choice(text, self._lobby_choices(name)) or "")
         if game is None:
             return
-        self.loop = asyncio.get_running_loop()
-        self.game, self.core = self.games[game].title, self.make_core(self.online, self._set_queued, game)
-        self.core.watch(self._changed)
+        self.game, self.core = self.games[game].title, self.make_core(self.online, self.runner.set_queued, game)
+        self.runner.attach(self.core)
         await self._route(self.core.start())
-
-    def _progress(self) -> str:
-        """What the waiting screen says: queued for the shared call limit, or what the core is doing."""
-        return UI["queued"] if self.queued else (self.core.progress if self.core else "")
-
-    def _set_queued(self, queued: bool) -> None:
-        self.queued = queued
-        self._changed()
-
-    def _changed(self) -> None:
-        """Called from the thread running the core when its progress or draft changes, or an AI call starts or stops queuing:
-        hand it to the event loop, which tells everyone (_report)."""
-        if self.loop is not None:
-            self.loop.call_soon_threadsafe(self._spawn, self._report())
 
     def _spawn(self, coroutine) -> None:
         task = asyncio.create_task(coroutine)
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
-
-    async def _report(self) -> None:
-        """Tell everyone the progress (a new story calls the AI several times) and the narration so far, if they changed."""
-        if not self.busy or self.core is None:
-            return  # Only while everyone sees "writing the story"; news arriving after the call ended is dropped
-        progress, draft = self._progress(), self.core.draft
-        if progress != self.reported[0]:
-            await self._broadcast({"type": "busy", "on": True, "progress": progress})
-        if draft and draft != self.reported[1]:
-            await self._broadcast({"type": "draft", "text": draft})
-        self.reported = (progress, draft or self.reported[1])
 
     async def _on_playing(self, name: str, text: str) -> None:
         if text == "/timeout":
@@ -317,16 +282,7 @@ class Room:
 
     async def _call(self, fn: Callable[[], Reply], busy: bool = False) -> Reply:
         """Call the core in a background thread (it may call the AI and take a few seconds). With busy, everyone sees "writing the story"."""
-        if busy:
-            self.busy, self.reported = True, ("", "")
-            await self._broadcast({"type": "busy", "on": True, "progress": ""})
-        try:
-            reply = await asyncio.to_thread(fn)  # Progress and narration so far arrive through _changed() meanwhile
-        finally:
-            if busy:
-                self.busy = False
-                await self._broadcast({"type": "busy", "on": False})
-        return reply
+        return await self.runner.call(fn, busy)
 
     # ---------- Replies ----------
 
@@ -335,7 +291,7 @@ class Room:
         phase = reply.phase
         if phase in ("ask_continue", "setup", "confirm_restart"):
             self.host_reply = reply
-            self._stop_countdown()
+            self.countdown.stop()
             await self._send_reply(self.host, reply)
             if phase != "confirm_restart":
                 await self._broadcast_notice(UI["host_setting_up"], skip=self.host)
@@ -345,29 +301,29 @@ class Room:
             for member in self._online_members():
                 await self._send_reply(member.name, reply)
             await self._broadcast_waiting()
-            self._stop_countdown()
+            self.countdown.stop()
             if reply.time_limit:
-                self.countdown = asyncio.create_task(self._countdown(reply.time_limit, wait_first=False))
+                self.countdown.start_now(reply.time_limit)
             return
         if phase == "playing" and not reply.narration:
             if only:
                 await self._send_reply(only, reply)
             await self._broadcast_waiting()
             return
-        self._stop_countdown()
+        self.countdown.stop()
         for member in self._online_members():
             await self._send_reply(member.name, reply)
         if phase == "playing":
             await self._broadcast_waiting()
             if reply.time_limit:
-                self.ready, self.waiting_ready, self.time_limit = set(), True, reply.time_limit
-                self.countdown = asyncio.create_task(self._countdown(reply.time_limit, wait_first=True))
+                self.countdown.after_reading(reply.time_limit)
         elif phase == "ending" and not reply.error:
             # Go on to write the epilogue. If wrapping up the ending failed, don't go round again on our own: the same error would repeat
             # endlessly (and an epilogue that fails calls the AI every time); anyone can send something to try again
             await self._route(await self._call(lambda: self.core.send(""), busy=True))
         elif phase == "ended":
             self.core = None  # Back to the waiting screen; the same people can play again
+            self.runner.attach(None)
             for name in [m.name for m in self.members.values() if not m.online]:
                 del self.members[name]
             await self._broadcast_lobby()
@@ -378,22 +334,11 @@ class Room:
             view = self.core.view(name, reply) if self.core else reply
             await self._safe_write(member, {"type": "reply", "reply": view.to_dict()})
 
-    # ---------- Timed countdown: starts once everyone has read the narration; the room sends /timeout when it runs out ----------
+    # ---------- Timed countdown (countdown.py): the room sends /timeout when it runs out ----------
 
-    async def _maybe_start_countdown(self) -> None:
-        if self.waiting_ready and self.ready >= set(self.online):
-            self.countdown.cancel()
-            self.countdown = asyncio.create_task(self._countdown(self.time_limit, wait_first=False))
-
-    async def _countdown(self, seconds: int, wait_first: bool) -> None:
-        if wait_first:  # Waiting for everyone to finish reading (_maybe_start_countdown switches to the real countdown early)
-            await asyncio.sleep(READY_WAIT)
-        self.waiting_ready = False
-        self.deadline = asyncio.get_running_loop().time() + seconds
-        await self._broadcast({"type": "timer", "seconds": seconds})
-        await asyncio.sleep(seconds + TIMEOUT_GRACE)
+    async def _time_up(self) -> None:
         async with self._using_core():
-            self.countdown = None
+            self.countdown.over()  # Only now: while waiting for the core, a turn that advanced still stops (cancels) this countdown
             try:
                 if self.core and self.core.phase == "playing" and self.core.waiting():
                     await self._route(await self._call(lambda: self.core.send("/timeout"), busy=True))
@@ -417,11 +362,6 @@ class Room:
                 await self._send_reply(self.host, self.host_reply)  # The host's dialog closed when they answered: show it again so they can answer again
         except Exception:
             log.exception("could not restore the screens after the error")
-
-    def _stop_countdown(self) -> None:
-        if self.countdown and self.countdown is not asyncio.current_task():
-            self.countdown.cancel()
-        self.countdown, self.waiting_ready = None, False
 
     # ---------- Broadcasting ----------
 
