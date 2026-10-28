@@ -146,7 +146,8 @@ class SoupCore(TeamGame):
             if m.kind == "ask":
                 lines.append(UI["soup_line_ask"].format(name=name, text=m.text, answer=word("soup_answer", m.answer)))
             elif m.kind == "guess":
-                lines.append(UI["soup_line_guess"].format(name=name, text=m.text, hit=m.hit, total=total))
+                hits = UI["soup_hits"].format(points=join(s.puzzle.key_points[n - 1] for n in m.points)) if m.points else ""
+                lines.append(UI["soup_line_guess"].format(name=name, text=m.text, hit=m.hit, total=total, hits=hits))
             elif m.kind == "give_up":
                 lines.append(UI["soup_line_give_up"].format(name=name))
             else:

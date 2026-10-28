@@ -59,7 +59,7 @@ def test_everyone_acts_at_once_and_sees_everything(isolated):
     assert core.view("小華").inputs and core.view("小華").choices == ["提問", "猜湯底", "放棄"]
     reply = core.send_as("小華", "/guess 跟電話有關")
     assert judge.rounds == [[("阿明", "ask", "有人死了嗎"), ("小華", "guess", "跟電話有關")]]  # The whole turn is judged at once
-    assert reply.narration == "阿明 問：有人死了嗎\n→ 是\n\n小華 猜：跟電話有關\n→ 說中 1/3 個關鍵點"
+    assert reply.narration == "阿明 問：有人死了嗎\n→ 是\n\n小華 猜：跟電話有關\n→ 說中 1/3 個關鍵點：語音是母親錄的"  # Which ones, so they know what's missing
     assert [s.name for s in reply.characters] == ["阿明", "小華"]
 
 
@@ -160,7 +160,7 @@ def test_judge_counts_only_points_stated_with_a_real_quote(isolated):
     state = SoupState(puzzle=PUZZLE, players=["阿明", "小華"])
     moves = [Move(name="阿明", kind="ask", text="是電話嗎"), Move(name="小華", kind="guess", text=guess)]
     judge.judge(state, moves)
-    assert moves[0].answer == "partly" and moves[1].hit == 2
+    assert moves[0].answer == "partly" and moves[1].hit == 2 and moves[1].points == [1, 2]  # Only real, quoted, distinct key points
     assert "那是母親錄的語音。" in client.prompts[0] and "1. 阿明 提問：是電話嗎" in client.prompts[0]
 
     moves = [Move(name="小華", kind="guess", text=guess)]
@@ -223,3 +223,14 @@ def test_personal_puzzles_override_builtin_ones_with_the_same_title(tmp_path):
     puzzles, _ = load_puzzles([BUILTIN_DIR, tmp_path])
     assert next(p for p in puzzles if p.title == "空號").surface == "我的版本"
     assert Path(BUILTIN_DIR).name == "zh-TW"
+
+
+def test_a_guess_lists_only_the_key_points_it_hit(isolated):
+    """After a guess, players see which key points they hit (never the ones they missed), so they know what's still missing."""
+    core = SoupCore("test", ["阿明"], save_path=isolated / "soup.json", judge=FakeJudge(), puzzles=[PUZZLE])
+    core.start()
+    core.send("1")
+    reply = core.send("/guess 跟母親有關")
+    assert "說中 1/3 個關鍵點：語音是母親錄的" in reply.narration
+    assert "母親過世了" not in reply.narration and "他想聽母親的聲音" not in reply.narration
+    assert "語音是母親錄的" in core.send("/state").info[1]  # /state shows it too

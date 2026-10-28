@@ -85,9 +85,13 @@ AI 出題中
 → {answer}
 
 ## soup_line_guess
-<!-- 一次猜湯底。變數：{name}、{text}、{hit} 說中幾個、{total} 關鍵點總數 -->
+<!-- 一次猜湯底。變數：{name}、{text}、{hit} 說中幾個、{total} 關鍵點總數、{hits}（soup_hits，一個都沒說中時空白） -->
 {name} 猜：{text}
-→ 說中 {hit}/{total} 個關鍵點
+→ 說中 {hit}/{total} 個關鍵點{hits}
+
+## soup_hits
+<!-- 說中了哪幾個關鍵點（只列說中的，讓玩家知道還差什麼）。變數：{points} 關鍵點，用 list_sep 串起來 -->
+：{points}
 
 ## soup_line_give_up
 <!-- 變數：{name} -->

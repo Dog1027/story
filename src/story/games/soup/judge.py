@@ -78,7 +78,8 @@ class SoupJudge(AICaller):
             if move.kind == "ask":
                 move.answer = code("soup_answer", ruling.answer)
             else:
-                move.hit = len({c.point for c in ruling.points if 1 <= c.point <= total and c.stated and quoted(c.quote, move.text)})
+                move.points = sorted({c.point for c in ruling.points if 1 <= c.point <= total and c.stated and quoted(c.quote, move.text)})
+                move.hit = len(move.points)
         self.write_log({"turn": state.turn + 1, "soup": [m.model_dump() for m in moves]})
 
     def make_puzzle(self, avoid: list[str]) -> Puzzle | None:

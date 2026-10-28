@@ -85,9 +85,13 @@ Keep guessing
 → {answer}
 
 ## soup_line_guess
-<!-- A guess. Variables: {name}, {text}, {hit} points stated, {total} key points -->
+<!-- A guess. Variables: {name}, {text}, {hit} points stated, {total} key points, {hits} (soup_hits, blank when none was hit) -->
 {name} guessed: {text}
-→ {hit}/{total} key points
+→ {hit}/{total} key points{hits}
+
+## soup_hits
+<!-- Which key points were hit (only those, so players know what's still missing). Variable: {points} the key points, joined with list_sep -->
+: {points}
 
 ## soup_line_give_up
 <!-- Variable: {name} -->

@@ -272,7 +272,8 @@ class FakeJudge(Watched):
             if m.kind == "ask":
                 m.answer = "yes"
             else:
-                m.hit = len(state.puzzle.key_points) if "全部" in m.text else 1
+                m.points = list(range(1, len(state.puzzle.key_points) + 1)) if "全部" in m.text else [1]
+                m.hit = len(m.points)
 
     def make_puzzle(self, avoid):
         self.avoided = avoid
