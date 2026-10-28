@@ -34,6 +34,7 @@ class WrongUsage(ValueError):
 
 class TeamGame:
     title: str  # The game's name (adventure, turtle soup), shown by the shells
+    busy_label: str  # What everyone sees while waiting for the AI (e.g. "writing the story", "the judge is thinking")
     description: str  # One line on what the game is like, shown in the room's game picker
     state_class: type[BaseModel]  # The save format
     timeout_action: str  # Stands in for players who haven't acted when timed mode runs out (/timeout)

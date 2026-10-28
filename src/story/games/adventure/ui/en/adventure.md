@@ -7,6 +7,10 @@ Same format as the prompts: each section starts with "## name"; the name is how 
 <!-- The game's name: the host's choice in the room (start_game in shells) and room cards in the lobby -->
 adventure
 
+## busy_label
+<!-- Shown while the AI writes (progress may follow, e.g. ": planning the story outline") -->
+Writing the story
+
 ## description
 <!-- A line about the game: under its name when the host picks a game -->
 The AI writes the story as you play, and every choice shapes it. Pick a genre, or play against the clock.

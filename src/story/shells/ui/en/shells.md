@@ -25,8 +25,11 @@ Timed mode
 Normal mode
 
 ## busy
-<!-- Shown while waiting for the AI. Variable: {progress} (busy_progress, or blank) -->
-Writing the story{progress}…
+<!-- Shown while waiting for the AI. Variables: {label} (the game's words, e.g. the adventure's "Writing the story"; busy_default when there are none), {progress} (busy_progress, or blank) -->
+{label}{progress}…
+
+## busy_default
+The AI is thinking
 
 ## busy_progress
 <!-- Variable: {progress}, e.g. "planning the outline" -->

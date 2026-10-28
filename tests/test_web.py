@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
-from conftest import FakeGroupEngine
+from conftest import PUZZLE, FakeGroupEngine, FakeJudge
 
 import story.shells.web as web
 import story.shells.web.hosting as hosting
-from story.games import AdventureCore
+from story.games import AdventureCore, SoupCore
 
 
 @pytest.fixture(autouse=True)
@@ -230,3 +230,47 @@ async def test_the_menu_has_current_info_start_over_and_change_name():
         assert items == ["目前資訊", "重新開始", "換名字"]
         script = await (await client.get("/static/app.js")).text()
         assert "renameSheet()" in script and "rename_warning" in script
+
+
+async def play_soup_alone(client, monkeypatch) -> Browser:
+    """Playing turtle soup alone with a fake judge: open a room, start turtle soup, draw from the bank."""
+
+    class FakeSoup(SoupCore):
+        def __init__(self, api_key, players, *, save_path, log_path, client=None):
+            super().__init__(api_key, players, save_path=save_path, judge=FakeJudge(), puzzles=[PUZZLE])
+
+    monkeypatch.setitem(hosting.GAMES, "soup", FakeSoup)
+    browser = await enter_name(client, "阿明")
+    await browser.expect("lobby", lambda m: m["screen"]["title"] == "大廳")
+    await browser.send("act", text="1")
+    await browser.expect("lobby", lambda m: m["screen"].get("view") == "room")
+    await browser.send("act", text="2")  # Turtle soup
+    await browser.answer((await browser.expect("confirm"))["id"], True)  # From the bank
+    await browser.expect("choices", lambda m: m["choices"] == ["提問", "猜湯底", "放棄"])
+    return browser
+
+
+async def test_the_last_one_to_act_in_turtle_soup_sees_the_judge_thinking(isolated, monkeypatch):
+    """Turtle soup's actions start with a slash (/ask…), but they're actions: the last one makes everyone see the wait, in the game's words."""
+    async with TestClient(TestServer(app())) as client:
+        browser = await play_soup_alone(client, monkeypatch)
+        await browser.send("act", text="1")  # Ask
+        await browser.send("act", text="他是醫生嗎")
+        await browser.expect("busy_line", lambda m: m["text"] == "裁判思考中…")  # In the game's words, not "writing the story"
+        assert not [m for m in browser.seen if m["t"] == "narration_end" and "他是醫生嗎" in m.get("text", "")]  # Shown before the ruling
+
+
+async def test_giving_up_in_turtle_soup_asks_first(isolated, monkeypatch):
+    async with TestClient(TestServer(app())) as client:
+        browser = await play_soup_alone(client, monkeypatch)
+        await browser.send("act", text="3")  # Give up
+        ask = await browser.expect("confirm")
+        assert "確定要放棄嗎" in ask["question"] and (ask["yes"], ask["no"]) == ("放棄", "繼續猜")
+        await browser.answer(ask["id"], False)  # Keep guessing: nothing is sent
+        await browser.send("act", text="3")
+        again = await browser.expect("confirm")
+        assert not [m for m in browser.seen if m["t"] == "action"]  # The first give-up never went out
+        await browser.answer(again["id"], True)
+        assert (await browser.expect("action"))["text"] == "放棄"
+        await browser.answer((await browser.expect("wait_enter"))["id"])  # Alone, giving up reveals the truth
+        await browser.expect("ending_title")

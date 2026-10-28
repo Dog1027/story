@@ -25,8 +25,11 @@ Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
 一般模式
 
 ## busy
-<!-- 等 AI 時的提示。變數：{progress}（busy_progress，或空白） -->
-故事生成中{progress}…
+<!-- 等 AI 時的提示。變數：{label}（玩法給的詞，例如冒險的「故事生成中」，沒有時是 busy_default）、{progress}（busy_progress，或空白） -->
+{label}{progress}…
+
+## busy_default
+AI 思考中
 
 ## busy_progress
 <!-- 變數：{progress}，例如「規劃故事大綱」 -->

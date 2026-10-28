@@ -22,7 +22,8 @@ Room → player
   {"type": "reply", "reply": {...}}       The core's reply (Reply.to_dict(), with this player's choices)
   {"type": "premise", "reply": {...}}     The result of a command while starting a new game, sent only to the host who asked with answer
   {"type": "new_story", "premise": "..."}  A new game starts: wipe the screen and show the premise first (answers to options aren't shown)
-  {"type": "busy", "on": true, "progress": "planning the story outline"}   Writing the story (sent again when progress changes)
+  {"type": "busy", "on": true, "progress": "planning the story outline", "label": "Writing the story"}
+                                          Waiting for the AI (sent again when progress changes); label is the game's busy_label
   {"type": "draft", "text": "..."}        The narration the AI is writing (the full text streamed so far, sent again when more arrives)
   {"type": "waiting", "names": [...]}     Who hasn't acted this turn
   {"type": "timer", "seconds": 12}        Start the timed countdown (the room sends /timeout when it runs out)
@@ -154,7 +155,7 @@ class Room:
         if self.lock.locked():  # The core is busy (e.g. the AI is writing): don't wait here; they're caught up once it's done
             self.members[name].behind = True
             if self.runner.busy:
-                await self._safe_write(self.members[name], {"type": "busy", "on": True, "progress": self.runner.progress()})
+                await self._safe_write(self.members[name], {"type": "busy", "on": True, "progress": self.runner.progress(), "label": self.runner.label()})
             return
         async with self._using_core():
             await self._catch_up(name)
@@ -261,7 +262,8 @@ class Room:
         if text == "/restart" and name != self.host:
             await self._send_notice(name, UI["host_only_restart"])
             return
-        if text.startswith("/"):  # /state, /restart, or an unknown command: reply only to the sender
+        if text.startswith("/") and self.core.action_for(text) is None:  # /state, /restart, or an unknown command: reply only to the sender
+            # (some games' actions start with a slash too, like turtle soup's /ask: those are actions, so the last one shows everyone the wait)
             reply = await self._call(lambda: self.core.send_as(name, text))
             await self._route(reply, only=name)
             return

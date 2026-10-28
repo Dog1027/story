@@ -51,6 +51,7 @@ class Client:
         self.shown: tuple[int, list[Status]] = (0, [])  # What the status bar shows now: (turn, each character), redrawn when the mode changes
         self.waiting: list[str] = []  # Who hasn't acted this turn
         self.progress = ""  # Progress pushed by the room (e.g. "planning the story outline")
+        self.busy_label = ""  # What the game calls the wait, pushed by the room with it (e.g. "writing the story")
         self.inbox: asyncio.Queue[dict] = asyncio.Queue()  # Messages pushed by the room, handled in order
         self.premise_answer: asyncio.Future | None = None  # The premise dialog is waiting for the room's reply
 
@@ -111,6 +112,8 @@ class Client:
             index = labels.index(picked)
             mode = self.inputs[index]
             if not mode.needs_text:
+                if mode.confirm and not await self.view.ask_confirm(*mode.confirm):  # e.g. giving up: make sure first
+                    return
                 await self.send(mode.command, echo=mode.label)
                 return
             self.input_mode = index
@@ -169,7 +172,7 @@ class Client:
     def busy_text(self) -> str:
         """The waiting hint's text, e.g. "Writing the story: planning the story outline…"."""
         progress = self.progress
-        return UI["busy"].format(progress=UI["busy_progress"].format(progress=progress) if progress else "")
+        return UI["busy"].format(label=self.busy_label or UI["busy_default"], progress=UI["busy_progress"].format(progress=progress) if progress else "")
 
     async def handle(self, reply: Reply) -> None:
         """Decide what happens next from the reply's phase."""
@@ -314,6 +317,7 @@ class Client:
             kind = message["type"]
             if kind == "busy":
                 self.progress = message.get("progress", "")
+                self.busy_label = message.get("label", "") or self.busy_label
                 self.set_busy(message["on"])
                 if message["on"]:
                     self.view.show_busy()  # The room sends busy again whenever the progress changes

@@ -24,12 +24,13 @@ ASK, GUESS, GIVE_UP, AWAY = "/ask", "/guess", "/give_up", "/away"
 INPUTS = [
     InputMode(UI["soup_ask"], ASK, UI["soup_ask_hint"]),
     InputMode(UI["soup_guess"], GUESS, UI["soup_guess_hint"]),
-    InputMode(UI["soup_give_up"], GIVE_UP, needs_text=False),
+    InputMode(UI["soup_give_up"], GIVE_UP, needs_text=False, confirm=(UI["soup_give_up_confirm"], UI["soup_give_up_yes"], UI["soup_give_up_no"])),
 ]
 
 
 class SoupCore(TeamGame):
     title = UI["title"]
+    busy_label = UI["soup_busy"]
     description = UI["description"]
     state_class = SoupState
     timeout_action = away_action = AWAY  # No time limit; someone who disconnected counts as away this turn

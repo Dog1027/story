@@ -9,6 +9,10 @@ Same format as the prompts: each section starts with "## name"; the name is how 
 <!-- The game's name: the host's choice in the room (start_game in shells) and room cards in the lobby -->
 turtle soup
 
+## soup_busy
+<!-- Shown while the judge (the AI) rules on the round -->
+The judge is thinking
+
 ## description
 <!-- A line about the game: under its name when the host picks a game -->
 The AI is the judge while everyone asks yes/no questions to uncover the truth behind a strange scenario.
@@ -64,6 +68,16 @@ Write your guess: what happened, and why
 
 ## soup_give_up
 Give up
+
+## soup_give_up_confirm
+<!-- The confirm box after pressing give up: the question and the two buttons -->
+Give up? If everyone gives up in the same round, the truth is revealed.
+
+## soup_give_up_yes
+Give up
+
+## soup_give_up_no
+Keep guessing
 
 ## soup_line_ask
 <!-- A question in a round's results. Variables: {name}, {text}, {answer} -->

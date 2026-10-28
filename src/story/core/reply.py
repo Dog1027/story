@@ -62,6 +62,7 @@ class InputMode:
     command: str  # The command sent to the core, e.g. /ask
     hint: str = ""  # The input box hint once this mode is picked
     needs_text: bool = True
+    confirm: tuple[str, str, str] | None = None  # Ask before sending (a mode that doesn't need text): (question, yes, no)
 
 
 @dataclass
