@@ -1,6 +1,6 @@
 """The adventure's eval scenarios (just eval): have the AI really write a turn in fixed scenarios, then have the program and a judge (another AI call) check whether it got it right.
 
-The sample story is shared with just prompts (preview.py, samples/<lang>.md); the judge's criteria are in prompts/<lang>/eval.md.
+The sample story is shared with just prompts (samples.py, with its text in samples/<lang>.md); the judge's criteria are in prompts/<lang>/eval.md.
 How to run it is in story/evals.py; running scenarios, reporting and saving results are shared, in story/core/evals.py.
 """
 
@@ -18,8 +18,8 @@ from story.core.evals import Scenario, Trial
 from story.games.adventure.engine import Engine
 from story.games.adventure.genres import Genre, load_genres
 from story.games.adventure.models import SCHEMA, Character, GameState
-from story.games.adventure.preview import ARC, PREMISE, SAMPLE, conditions, listed, sample_actions, sample_state
 from story.games.adventure.rules import ACT_TURNS, body_level, body_score
+from story.games.adventure.samples import ARC, PREMISE, SAMPLE, conditions, listed, sample_actions, sample_state
 from story.games.adventure.text import TEXT
 
 EVAL = TEXT.sections("eval")

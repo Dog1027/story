@@ -7,77 +7,19 @@ After changing the adventure's prompts (story/games/adventure/prompts/), use thi
     just prompts --players 2  a team of two characters (one by default)
     just prompts --genre <genre name> opening   use a genre pack (names are in the current language)
 
-The sample story is in samples/<lang>.md (not a prompt, just so the preview looks like a real game).
+The sample story is in samples.py, with its text in samples/<lang>.md (not a prompt, just so the preview looks like a real game).
 """
 
 import random
 import sys
-from pathlib import Path
 from types import SimpleNamespace
 
-from story.core import prompts
 from story.games.adventure.engine import Engine
 from story.games.adventure.genres import load_genres
-from story.games.adventure.models import SCHEMA, Act, Character, Condition, GameState, StoryArc, Turn
+from story.games.adventure.models import SCHEMA
 from story.games.adventure.prompting import SYSTEM_PROMPT
 from story.games.adventure.rules import ACT_TURNS, MIN_ACT_TURNS, TARGET_TURNS
-
-SAMPLES_DIR = Path(__file__).resolve().parent / "samples"
-SAMPLE = prompts.sections(prompts.LANGUAGE, SAMPLES_DIR)  # This language's sample story (samples/<lang>.md)
-
-
-def items(name: str) -> list[list[str]]:
-    """A sample section with one item per line; each item splits into fields on |."""
-    return [[field.strip() for field in item.split("|")] for item in prompts.items(SAMPLE[name])]
-
-
-def listed(name: str) -> list[str]:
-    return [item[0] for item in items(name)]
-
-
-def conditions(name: str) -> list[Condition]:
-    return [Condition(name=n, kind=kind, severity=severity) for n, kind, severity in items(name)]
-
-
-ARC = StoryArc(
-    goal=SAMPLE["goal"],
-    twist=SAMPLE["twist"],
-    clues=listed("clues"),
-    acts=[Act(name=name, milestone=milestone) for name, milestone in items("acts")],
-    endings=listed("endings"),
-)
-HISTORY = [Turn(narration=narration, action=action) for narration, action in items("history")]
-PREMISE = SAMPLE["premise"]
-
-
-def sample_state(players: int, genre: str, **fields) -> GameState:
-    """Turn 8 of the sample story (act two); players is how many characters are on the team. The first character carries the sample wounds."""
-    characters = [Character(name=name, inventory=[item]) for name, item in items("players")[:players]]
-    characters[0].conditions = conditions("wounds")
-    if players == 1:
-        characters[0].inventory = listed("inventory")
-    state = GameState(
-        premise=PREMISE,
-        characters=characters,
-        genre=genre,
-        turn=8,
-        minutes=22 * 60,
-        arc=ARC,
-        act=1,
-        act_turns=3,
-        recent=list(HISTORY),
-        key_events=listed("key_events"),
-        flags=listed("flags"),
-        current_narration=SAMPLE["narration"],
-    )
-    for key, value in fields.items():
-        setattr(state, key, value)
-    return state
-
-
-def sample_actions(players: int) -> dict[str, str]:
-    """Each character's action this turn."""
-    return dict(items("actions")[:players])
+from story.games.adventure.samples import HISTORY, SAMPLE, sample_actions, sample_state
 
 
 def scenarios(engine: Engine, players: int, genre: str) -> dict[str, tuple[str, str]]:

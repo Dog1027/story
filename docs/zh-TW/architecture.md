@@ -28,7 +28,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 | 目錄 | 主要的檔案 |
 |---|---|
 | `core/` | `team.py`：`TeamGame`，每種玩法共用的流程（隊伍、接續存檔、收集每個人的行動、重來、再玩一次）。`reply.py`：`Reply`，每種玩法回給外殼的同一種回覆。`ai.py`：呼叫 Gemini（Gemini 偶爾讓請求排隊 15 秒以上，所以一段時間沒回應就再送一份，用先回來的）。`saves.py`、`prompts.py`（讀文字檔）、`vocab.py`（遊戲詞彙）、`evals.py`（評估的共用部分） |
-| `games/adventure/` | `game.py`：`AdventureCore`。`engine.py` 串起 `rules.py`（規則，純函式）、`prompting.py`（組提示詞）與 AI 呼叫。`models.py` 是存檔與 AI 回傳的格式。`genres/` 是題材包。`preview.py`（`just prompts`）、`evals.py`（`just eval` 的情境） |
+| `games/adventure/` | `game.py`：`AdventureCore`。`engine.py` 串起 `rules.py`（規則，純函式）、`prompting.py`（組提示詞）與 AI 呼叫。`models.py` 是存檔與 AI 回傳的格式。`genres/` 是題材包。`samples.py` 是範例故事，`preview.py`（`just prompts`）與 `evals.py`（`just eval` 的情境）共用 |
 | `games/soup/` | `game.py`：`SoupCore`。`judge.py` 是 AI 裁判與出題，`puzzles/` 是題庫，`evals.py` 是 `just eval soup` 的情境 |
 | `shells/` | `client.py`：共用層，一個瀏覽器分頁一個 `Client`。`view.py`：介面要實作的方法（`View`）。`premise.py`：冒險新故事對話框的規則。`lobby.py`、`room.py`：大廳與房間，房間持有一局的核心。`web/`：網頁伺服器與瀏覽器頁面 |
 
@@ -43,7 +43,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 | 真人看到的順序、時機（劇情顯示完才出現選項、大家看完才倒數） | `shells/client.py` |
 | 長相 | `shells/web/` |
 
-**新增一種玩法**：在 `games/` 加一個資料夾，寫一個 `TeamGame` 的子類別（`title` 是名稱、`description` 是一句介紹），登記到 `games/__init__.py` 的 `GAMES`。房主開局時的選單會自動列出它，不用改核心、其他玩法與外殼。
+**新增一種玩法**：在 `games/` 加一個資料夾，寫一個 `TeamGame` 的子類別（`title` 是名稱、`description` 是一句介紹），登記到 `games/__init__.py` 的 `GAMES`。房主開局時的選單會自動列出它，有 `evals.py` 的話 `just eval` 也會自動收進來，不用改核心、其他玩法與外殼。
 
 ## 外殼怎麼知道要顯示什麼
 
@@ -105,7 +105,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 | `just eval` | 用真的 AI 跑固定情境，檢查節奏、揭露真相、不替玩家做決定、文風、海龜湯的判斷（`just eval soup`）；結果存在 `eval_results/` |
 | `just clean-logs` | 刪除紀錄（`saves/*.log.jsonl`），不動存檔 |
 
-測試不會連到 Gemini，也不會動到你的存檔：AI 由假物件代替（`tests/conftest.py`），每個測試在暫存資料夾裡執行。真的 AI 寫得好不好用 `just eval` 檢查：情境寫在每種玩法自己的 `evals.py`，`story/evals.py` 把它們收集起來執行。
+測試不會連到 Gemini，也不會動到你的存檔：AI 由假物件代替（`tests/conftest.py`），每個測試在暫存資料夾裡執行。真的 AI 寫得好不好用 `just eval` 檢查：情境寫在每種玩法自己的 `evals.py`，`story/evals.py` 從 `GAMES` 裡的每種玩法收集起來執行。
 
 每次 push 到 GitHub 時，GitHub Actions 會自動跑 `just lint` 與 `just test`（`.github/workflows/test.yml`）。
 

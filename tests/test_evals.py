@@ -54,3 +54,9 @@ def test_every_genre_pack_has_a_tone_scenario():
 def test_unknown_scenario_lists_the_choices(monkeypatch, capsys):
     with pytest.raises(SystemExit, match="Available: opening"):
         run(monkeypatch, capsys, ["nope"])
+
+
+def test_every_games_scenarios_are_gathered_from_games():
+    """Each game in GAMES with an evals.py next to it is gathered automatically: a new game's scenarios need no change to story/evals.py."""
+    found = evals.scenarios()
+    assert {"opening", "agency", "judge", "soup"} <= set(found)
