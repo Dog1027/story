@@ -431,9 +431,10 @@ def test_a_slow_request_gets_a_second_copy_and_the_first_answer_wins():
 
     release, dropped, calls = threading.Event(), [], []
 
-    def start():
-        calls.append(1)
-        if len(calls) == 1:  # The first copy is stuck
+    def start(spare, sent):
+        sent()
+        calls.append(spare)
+        if not spare:  # The first copy is stuck
             release.wait(5)
             return "slow"
         return "fast"
@@ -444,16 +445,24 @@ def test_a_slow_request_gets_a_second_copy_and_the_first_answer_wins():
         if dropped:
             break
         threading.Event().wait(0.01)
-    assert dropped == ["slow"]  # The copy that lost is dropped (a stream gets closed)
+    assert calls == [False, True] and dropped == ["slow"]  # The copy that lost is dropped (a stream gets closed)
 
 
 def test_a_quick_answer_or_error_sends_only_one_copy():
     from story.core.ai import first_of
 
-    assert first_of(lambda: "ok", 1) == ("ok", False)
+    def ok(spare, sent):
+        sent()
+        return "ok"
+
+    def bad(spare, sent):
+        sent()
+        raise ValueError("bad key")
+
+    assert first_of(ok, 1) == ("ok", False)
     with pytest.raises(ValueError):
-        first_of(lambda: (_ for _ in ()).throw(ValueError("bad key")), 1)  # Failing fast isn't slowness: no second copy
-    assert first_of(lambda: "ok", None) == ("ok", False)  # Calls slow by nature never send a second copy
+        first_of(bad, 1)  # Failing fast isn't slowness: no second copy
+    assert first_of(ok, None) == ("ok", False)  # Calls slow by nature never send a second copy
 
 
 def test_an_error_counts_only_when_both_copies_fail():
@@ -461,18 +470,64 @@ def test_an_error_counts_only_when_both_copies_fail():
 
     from story.core.ai import first_of
 
-    calls = []
-
-    def start():
-        calls.append(1)
-        if len(calls) == 1:
+    def start(spare, sent):
+        sent()
+        if not spare:
             time.sleep(0.1)
             raise RuntimeError("timeout")
         return "second"
 
+    def both(spare, sent):
+        sent()
+        time.sleep(0.06)
+        raise RuntimeError("both")
+
     assert first_of(start, 0.05) == ("second", True)
     with pytest.raises(RuntimeError, match="both"):
-        first_of(lambda: (time.sleep(0.06), (_ for _ in ()).throw(RuntimeError("both")))[1], 0.03)
+        first_of(both, 0.03)
+
+
+def test_waiting_for_a_rate_limit_slot_is_not_slowness():
+    """Time spent queuing for a slot doesn't count: the second copy is only considered once the first has actually gone out."""
+    import time
+
+    from story.core.ai import first_of
+
+    calls = []
+
+    def start(spare, sent):
+        calls.append(spare)
+        time.sleep(0.15)  # Queued for a slot, longer than hedge_after
+        sent()
+        return "ok"
+
+    assert first_of(start, 0.1) == ("ok", False) and calls == [False]
+
+
+def test_no_second_copy_when_the_rate_limit_is_full(monkeypatch):
+    """When the limit is full, a slow request's second copy isn't sent at all, so busy times don't get busier."""
+    import threading
+
+    from story.core.ai import first_of
+    from story.core.ratelimit import RateLimit
+
+    limit, release, sent_calls = RateLimit(1), threading.Event(), []
+
+    def send():
+        sent_calls.append(1)
+        release.wait(0.3)  # Slow, so a second copy is considered
+        return "ok"
+
+    assert first_of(lambda spare, sent: limit.call(send, spare=spare, on_sent=sent), 0.05) == ("ok", False)
+    assert sent_calls == [1]  # The only slot went to the first copy
+
+    def fails():
+        release.wait(0.1)
+        raise RuntimeError("timeout")
+
+    limit = RateLimit(1)
+    with pytest.raises(RuntimeError, match="timeout"):  # The first copy failed and the spare wasn't sent: the error comes through instead of hanging
+        first_of(lambda spare, sent: limit.call(fails, spare=spare, on_sent=sent), 0.05)
 
 
 def test_overall_level_words_are_not_conditions():
@@ -558,3 +613,14 @@ def test_timeout_after_retries_becomes_a_normal_error():
 def test_is_key_error():
     assert is_key_error(InvalidKeyError())
     assert not is_key_error(RuntimeError("網路斷線"))
+
+
+def test_engine_works_through_a_rate_limited_client():
+    """On the web every call goes through the shared RateLimit: planning (generate) and the opening (stream) both work through it."""
+    from story.core.ratelimit import RateLimit
+
+    engine, gemini = make_engine(beat(narration="燈亮了。"))
+    engine.client = RateLimit(60).wrap(gemini)
+    state = solo(premise="燈塔")
+    engine.start(state)
+    assert state.arc is not None and state.current_narration == "燈亮了。"

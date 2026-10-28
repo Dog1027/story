@@ -18,6 +18,7 @@ from google import genai
 from google.genai import types
 
 from story.core.prompts import UI  # Error messages shown to players (story/core/ui/<lang>/core.md)
+from story.core.ratelimit import LimitedClient, NoSlot
 
 MODEL = "gemini-3.5-flash-lite"
 REQUEST_TIMEOUT = 40  # Seconds to wait for one AI request; Gemini sometimes hangs a minute or two, and resending is usually faster
@@ -93,16 +94,21 @@ def partial_bool(text: str, key: str) -> bool | None:
     return None if match is None else match.group(1) == "true"
 
 
-def first_of(start: Callable[[], object], hedge_after: float | None, discard: Callable[[object], None] = lambda result: None):
-    """Run start() in the background; with no result after hedge_after seconds, start another copy and return whichever finishes first.
-    Returns (result, whether a second copy was sent). An error only counts once both copies have failed; discard() gets the copy that lost."""
+def first_of(start: Callable[[bool, Callable[[], None]], object], hedge_after: float | None, discard: Callable[[object], None] = lambda result: None):
+    """Run start(spare=False, sent) in the background; if it has no result hedge_after seconds after it was sent, run start(spare=True, sent)
+    as a second copy and return whichever finishes first. start calls sent() when its request actually goes out, so time spent queuing
+    for a rate limit slot doesn't count as slowness. A spare copy may raise NoSlot (the limit is full): then only the first copy counts.
+    Returns (result, whether a second copy was sent). An error only counts once every copy sent has failed; discard() gets the copy that lost."""
     if hedge_after is None:
-        return start(), False
+        return start(False, lambda: None), False
     results: queue.Queue = queue.Queue()
+    sent = threading.Event()
 
-    def run() -> None:
+    def run(spare: bool) -> None:
         try:
-            results.put((True, start()))
+            results.put((True, start(spare, sent.set if not spare else lambda: None)))
+        except NoSlot:
+            results.put((None, None))
         except Exception as e:
             results.put((False, e))
 
@@ -111,18 +117,29 @@ def first_of(start: Callable[[], object], hedge_after: float | None, discard: Ca
         if ok:
             discard(late)
 
-    threading.Thread(target=run, daemon=True).start()
+    threading.Thread(target=run, args=(False,), daemon=True).start()
+    while not sent.wait(0.05) and results.empty():  # Waiting in line for a slot isn't slowness: count from when it goes out
+        pass
     hedged = False
     try:
         ok, value = results.get(timeout=hedge_after)
     except queue.Empty:
-        hedged = True
-        threading.Thread(target=run, daemon=True).start()
-        ok, value = results.get()
-        if not ok:  # The first copy to finish failed: wait for the other
+        threading.Thread(target=run, args=(True,), daemon=True).start()
+        hedged, pending, error = True, 2, None
+        while pending:
             ok, value = results.get()
+            pending -= 1
+            if ok:
+                break
+            if ok is None:  # The spare copy found no free slot and wasn't sent
+                hedged = False
+            else:
+                error = value
         else:
+            raise error
+        if pending:
             threading.Thread(target=drop_late, daemon=True).start()
+        return value, hedged
     if not ok:
         raise value
     return value, hedged
@@ -142,19 +159,29 @@ class AICaller:
         """A call that returns the whole result at once. hedge_after=None sends only one copy (for calls that are slow by nature)."""
         started = time.monotonic()
         try:
-            response, hedged = first_of(lambda: self.client.models.generate_content(**request), hedge_after)
+            response, hedged = first_of(lambda spare, sent: self._send(request, spare, sent), hedge_after)
         except Exception as e:  # Failed even after the resends: record the failed call too, written with the next turn's log line
             self.record(kind, started, None, error=str(e)[:200])
             raise_friendly(e)
         self.record(kind, started, response, **({"hedged": True} if hedged else {}))
         return response
 
+    def _send(self, request: dict, spare: bool, sent: Callable[[], None]):
+        """One copy of a generate() request (see first_of); a LimitedClient waits for a slot first."""
+        if isinstance(self.client, LimitedClient):
+            return self.client.generate(request, spare, sent)
+        sent()
+        return self.client.models.generate_content(**request)
+
     def stream(self, kind: str, on_text, **request):
         """A streaming call: on each chunk, calls on_text with the full text so far. Returns (full text, last chunk). If on_text raises StopStream, stops and propagates."""
         started, text, last, extra = time.monotonic(), "", None, {}
         chunks = None
 
-        def open_stream():
+        def open_stream(spare: bool, sent: Callable[[], None]):
+            if isinstance(self.client, LimitedClient):
+                return self.client.open_stream(request, spare, sent)
+            sent()
             stream = self.client.models.generate_content_stream(**request)
             return stream, next(stream, None)
 
