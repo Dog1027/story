@@ -44,40 +44,9 @@
 
 直接點選項（或按數字），也可以自己打字寫行動。文字顯示中按 Enter 加速。`/help` 看所有指令，`/state` 看程式記住的東西，也可以用右上角的 ⋯ 選單。每回合自動存檔在 `saves/team-名字.玩法.json`。
 
-## 程式架構
+## 給開發者
 
-```
-src/story/
-├── core/        核心：每種玩法共用的流程、回覆格式、呼叫 AI、存檔
-├── games/       玩法，彼此平行，都建立在核心上
-│   ├── adventure/   冒險：規則、提示詞、題材包
-│   └── soup/        海龜湯：裁判、提示詞、題庫
-└── shells/      外殼：client.py 是玩家看到的流程，lobby.py 與 room.py 是房間，web/ 是伺服器與網頁
-```
-
-由內往外一層一層疊：核心不知道有哪些玩法，玩法彼此不相依、也不知道畫面的存在，外殼只負責顯示和輸入。每種玩法用起來都像呼叫 LLM：送一句文字進去，拿回覆出來。架構說明見 [docs/zh-TW/architecture.md](docs/zh-TW/architecture.md)，待辦見 [ROADMAP.md](ROADMAP.md)（英文）。
-
-## 調整
-
-| 想改什麼 | 在哪裡 |
-|---|---|
-| AI 的寫法（寫作規則、字數、節奏） | `src/story/games/adventure/prompts/`，先看裡面的 [README](src/story/games/adventure/prompts/README.zh-TW.md) |
-| 海龜湯裁判的標準 | `src/story/games/soup/prompts/` |
-| 故事長度、傷勢規則 | `src/story/games/adventure/rules.py` |
-| 使用的模型 | `src/story/core/ai.py` |
-| 題材包 | `src/story/games/adventure/genres/`（個人的放 `~/.config/story/genres/`） |
-| 海龜湯題庫 | `src/story/games/soup/puzzles/`，一題一個檔案（個人的放 `~/.config/story/puzzles/`） |
-| 配色、打字速度 | `src/story/shells/web/static/` |
-
-文字都是 markdown 檔，放在每一層自己的 `prompts/語言/`（給 AI）與 `ui/語言/`（給玩家）。新增語言就是在每一層複製一份 `en/` 再翻譯。
-
-## 測試與評估
-
-| 指令 | 做什麼 |
-|---|---|
-| `just test` | 全部測試（約 10 秒），不會連到 Gemini，也不會動到你的存檔 |
-| `just lint` | 用 ruff 檢查程式（可能的 bug、import 順序）；`just lint --fix` 自動修正 |
-| `just prompts` | 預覽送給 AI 的完整提示詞，不會呼叫 AI |
-| `just eval` | 用真的 AI 跑固定情境，檢查節奏、揭露真相、不替玩家做決定、文風、海龜湯的判斷（`just eval soup`）；結果存在 `eval_results/` |
-
-每回合 AI 提議了什麼、程式套用了什麼、每次呼叫花了多久，記在 `saves/team-名字.玩法.log.jsonl`。`just clean-logs` 只刪紀錄，不動存檔。
+- [架構說明](docs/zh-TW/architecture.md)：程式怎麼分層、新功能與新玩法放哪裡、想調整什麼要改哪裡（提示詞、規則、模型、題材包、題庫、外觀）、執行時產生的檔案，以及測試、lint、預覽提示詞、評估的指令
+- [怎麼寫題材包](docs/zh-TW/genres.md)
+- [調整 AI 的寫法](src/story/games/adventure/prompts/README.zh-TW.md)
+- [待辦](ROADMAP.md)（英文）

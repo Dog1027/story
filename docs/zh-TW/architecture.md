@@ -63,17 +63,26 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 - 給 AI 的：`prompts/語言/`。冒險的怎麼改，見 `games/adventure/prompts/README.zh-TW.md`
 - 給玩家看的：`ui/語言/`
 
+新增語言就是在每一層複製一份 `en/` 再翻譯。
+
 每段以 `## 名稱` 開頭，`{名稱}` 是程式填入的變數，`<!-- -->` 是給寫文字的人看的說明，不會送給 AI。測試會檢查每種語言的段落與變數都一樣、程式用到的文字都存在。
 
-## 常改的設定
+## 想調整什麼
+
+路徑都在 `src/story/` 底下。
 
 | 想改 | 在哪裡 |
 |---|---|
+| AI 的寫法（寫作規則、字數、節奏） | `games/adventure/prompts/`，先看裡面的 [README](../../src/story/games/adventure/prompts/README.zh-TW.md) |
+| 海龜湯裁判的標準 | `games/soup/prompts/` |
+| 題材包 | `games/adventure/genres/`（個人的放 `~/.config/story/genres/`），寫法見[怎麼寫題材包](genres.md) |
+| 海龜湯題庫 | `games/soup/puzzles/`，一題一個檔案（個人的放 `~/.config/story/puzzles/`） |
 | 模型、逾時 | `core/ai.py` 的 `MODEL`、`REQUEST_TIMEOUT` |
 | 故事長度、最早第幾回合能結束、每一幕至少幾回合 | `games/adventure/rules.py` 的 `TARGET_TURNS`、`MIN_ENDING_TURN`、`MIN_ACT_TURNS` |
 | 傷勢的分數、死亡門檻、痊癒時間 | `games/adventure/rules.py` |
 | 一隊最多幾人 | `core/reply.py` 的 `MAX_PLAYERS` |
 | 房間數、每分鐘最多呼叫幾次 AI | `shells/lobby.py` 的 `MAX_ROOMS`、`AI_PER_MINUTE` |
+| 配色、打字速度 | `shells/web/static/`：`style.css`，以及 `app.js` 的 `CHAR_DELAY` |
 
 ## 執行時產生的檔案
 
@@ -86,9 +95,17 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 | `server.log` | `just start` 的伺服器輸出 |
 | `~/.config/story/config.toml` | 語言與 API key |
 
-## 測試
+## 測試與其他指令
 
-`just test` 跑全部，約 10 秒。不會連到 Gemini，也不會動到你的存檔：AI 由假物件代替（`tests/conftest.py`），每個測試在暫存資料夾裡執行。真的 AI 寫得好不好用 `just eval` 檢查：情境寫在每種玩法自己的 `evals.py`，`story/evals.py` 把它們收集起來執行。
+| 指令 | 做什麼 |
+|---|---|
+| `just test` | 全部測試（約 10 秒） |
+| `just lint` | 用 ruff 檢查程式（可能的 bug、import 順序）；`just lint --fix` 自動修正 |
+| `just prompts` | 預覽送給 AI 的完整提示詞，不會呼叫 AI |
+| `just eval` | 用真的 AI 跑固定情境，檢查節奏、揭露真相、不替玩家做決定、文風、海龜湯的判斷（`just eval soup`）；結果存在 `eval_results/` |
+| `just clean-logs` | 刪除紀錄（`saves/*.log.jsonl`），不動存檔 |
+
+測試不會連到 Gemini，也不會動到你的存檔：AI 由假物件代替（`tests/conftest.py`），每個測試在暫存資料夾裡執行。真的 AI 寫得好不好用 `just eval` 檢查：情境寫在每種玩法自己的 `evals.py`，`story/evals.py` 把它們收集起來執行。
 
 每次 push 到 GitHub 時，GitHub Actions 會自動跑 `just lint` 與 `just test`（`.github/workflows/test.yml`）。
 

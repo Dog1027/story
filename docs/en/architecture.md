@@ -64,17 +64,26 @@ All text is markdown, kept with the layer that uses it, one folder per language 
 - For the AI: `prompts/<lang>/`. How to change the adventure's prompts: `games/adventure/prompts/README.md`
 - For players: `ui/<lang>/`
 
+To add a language, copy `en/` in each layer and translate it.
+
 Each section starts with `## name`, `{name}` is a variable the program fills in, and `<!-- -->` comments are notes for whoever writes the text and are never sent to the AI. Tests check that every language has the same sections and variables and that every text the code uses exists.
 
-## Settings you'll often change
+## Customizing
+
+Paths are under `src/story/`.
 
 | To change | Where |
 |---|---|
+| How the AI writes (rules, length, pacing) | `games/adventure/prompts/`, starting with its [README](../../src/story/games/adventure/prompts/README.md) |
+| How strict the turtle soup judge is | `games/soup/prompts/` |
+| Genre packs | `games/adventure/genres/` (personal ones in `~/.config/story/genres/`); see [Writing a genre pack](genres.md) |
+| Turtle soup puzzles | `games/soup/puzzles/`, one file per puzzle (personal ones in `~/.config/story/puzzles/`) |
 | The model, the timeout | `MODEL`, `REQUEST_TIMEOUT` in `core/ai.py` |
 | Story length, the earliest turn it can end, the minimum turns per act | `TARGET_TURNS`, `MIN_ENDING_TURN`, `MIN_ACT_TURNS` in `games/adventure/rules.py` |
 | Wound scores, the death threshold, healing times | `games/adventure/rules.py` |
 | Most players on a team | `MAX_PLAYERS` in `core/reply.py` |
 | Number of rooms, most AI calls per minute | `MAX_ROOMS`, `AI_PER_MINUTE` in `shells/lobby.py` |
+| Colors, typing speed | `shells/web/static/`: `style.css`, and `CHAR_DELAY` in `app.js` |
 
 ## Files created while running
 
@@ -87,9 +96,17 @@ They always go in the project folder (`settings.DATA_DIR`), whatever folder the 
 | `server.log` | Output of the server started by `just start` |
 | `~/.config/story/config.toml` | The language and API key |
 
-## Tests
+## Tests and other commands
 
-`just test` runs them all in about 10 seconds. They never connect to Gemini or touch your saves: fakes stand in for the AI (`tests/conftest.py`), and each test runs in a temp folder. Whether the real AI writes well is checked with `just eval`: scenarios live in each game's own `evals.py`, and `story/evals.py` collects and runs them.
+| Command | What |
+|---|---|
+| `just test` | All tests (about 10 seconds) |
+| `just lint` | Check the code with ruff (likely bugs, import order); `just lint --fix` fixes what it can |
+| `just prompts` | Preview the full prompts sent to the AI, without calling it |
+| `just eval` | Run fixed scenarios with the real AI and check pacing, the reveal, not deciding for the player, genre tone, and the turtle soup judge (`just eval soup`); results go to `eval_results/` |
+| `just clean-logs` | Delete the logs (`saves/*.log.jsonl`), never the saves |
+
+Tests never connect to Gemini or touch your saves: fakes stand in for the AI (`tests/conftest.py`), and each test runs in a temp folder. Whether the real AI writes well is checked with `just eval`: scenarios live in each game's own `evals.py`, and `story/evals.py` collects and runs them.
 
 On every push to GitHub, GitHub Actions runs `just lint` and `just test` automatically (`.github/workflows/test.yml`).
 

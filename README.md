@@ -44,40 +44,9 @@ Open `http://<this computer's IP>:8080` (locally <http://localhost:8080>) on a p
 
 Click a choice (or press its number), or type your own action. Press Enter to speed up text. `/help` lists commands and `/state` shows what the program remembers, or use the ⋯ menu. Every turn saves automatically to `saves/team-<names>.<game>.json`.
 
-## How it's built
+## For developers
 
-```
-src/story/
-├── core/        Core: the flow every game shares, the reply format, calling the AI, saves
-├── games/       Games, side by side, each built on the core
-│   ├── adventure/   Adventure: rules, prompts, genre packs
-│   └── soup/        Turtle soup: the judge, prompts, puzzles
-└── shells/      Shells: client.py is the flow players see, lobby.py and room.py the rooms, web/ the server and page
-```
-
-Layers stack from the inside out: the core doesn't know which games exist, games don't depend on each other or know about screens, and shells only handle display and input. Using any game works like calling an LLM: send in a line of text, get a reply back. The architecture is explained in [docs/en/architecture.md](docs/en/architecture.md), and plans are in [ROADMAP.md](ROADMAP.md).
-
-## Customizing
-
-| To change | Look in |
-|---|---|
-| How the AI writes (rules, length, pacing) | `src/story/games/adventure/prompts/`, starting with its [README](src/story/games/adventure/prompts/README.md) |
-| How strict the turtle soup judge is | `src/story/games/soup/prompts/` |
-| Story length, wound rules | `src/story/games/adventure/rules.py` |
-| The model | `src/story/core/ai.py` |
-| Genre packs | `src/story/games/adventure/genres/` (personal ones in `~/.config/story/genres/`) |
-| Turtle soup puzzles | `src/story/games/soup/puzzles/`, one file per puzzle (personal ones in `~/.config/story/puzzles/`) |
-| Colors, typing speed | `src/story/shells/web/static/` |
-
-All text is markdown, in each layer's own `prompts/<lang>/` (for the AI) and `ui/<lang>/` (for players). To add a language, copy `en/` in each layer and translate it.
-
-## Tests and evals
-
-| Command | What |
-|---|---|
-| `just test` | All tests (about 10 seconds); never calls Gemini or touches your saves |
-| `just lint` | Check the code with ruff (likely bugs, import order); `just lint --fix` fixes what it can |
-| `just prompts` | Preview the full prompts sent to the AI, without calling it |
-| `just eval` | Run fixed scenarios with the real AI and check pacing, the reveal, not deciding for the player, genre tone, and the turtle soup judge (`just eval soup`); results go to `eval_results/` |
-
-Each turn's AI proposals, what the program applied, and how long each call took are logged to `saves/team-<names>.<game>.log.jsonl`. `just clean-logs` deletes only the logs, not saves.
+- [Architecture](docs/en/architecture.md): how the code is layered, where a new feature or game goes, what to edit to customize things (the prompts, rules, model, genre packs, puzzles, looks), the files created while running, and the commands for tests, lint, prompt previews and evals
+- [Writing a genre pack](docs/en/genres.md)
+- [Changing how the AI writes](src/story/games/adventure/prompts/README.md)
+- [Roadmap](ROADMAP.md)
