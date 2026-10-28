@@ -89,3 +89,5 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 ## 測試
 
 `just test` 跑全部，約 10 秒。不會連到 Gemini，也不會動到你的存檔：AI 由假物件代替（`tests/conftest.py`），每個測試在暫存資料夾裡執行。真的 AI 寫得好不好用 `just eval` 檢查：情境寫在每種玩法自己的 `evals.py`，`story/evals.py` 把它們收集起來執行。
+
+每次 push 到 GitHub 時，GitHub Actions 會自動跑 `just lint` 與 `just test`（`.github/workflows/test.yml`）。

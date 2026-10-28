@@ -213,5 +213,5 @@ async def test_the_waiting_line_follows_the_opening_progress(isolated, monkeypat
             await browser.send("act", text="1")
         await browser.answer((await browser.expect("premise"))["id"], ["燈塔", False])
         for stage in ("規劃故事大綱", "寫開場"):
-            await browser.expect("busy_line", lambda m: m["text"] == f"故事生成中：{stage}…")
+            await browser.expect("busy_line", lambda m, stage=stage: m["text"] == f"故事生成中：{stage}…")
         await browser.expect("choices", lambda m: m["choices"] == ["阿明往上爬", "阿明躲起來"])

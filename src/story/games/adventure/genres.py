@@ -25,6 +25,7 @@ from pathlib import Path
 from story import settings
 from story.core import prompts
 from story.games.adventure.text import UI  # Messages about genre pack format problems (ui/<lang>/adventure.md)
+
 # A full set of genre packs per language (like the prompts; the language comes from story/settings.py)
 BUILTIN_DIR = Path(__file__).resolve().parent / "genres" / prompts.LANGUAGE
 PERSONAL_DIR = settings.CONFIG_DIR / "genres" / prompts.LANGUAGE
@@ -55,8 +56,8 @@ def parse_genre(folder: Path) -> Genre:
     """Read one genre folder. Raises InvalidGenre if the format is wrong."""
     try:
         text = (folder / "GENRE.md").read_text(encoding="utf-8").replace("\r\n", "\n")
-    except OSError:
-        raise InvalidGenre(UI["genre_no_file"])
+    except OSError as e:
+        raise InvalidGenre(UI["genre_no_file"]) from e
     match = FRONTMATTER.match(text)
     if not match:
         raise InvalidGenre(UI["genre_no_header"])

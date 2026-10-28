@@ -3,10 +3,10 @@
 import pytest
 from conftest import HERO, FakeEngine, InvalidKeyError
 
-from story.games import AdventureCore
-from story.games.adventure.prompting import TIMEOUT_ACTION
 from story.core.saves import load
+from story.games import AdventureCore
 from story.games.adventure.models import GameState
+from story.games.adventure.prompting import TIMEOUT_ACTION
 from story.games.adventure.records import DEFAULT_PREMISE
 
 

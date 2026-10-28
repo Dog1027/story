@@ -30,7 +30,7 @@ def load() -> dict:
     except FileNotFoundError:
         data = {}
     except tomllib.TOMLDecodeError as e:
-        raise SystemExit(f"{CONFIG_PATH} is not valid TOML: {e}")
+        raise SystemExit(f"{CONFIG_PATH} is not valid TOML: {e}") from e
     if _migrate(data):
         _write(data)
     return data

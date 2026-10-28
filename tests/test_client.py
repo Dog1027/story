@@ -1,20 +1,20 @@
 """The shells' shared layer: a fake interface that only records calls checks the "what to show when" flow. The rooms and lobby are real, the core is a real AdventureCore, and the engine is fake."""
 
 import asyncio
+from itertools import pairwise
 
 import pytest
 from conftest import FakeEngine
 
 import story.shells.client as client_module
-from story.core import Reply
+from story.core import Reply, Status
 from story.games import AdventureCore
 from story.games.adventure import GENRE_AUTO, GENRE_NONE
-from story.core import Status
 from story.shells.client import Client
-from story.shells.premise import PremiseForm
-from story.shells.view import View, status_line
 from story.shells.connection import Connection
 from story.shells.lobby import Lobby
+from story.shells.premise import PremiseForm
+from story.shells.view import View, status_line
 
 
 class RecordingView(View):
@@ -132,7 +132,7 @@ async def play(isolated):
     """Connect to a real lobby (the core uses a fake engine), open your own room, start an adventure, and wait for the opening to show. Returns the Client."""
     lobbies, tasks = [], []
 
-    async def start(view: "RecordingView", engine=None) -> Client:
+    async def start(view: RecordingView, engine=None) -> Client:
         engine = engine or FakeEngine()
         lobby = Lobby(lambda players, on_queue, game: AdventureCore(
             "test", players, save_path=isolated / "save.json", log_path=isolated / "log.jsonl", engine=engine))
@@ -242,7 +242,7 @@ async def test_narration_is_shown_while_the_ai_is_still_writing(play):
     names = view.names()
     assert names.index("start_narration") < names.index("prepare_choices")  # Starts showing before the reply arrives
     extended = [c[1] for c in view.calls if c[0] == "extend_narration"]
-    assert len(extended) > 2 and all(b.startswith(a) for a, b in zip(extended, extended[1:]))
+    assert len(extended) > 2 and all(b.startswith(a) for a, b in pairwise(extended))
     assert ("show_narration", "風雨中，你推開了燈塔的門。") in view.calls
     assert names.count("start_narration") == 1 and "show_busy" not in names[names.index("start_narration"):]
 

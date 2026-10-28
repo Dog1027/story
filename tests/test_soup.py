@@ -5,14 +5,14 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from conftest import AI_PUZZLE, PUZZLE, FakeJudge
 
 from story.core import prompts
 from story.games.soup import SoupCore
 from story.games.soup.judge import SoupJudge
-from conftest import AI_PUZZLE, PUZZLE, FakeJudge
-
 from story.games.soup.models import Judgement, Move, PointCheck, PuzzleCheck, PuzzleDraft, Ruling, SoupState
 from story.games.soup.puzzles import BUILTIN_DIR, load_puzzles
+
 
 def soup(isolated, players=("阿明",), judge=None, puzzles=(PUZZLE,)) -> SoupCore:
     return SoupCore("test", list(players), save_path=isolated / "soup.json", judge=judge or FakeJudge(), puzzles=list(puzzles))

@@ -27,7 +27,7 @@ def judge_cases(t: Trial) -> None:
         state = SoupState(puzzle=bank[title], players=[f"P{i}" for i in range(len(guesses))])
         moves = [Move(name=f"P{i}", kind="guess", text=g) for i, (g, _, _) in enumerate(guesses)]
         judge.judge(state, moves)
-        for move, (guess, low, high) in zip(moves, guesses):
+        for move, (guess, low, high) in zip(moves, guesses, strict=True):
             t.check(f"{title}: {prompts.clip(guess, 12)}… hits {low}-{high}", low <= move.hit <= high, f"hit {move.hit}")
 
 

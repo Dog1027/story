@@ -7,10 +7,10 @@ from conftest import PUZZLE, FakeGroupEngine, FakeJudge
 
 import story.shells.lobby as lobby_module
 from story.core import Reply
-from story.games import SoupCore, AdventureCore
+from story.games import AdventureCore, SoupCore
 from story.games.adventure.prompting import AWAY_ACTION
-from story.shells.lobby import Lobby
 from story.shells.connection import Connection
+from story.shells.lobby import Lobby
 
 
 class Player:
@@ -308,7 +308,7 @@ async def test_everyone_sees_the_opening_progress(isolated):
     try:
         host, guest = await start_story(lobby)
         for stage in ("規劃故事大綱", "寫開場"):
-            await guest.expect(lambda m: m["type"] == "busy" and m.get("progress") == stage)
+            await guest.expect(lambda m, stage=stage: m["type"] == "busy" and m.get("progress") == stage)
         await guest.reply(lambda r: bool(r.narration))
     finally:
         await lobby.stop()

@@ -6,9 +6,9 @@ from pathlib import Path
 from conftest import ARC, HERO, beat, make_engine, solo
 
 from story.core import prompts
-from story.games.adventure.text import TEXT
-from story.games.adventure.rules import ACT_TURNS
 from story.games.adventure.models import GameState
+from story.games.adventure.rules import ACT_TURNS
+from story.games.adventure.text import TEXT
 
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 

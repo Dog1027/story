@@ -90,3 +90,5 @@ They always go in the project folder (`settings.DATA_DIR`), whatever folder the 
 ## Tests
 
 `just test` runs them all in about 10 seconds. They never connect to Gemini or touch your saves: fakes stand in for the AI (`tests/conftest.py`), and each test runs in a temp folder. Whether the real AI writes well is checked with `just eval`: scenarios live in each game's own `evals.py`, and `story/evals.py` collects and runs them.
+
+On every push to GitHub, GitHub Actions runs `just lint` and `just test` automatically (`.github/workflows/test.yml`).

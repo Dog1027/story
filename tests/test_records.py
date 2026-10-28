@@ -2,8 +2,8 @@
 
 from conftest import hero, solo
 
-from story.games.adventure.models import Condition, GameState
 from story.core.saves import load, save
+from story.games.adventure.models import Condition, GameState
 from story.games.adventure.records import change_groups, ending_record, snapshot
 
 

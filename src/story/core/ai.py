@@ -67,7 +67,7 @@ def close(chunks) -> None:
 
 def partial_string(text: str, key: str) -> str | None:
     """What a string field (e.g. narration while streaming) holds so far in JSON that isn't finished yet. None if the field hasn't appeared."""
-    match = re.search(r'"%s"\s*:\s*"' % re.escape(key), text)
+    match = re.search(rf'"{re.escape(key)}"\s*:\s*"', text)
     if not match:
         return None
     out, i = [], match.end()
@@ -90,7 +90,7 @@ def partial_string(text: str, key: str) -> str | None:
 
 def partial_bool(text: str, key: str) -> bool | None:
     """A boolean field from JSON that isn't finished yet; None if it hasn't appeared."""
-    match = re.search(r'"%s"\s*:\s*(true|false)' % re.escape(key), text)
+    match = re.search(rf'"{re.escape(key)}"\s*:\s*(true|false)', text)
     return None if match is None else match.group(1) == "true"
 
 

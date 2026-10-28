@@ -18,7 +18,7 @@ class Connection:
         self.closed = False
 
     @staticmethod
-    def pair() -> tuple["Connection", "Connection"]:
+    def pair() -> tuple[Connection, Connection]:
         a, b = asyncio.Queue(), asyncio.Queue()
         one, other = Connection(a, b), Connection(b, a)
         one.peer, other.peer = other, one

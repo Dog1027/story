@@ -69,7 +69,7 @@ class RateLimit:
                 delay = re.search(r"retry in ([\d.]+)s", str(e))
                 time.sleep(float(delay.group(1)) if delay else 30)
 
-    def wrap(self, client, on_queue: Callable[[bool], None] | None = None) -> "LimitedClient":
+    def wrap(self, client, on_queue: Callable[[bool], None] | None = None) -> LimitedClient:
         """Wrap a Gemini client so every call through it is limited."""
         return LimitedClient(self, client, on_queue)
 

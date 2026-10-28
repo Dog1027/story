@@ -76,6 +76,7 @@ All text is markdown, in each layer's own `prompts/<lang>/` (for the AI) and `ui
 | Command | What |
 |---|---|
 | `just test` | All tests (about 10 seconds); never calls Gemini or touches your saves |
+| `just lint` | Check the code with ruff (likely bugs, import order); `just lint --fix` fixes what it can |
 | `just prompts` | Preview the full prompts sent to the AI, without calling it |
 | `just eval` | Run fixed scenarios with the real AI and check pacing, the reveal, not deciding for the player, genre tone, and the turtle soup judge (`just eval soup`); results go to `eval_results/` |
 

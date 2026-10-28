@@ -49,6 +49,10 @@ eval *args:
 test *args:
     uv run pytest {{args}}
 
+# Check the code for likely bugs and import order (ruff); just lint --fix fixes what it can
+lint *args:
+    uv run ruff check src tests {{args}}
+
 # Delete debug logs (*.log.jsonl), never saves
 clean-logs:
     rm -fv saves/*.log.jsonl

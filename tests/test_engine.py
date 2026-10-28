@@ -1,5 +1,7 @@
 """The engine's game rules: feed a real Engine fake Gemini replies and check that the program guards correctly."""
 
+from itertools import pairwise
+
 import pytest
 from conftest import ARC, HERO, InvalidKeyError, beat, cond, hero, make_engine, solo
 
@@ -566,7 +568,7 @@ def test_draft_follows_the_narration_as_it_streams():
     state = solo(premise="x", turn=1, minutes=0, arc=ARC)
     engine.act(state, {HERO: "a"})
     shown = [d for d in drafts if d]
-    assert len(shown) > 3 and all(b.startswith(a) for a, b in zip(shown, shown[1:]))  # Keeps growing
+    assert len(shown) > 3 and all(b.startswith(a) for a, b in pairwise(shown))  # Keeps growing
     assert shown[-1] == state.current_narration
     assert engine.draft == ""  # Cleared once done
 

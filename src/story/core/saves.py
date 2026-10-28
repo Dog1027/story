@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+
 def save(state: BaseModel, path: Path) -> None:
     """Write to a temp file in the same folder, then swap it in at once. Any read sees a complete save,
     never an empty or broken file because a background memory compaction saved at the same moment or the program was killed mid-write."""

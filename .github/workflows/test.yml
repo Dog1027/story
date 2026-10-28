@@ -1,0 +1,16 @@
+# On every push and pull request: run the lint check and every test (no Gemini key needed: the AI is faked)
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6  # Installs uv; uv installs the Python in .python-version
+      - run: uv sync --locked
+      - run: uv run ruff check src tests
+      - run: uv run pytest

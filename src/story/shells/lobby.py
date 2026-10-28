@@ -35,10 +35,10 @@ from pathlib import Path
 from story import settings
 from story.core import MAX_PLAYERS, Game, RateLimit, new_client, pick_choice
 from story.games import GAMES
-from story.shells.text import ui_text
-from story.shells.players import InvalidName, check_name
 from story.shells.connection import Connection
+from story.shells.players import InvalidName, check_name
 from story.shells.room import Room
+from story.shells.text import ui_text
 
 UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
 MAX_ROOMS = 10  # Most rooms at once: everyone shares one key, and too many rooms means constant queuing
@@ -71,7 +71,7 @@ class Lobby:
         self.links: dict[Connection, asyncio.Task] = {}
 
     @staticmethod
-    def for_server(api_key: str) -> "Lobby":
+    def for_server(api_key: str) -> Lobby:
         """For the web server: every room's core uses the host's key and shares one call limit."""
         saves_dir().mkdir(exist_ok=True)
         limit, client = RateLimit(AI_PER_MINUTE), new_client(api_key)

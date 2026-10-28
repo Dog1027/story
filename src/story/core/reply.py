@@ -93,7 +93,7 @@ class Reply:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Reply":
+    def from_dict(cls, data: dict) -> Reply:
         """The reverse of to_dict(). JSON has no tuples, so tuples become lists, which makes no difference to shells unpacking them."""
         data = dict(data)
         if data.get("ending"):

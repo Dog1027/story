@@ -21,6 +21,7 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.3",
 ]
 
 [tool.pytest.ini_options]
@@ -28,3 +29,10 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 filterwarnings = ["ignore:'_UnionGenericAlias' is deprecated:DeprecationWarning:google.genai"]
+
+[tool.ruff]
+line-length = 200  # Long lines are fine (comments explain in full sentences); also keeps a commented import on one line
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]  # pycodestyle, pyflakes, import order, likely bugs, newer syntax
+ignore = ["E501"]

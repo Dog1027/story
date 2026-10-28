@@ -29,13 +29,13 @@ Room → player
 """
 
 import asyncio
-from contextlib import asynccontextmanager
 from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
 
 from story.core import MAX_PLAYERS, Game, Reply, pick_choice
 from story.games import GAMES
-from story.shells.text import ui_text
 from story.shells.connection import Connection
+from story.shells.text import ui_text
 
 UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
 TITLES = {code: game.title for code, game in GAMES.items()}  # Game code → name

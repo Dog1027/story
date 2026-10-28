@@ -5,11 +5,10 @@ from pathlib import Path
 import pytest
 from conftest import ARC, FakeGroupEngine, InvalidKeyError, cond, make_engine, pbeat, upd
 
-from story.games import AdventureCore
-from story.games.adventure.prompting import AWAY_ACTION
-from story.games.adventure.prompting import TIMEOUT_ACTION
-from story.games.adventure.models import Character, GameState
 from story.core.saves import load
+from story.games import AdventureCore
+from story.games.adventure.models import Character, GameState
+from story.games.adventure.prompting import AWAY_ACTION, TIMEOUT_ACTION
 from story.games.adventure.records import ending_record
 
 NAMES = ["阿明", "小華"]

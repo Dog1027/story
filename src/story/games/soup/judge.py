@@ -3,9 +3,8 @@
 The AI only proposes: it judges the answers and which key points were hit; whether that solves the puzzle is decided by the program from the key points (game.py).
 """
 
-from pathlib import Path
-
 from difflib import SequenceMatcher
+from pathlib import Path
 
 from google.genai import types
 

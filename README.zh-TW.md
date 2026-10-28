@@ -76,6 +76,7 @@ src/story/
 | 指令 | 做什麼 |
 |---|---|
 | `just test` | 全部測試（約 10 秒），不會連到 Gemini，也不會動到你的存檔 |
+| `just lint` | 用 ruff 檢查程式（可能的 bug、import 順序）；`just lint --fix` 自動修正 |
 | `just prompts` | 預覽送給 AI 的完整提示詞，不會呼叫 AI |
 | `just eval` | 用真的 AI 跑固定情境，檢查節奏、揭露真相、不替玩家做決定、文風、海龜湯的判斷（`just eval soup`）；結果存在 `eval_results/` |
 

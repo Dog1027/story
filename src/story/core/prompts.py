@@ -53,7 +53,7 @@ def _read(name: str, folder: Path) -> str:
 def sections(name: str, folder: Path) -> dict[str, str]:
     """The content under each "## name" in folder/<name>.md (blank lines at both ends removed, newlines in between kept)."""
     parts = HEADING.split(_read(name, folder))
-    return {key: body.strip("\n") for key, body in zip(parts[1::2], parts[2::2])}
+    return {key: body.strip("\n") for key, body in zip(parts[1::2], parts[2::2], strict=True)}
 
 
 class Texts:

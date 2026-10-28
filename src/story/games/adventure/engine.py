@@ -229,9 +229,9 @@ class Engine(AICaller):
         )
         try:
             return StoryBeat.model_validate_json(text)
-        except ValueError:
+        except ValueError as e:
             reason = last.candidates[0].finish_reason if last is not None and last.candidates else UI["no_content"]
-            raise RuntimeError(UI["unparsable"].format(reason=reason))
+            raise RuntimeError(UI["unparsable"].format(reason=reason)) from e
 
     # ---------- Memory compaction ----------
 

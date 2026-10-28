@@ -8,7 +8,6 @@ import json
 import random
 
 from story.core import prompts
-from story.games.adventure.text import TEXT
 from story.games.adventure.genres import Genre
 from story.games.adventure.models import Character, Condition, GameState, StoryArc, Turn, word
 from story.games.adventure.rules import (
@@ -29,6 +28,7 @@ from story.games.adventure.rules import (
     time_of_day,
     to_compact,
 )
+from story.games.adventure.text import TEXT
 
 # Text for the AI, each in the file of the same name in prompts/<lang>/
 SYSTEM_PROMPT = TEXT.load("system")
