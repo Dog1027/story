@@ -1,4 +1,4 @@
-"""Player names on the web: which names are allowed. A name becomes part of the save file name (see team_save in lobby.py)."""
+"""Player names on the web: which names are allowed. A name becomes part of the save file name (see team_save in web/hosting.py)."""
 
 import re
 

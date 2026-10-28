@@ -6,7 +6,7 @@ The shared layer (client.py) calls View's methods in the order of the game's flo
 from dataclasses import dataclass, field
 
 from story.core import ChangeGroups, Status
-from story.shells.premise import PremiseForm
+from story.shells.screen.premise import PremiseForm
 from story.shells.text import ui_text
 
 UI = ui_text("shells")  # The shells' shared text (story/shells/ui/<lang>/shells.md)

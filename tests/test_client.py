@@ -6,15 +6,16 @@ from itertools import pairwise
 import pytest
 from conftest import FakeEngine
 
-import story.shells.client as client_module
+import story.shells.screen.client as client_module
 from story.core import Reply, Status
 from story.games import AdventureCore
 from story.games.adventure import GENRE_AUTO, GENRE_NONE
-from story.shells.client import Client
 from story.shells.connection import Connection
-from story.shells.lobby import Lobby
-from story.shells.premise import PremiseForm
-from story.shells.view import View, status_line
+from story.shells.rooms.lobby import Lobby
+from story.shells.screen.client import Client
+from story.shells.screen.premise import PremiseForm
+from story.shells.screen.view import View, status_line
+from story.shells.web.hosting import game_choices
 
 
 class RecordingView(View):
@@ -134,10 +135,10 @@ async def play(isolated):
 
     async def start(view: RecordingView, engine=None) -> Client:
         engine = engine or FakeEngine()
-        lobby = Lobby(lambda players, on_queue, game: AdventureCore(
+        lobby = Lobby(game_choices(), lambda players, on_queue, game: AdventureCore(
             "test", players, save_path=isolated / "save.json", log_path=isolated / "log.jsonl", engine=engine))
         lobbies.append(lobby)
-        client = Client(view, lobby)
+        client = Client(view, lobby.connect)
         tasks.append(asyncio.create_task(client.run()))
         await until(lambda: view.lobby_view == "lobby")
         await client.act("1")  # Open a new room
@@ -308,7 +309,7 @@ async def test_premise_form_suggest_errors_are_raised_for_the_interface_to_show(
 async def test_room_hint_stops_waiting_once_the_story_ends():
     """After the last turn, the hint no longer says "waiting for X" (the room stops sending who's pending at the ending)."""
     view = RecordingView()
-    client = Client(view, lobby=None)
+    client = Client(view, connect=None)
     client.waiting = ["小華"]
     await client.handle(Reply(phase="ending"))
     hints = [c[1] for c in view.calls if c[0] == "set_hint"]
@@ -316,7 +317,7 @@ async def test_room_hint_stops_waiting_once_the_story_ends():
 
 
 async def test_client_stops_taking_input_when_the_connection_closes():
-    client = Client(RecordingView(), lobby=None)
+    client = Client(RecordingView(), connect=None)
     client.room, server = Connection.pair()
     assert client.ready
     server.close()
@@ -324,7 +325,7 @@ async def test_client_stops_taking_input_when_the_connection_closes():
 
 
 async def test_premise_dialog_request_fails_instead_of_waiting_forever_when_the_room_is_gone():
-    client = Client(RecordingView(), lobby=None)
+    client = Client(RecordingView(), connect=None)
     client.room, server = Connection.pair()
     request = asyncio.create_task(client.ask_room("/genre 武俠", "/random"))
     await asyncio.sleep(0)
@@ -339,7 +340,7 @@ async def test_input_modes_switch_what_typing_does():
     from story.games.soup.game import INPUTS
 
     view = RecordingView()
-    client = Client(view, lobby=None)
+    client = Client(view, connect=None)
     sent = []
 
     async def send(text, echo=""):

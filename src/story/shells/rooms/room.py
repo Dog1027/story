@@ -33,20 +33,26 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 from story.core import MAX_PLAYERS, Game, Reply, pick_choice
-from story.games import GAMES
 from story.shells.connection import Connection
 from story.shells.text import ui_text
 
 UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
 log = logging.getLogger(__name__)
-TITLES = {code: game.title for code, game in GAMES.items()}  # Game code → name
-DESCRIPTIONS = {code: game.description for code, game in GAMES.items()}  # Game code → a line about it, for the host's game picker
-STARTS = {UI["start_game"].format(game=title): code for code, title in TITLES.items()}  # The host picks the game on the waiting screen
 LEAVE = UI["leave_room"]
 READY_WAIT = 90  # Most seconds to wait for everyone to finish reading; after that the countdown starts anyway
 TIMEOUT_GRACE = 1  # Wait a little after the countdown ends to make up for network lag
+
+
+@dataclass(frozen=True)
+class GameChoice:
+    """A game the host can pick on the waiting screen. The room only needs to show it and pass code to make_core."""
+
+    code: str  # Passed to make_core; also used in save file names
+    title: str
+    description: str  # A line about it, under its name in the host's game picker
 
 
 class Member:
@@ -57,10 +63,17 @@ class Member:
 
 
 class Room:
-    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None], str], Game], on_change: Callable[[], Awaitable[None]] | None = None):
-        """make_core(players, on_queue, game) builds this game's core: game is a code from GAMES;
+    def __init__(
+        self,
+        games: list[GameChoice],
+        make_core: Callable[[list[str], Callable[[bool], None], str], Game],
+        on_change: Callable[[], Awaitable[None]] | None = None,
+    ):
+        """games are the games the host can pick. make_core(players, on_queue, game) builds this game's core: game is the code of one of games;
         on_queue(queued) lets the screen show "queued" while an AI call waits in line.
         on_change() is awaited after input that may change what the lobby shows (a game started, back to waiting)."""
+        self.games = {g.code: g for g in games}
+        self.starts = {UI["start_game"].format(game=g.title): g.code for g in games}  # The options that start each game
         self.make_core = make_core
         self.on_change = on_change
         self.tasks: set[asyncio.Task] = set()  # Work in the background: input that uses the core (see handle()) and progress reports
@@ -239,11 +252,11 @@ class Room:
         if name != self.host:
             await self._send_notice(name, UI["wait_host_start"].format(host=self.host))
             return
-        game = STARTS.get(pick_choice(text, self._lobby_choices(name)) or "")
+        game = self.starts.get(pick_choice(text, self._lobby_choices(name)) or "")
         if game is None:
             return
         self.loop = asyncio.get_running_loop()
-        self.game, self.core = TITLES[game], self.make_core(self.online, self._set_queued, game)
+        self.game, self.core = self.games[game].title, self.make_core(self.online, self._set_queued, game)
         self.core.watch(self._changed)
         await self._route(self.core.start())
 
@@ -421,14 +434,13 @@ class Room:
                 await self._safe_write(member, message)
 
     def _lobby_choices(self, name: str) -> list[str]:
-        return [*STARTS, LEAVE] if name == self.host else [LEAVE]
+        return [*self.starts, LEAVE] if name == self.host else [LEAVE]
 
-    @staticmethod
-    def _game_menu() -> list[dict]:
-        """The host's game picker: every game in GAMES with its name and a line about it; choice is the option that starts it."""
+    def _game_menu(self) -> list[dict]:
+        """The host's game picker: every game with its name and a line about it; choice is the option that starts it."""
         return [
-            {"code": code, "title": title, "description": DESCRIPTIONS[code], "choice": str(i)}
-            for i, (code, title) in enumerate(TITLES.items(), 1)
+            {"code": g.code, "title": g.title, "description": g.description, "choice": str(i)}
+            for i, g in enumerate(self.games.values(), 1)
         ]
 
     async def _broadcast_lobby(self, clear_for: str = "") -> None:

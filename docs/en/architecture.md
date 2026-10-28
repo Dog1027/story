@@ -31,9 +31,9 @@ core/     Core: the flow every game shares, the reply format,          Doesn't k
 | `core/` | `team.py`: `TeamGame`, the flow every game shares (the team, continuing saves, collecting everyone's actions, restarting, playing again). `reply.py`: `Reply`, the one reply format every game sends to the shells. `ai.py`: calling Gemini (Gemini sometimes leaves a request waiting 15+ seconds, so with no answer after a while it sends another copy and uses whichever answers first). `saves.py`, `prompts.py` (reading text files), `vocab.py` (game vocabulary), `evals.py` (the shared part of evals) |
 | `games/adventure/` | `game.py`: `AdventureCore`. `engine.py` ties together `rules.py` (the rules, pure functions), `prompting.py` (building prompts) and the AI calls. `models.py` holds the save format and the AI's response formats. `genres/` holds the genre packs. `samples.py` is a sample story shared by `preview.py` (`just prompts`) and `evals.py` (`just eval` scenarios) |
 | `games/soup/` | `game.py`: `SoupCore`. `judge.py` is the AI judge and puzzle writer, `puzzles/` the puzzle bank, `evals.py` the `just eval soup` scenarios |
-| `shells/` | `client.py`: the shared layer, one `Client` per browser tab. `view.py`: the methods an interface implements (`View`). `premise.py`: the rules of the adventure's new story dialog. `lobby.py`, `room.py`: the lobby and rooms; a room holds one game's core. `web/`: the web server and the browser page |
+| `shells/` | `rooms/` (the server side): `lobby.py` and `room.py`, the lobby and rooms; a room holds one game's core. They don't know which games exist. `screen/` (one per browser tab): `client.py`, the flow of what to show when; `view.py`, the methods an interface implements (`View`); `premise.py`, the rules of the new story dialog. It doesn't know about rooms. The two only meet through `connection.py`. `web/`: the web server and the browser page; `web/hosting.py` is the one place that hands the lobby the games in `GAMES`, the API key, the shared call limit and where saves go |
 
-Tests enforce these rules (`tests/test_shells.py`): if the core imports a game, games import each other, or a shell uses an internal module, the tests fail.
+Tests enforce these rules (`tests/test_shells.py`): if the core imports a game, games import each other, a shell uses an internal module, or `rooms/` and `screen/` import each other (or `rooms/` imports the games), the tests fail.
 
 ## Where a new feature goes
 
@@ -41,7 +41,7 @@ Tests enforce these rules (`tests/test_shells.py`): if the core imports a game, 
 |---|---|
 | A flow every game needs | `core/` |
 | One game's rules or facts | That game's folder |
-| The order and timing people see (choices appear after the narration, the countdown starts once everyone has read) | `shells/client.py` |
+| The order and timing people see (choices appear after the narration, the countdown starts once everyone has read) | `shells/screen/client.py` |
 | The looks | `shells/web/` |
 
 **Adding a game**: add a folder under `games/`, write a subclass of `TeamGame` (`title` is its name, `description` a line about it), and register it in `GAMES` in `games/__init__.py`. The host's game picker lists it automatically, and so does `just eval` if it has an `evals.py`; the core, the other games and the shells don't change.
@@ -55,7 +55,7 @@ Shells only read the fields of `Reply` and don't know which game is being played
 - `characters`: the status bar; the game supplies the words to show and the warnings
 - `ending`: the ending, the epilogue (the truth in turtle soup), the journey record
 
-Each field is described in `core/reply.py`. The message formats between the lobby, rooms and browser are described at the top of `lobby.py`, `room.py` and `web/view.py`.
+Each field is described in `core/reply.py`. The message formats between the lobby, rooms and browser are described at the top of `shells/rooms/lobby.py`, `shells/rooms/room.py` and `shells/web/view.py`.
 
 ## Text
 
@@ -82,7 +82,7 @@ Paths are under `src/story/`.
 | Story length, the earliest turn it can end, the minimum turns per act | `TARGET_TURNS`, `MIN_ENDING_TURN`, `MIN_ACT_TURNS` in `games/adventure/rules.py` |
 | Wound scores, the death threshold, healing times | `games/adventure/rules.py` |
 | Most players on a team | `MAX_PLAYERS` in `core/reply.py` |
-| Number of rooms, most AI calls per minute | `MAX_ROOMS`, `AI_PER_MINUTE` in `shells/lobby.py` |
+| Number of rooms, most AI calls per minute | `MAX_ROOMS` in `shells/rooms/lobby.py`, `AI_PER_MINUTE` in `shells/web/hosting.py` |
 | Colors, typing speed | `shells/web/static/`: `style.css`, and `CHAR_DELAY` in `app.js` |
 
 ## Files created while running

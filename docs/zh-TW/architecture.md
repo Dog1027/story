@@ -30,9 +30,9 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 | `core/` | `team.py`：`TeamGame`，每種玩法共用的流程（隊伍、接續存檔、收集每個人的行動、重來、再玩一次）。`reply.py`：`Reply`，每種玩法回給外殼的同一種回覆。`ai.py`：呼叫 Gemini（Gemini 偶爾讓請求排隊 15 秒以上，所以一段時間沒回應就再送一份，用先回來的）。`saves.py`、`prompts.py`（讀文字檔）、`vocab.py`（遊戲詞彙）、`evals.py`（評估的共用部分） |
 | `games/adventure/` | `game.py`：`AdventureCore`。`engine.py` 串起 `rules.py`（規則，純函式）、`prompting.py`（組提示詞）與 AI 呼叫。`models.py` 是存檔與 AI 回傳的格式。`genres/` 是題材包。`samples.py` 是範例故事，`preview.py`（`just prompts`）與 `evals.py`（`just eval` 的情境）共用 |
 | `games/soup/` | `game.py`：`SoupCore`。`judge.py` 是 AI 裁判與出題，`puzzles/` 是題庫，`evals.py` 是 `just eval soup` 的情境 |
-| `shells/` | `client.py`：共用層，一個瀏覽器分頁一個 `Client`。`view.py`：介面要實作的方法（`View`）。`premise.py`：冒險新故事對話框的規則。`lobby.py`、`room.py`：大廳與房間，房間持有一局的核心。`web/`：網頁伺服器與瀏覽器頁面 |
+| `shells/` | `rooms/`（伺服器這一端）：`lobby.py`、`room.py`，大廳與房間，房間持有一局的核心；不知道有哪些玩法。`screen/`（每個瀏覽器分頁一份）：`client.py` 是什麼時候顯示什麼的流程，`view.py` 是介面要實作的方法（`View`），`premise.py` 是新故事對話框的規則；不知道房間的存在。兩邊只透過 `connection.py` 溝通。`web/`：網頁伺服器與瀏覽器頁面；`web/hosting.py` 是唯一把 `GAMES` 裡的玩法、API key、共用的次數限制與存檔位置交給大廳的地方 |
 
-這些規則有測試把關（`tests/test_shells.py`）：核心 import 玩法、玩法互相 import、外殼用了內部模組，測試都會失敗。
+這些規則有測試把關（`tests/test_shells.py`）：核心 import 玩法、玩法互相 import、外殼用了內部模組、`rooms/` 與 `screen/` 互相 import（或 `rooms/` import 玩法），測試都會失敗。
 
 ## 新功能放哪裡
 
@@ -40,7 +40,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 |---|---|
 | 每種玩法都用得到的流程 | `core/` |
 | 一種玩法的規則或事實 | 那個玩法的資料夾 |
-| 真人看到的順序、時機（劇情顯示完才出現選項、大家看完才倒數） | `shells/client.py` |
+| 真人看到的順序、時機（劇情顯示完才出現選項、大家看完才倒數） | `shells/screen/client.py` |
 | 長相 | `shells/web/` |
 
 **新增一種玩法**：在 `games/` 加一個資料夾，寫一個 `TeamGame` 的子類別（`title` 是名稱、`description` 是一句介紹），登記到 `games/__init__.py` 的 `GAMES`。房主開局時的選單會自動列出它，有 `evals.py` 的話 `just eval` 也會自動收進來，不用改核心、其他玩法與外殼。
@@ -54,7 +54,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 - `characters`：狀態列，要顯示的字與警告都由玩法給
 - `ending`：結局、尾聲（海龜湯是湯底）、旅程紀錄
 
-各欄位的說明在 `core/reply.py`。大廳、房間、瀏覽器之間的訊息格式寫在 `lobby.py`、`room.py`、`web/view.py` 的開頭。
+各欄位的說明在 `core/reply.py`。大廳、房間、瀏覽器之間的訊息格式寫在 `shells/rooms/lobby.py`、`shells/rooms/room.py`、`shells/web/view.py` 的開頭。
 
 ## 文字
 
@@ -81,7 +81,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 | 故事長度、最早第幾回合能結束、每一幕至少幾回合 | `games/adventure/rules.py` 的 `TARGET_TURNS`、`MIN_ENDING_TURN`、`MIN_ACT_TURNS` |
 | 傷勢的分數、死亡門檻、痊癒時間 | `games/adventure/rules.py` |
 | 一隊最多幾人 | `core/reply.py` 的 `MAX_PLAYERS` |
-| 房間數、每分鐘最多呼叫幾次 AI | `shells/lobby.py` 的 `MAX_ROOMS`、`AI_PER_MINUTE` |
+| 房間數、每分鐘最多呼叫幾次 AI | `shells/rooms/lobby.py` 的 `MAX_ROOMS`、`shells/web/hosting.py` 的 `AI_PER_MINUTE` |
 | 配色、打字速度 | `shells/web/static/`：`style.css`，以及 `app.js` 的 `CHAR_DELAY` |
 
 ## 執行時產生的檔案

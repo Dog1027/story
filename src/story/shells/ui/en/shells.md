@@ -1,5 +1,5 @@
 <!--
-Text shared by the shells: the shared layer (story/shells/client.py), the web lobby and rooms (lobby.py, room.py), name checks (players.py),
+Text shared by the shells: the shared layer (story/shells/screen/client.py), the web lobby and rooms (story/shells/rooms/), name checks (players.py),
 and the web server (web/__init__.py). Same format as core.md.
 -->
 
@@ -72,7 +72,7 @@ Waiting for {names}…
 ## list_sep
 , 
 
-<!-- ---------- Lobby and rooms (lobby.py, room.py) ---------- -->
+<!-- ---------- Lobby and rooms (rooms/lobby.py, rooms/room.py) ---------- -->
 
 ## lobby_title
 <!-- The lobby's title (in the status bar, followed by the people in the lobby) -->

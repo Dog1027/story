@@ -30,36 +30,22 @@ Lobby → player
 
 import asyncio
 from collections.abc import Callable
-from pathlib import Path
 
-from story import settings
-from story.core import MAX_PLAYERS, Game, RateLimit, new_client, pick_choice
-from story.games import GAMES
+from story.core import MAX_PLAYERS, Game, pick_choice
 from story.shells.connection import Connection
 from story.shells.players import InvalidName, check_name
-from story.shells.room import Room
+from story.shells.rooms.room import GameChoice, Room
 from story.shells.text import ui_text
 
 UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
 MAX_ROOMS = 10  # Most rooms at once: everyone shares one key, and too many rooms means constant queuing
-AI_PER_MINUTE = 15  # Most AI calls per minute across all rooms (the free tier's flash-lite limit; raise it on a paid plan)
-
-
-def saves_dir() -> Path:
-    """Saves and game logs: saves/ in the project folder (settings.DATA_DIR)."""
-    return settings.DATA_DIR / "saves"
-
-
-def team_save(players: list[str], game: str):
-    """A team's save and log: the same people (in any order) can continue when they open a room again. One per game, with the game's code at the end of the file name.
-    Names only have letters, digits, underscores and hyphens, so they work as file names directly."""
-    team = "+".join(sorted(players)) + f".{game}"
-    return saves_dir() / f"team-{team}.json", saves_dir() / f"team-{team}.log.jsonl"
 
 
 class Lobby:
-    def __init__(self, make_core: Callable[[list[str], Callable[[bool], None], str], Game]):
-        """make_core(players, on_queue, game) builds a game's core; see Room."""
+    def __init__(self, games: list[GameChoice], make_core: Callable[[list[str], Callable[[bool], None], str], Game]):
+        """games are the games a room's host can pick; make_core(players, on_queue, game) builds a game's core. See Room.
+        The web server decides both (story.shells.web.hosting): the lobby itself doesn't know which games exist."""
+        self.games = games
         self.make_core = make_core
         self.people: dict[str, Connection] = {}  # People online (the lobby's end of each connection)
         self.where: dict[str, Room | None] = {}  # Which room each person is in; None is the lobby
@@ -69,18 +55,6 @@ class Lobby:
         self.shown: dict[str, dict] = {}  # The last lobby screen each person got (not resent if unchanged)
         self.lock = asyncio.Lock()  # Handle comings and goings one at a time
         self.links: dict[Connection, asyncio.Task] = {}
-
-    @staticmethod
-    def for_server(api_key: str) -> Lobby:
-        """For the web server: every room's core uses the host's key and shares one call limit."""
-        saves_dir().mkdir(exist_ok=True)
-        limit, client = RateLimit(AI_PER_MINUTE), new_client(api_key)
-
-        def make_core(players: list[str], on_queue: Callable[[bool], None], game: str) -> Game:
-            save_path, log_path = team_save(players, game)
-            return GAMES[game](api_key, players, save_path=save_path, log_path=log_path, client=limit.wrap(client, on_queue))
-
-        return Lobby(make_core)
 
     def connect(self) -> Connection:
         """A player connects: returns the player's end; the lobby's end is handled by serve()."""
@@ -186,7 +160,7 @@ class Lobby:
                 if len(self.rooms) >= MAX_ROOMS:
                     await self._notice(name, UI["rooms_full"].format(max=MAX_ROOMS))
                     return
-                room = Room(self.make_core, on_change=self._show_rooms)
+                room = Room(self.games, self.make_core, on_change=self._show_rooms)
                 self.rooms.append(room)
         await self._enter(name, room)
 

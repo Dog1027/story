@@ -2,7 +2,7 @@
 
 Division of labor:
 - The core (story.core) and games (story.games): game rules, the AI, saves. Text goes in and a Reply comes out; no sense of time, and no idea a screen exists.
-- The lobby and rooms (lobby.py, room.py): who's in which room; pass each person's input to the core and send replies to everyone in the room.
+- The lobby and rooms (shells/rooms/): who's in which room; pass each person's input to the core and send replies to everyone in the room.
 - This layer (Client): "what to show when". Which dialog to pop up for a reply's phase, showing choices only after the text is typed out,
   starting the countdown once everyone has read, revealing the ending one part at a time…
 - The interface (an implementation of View in view.py, WebView on the web): only "what it looks like"; it draws each View method
@@ -13,14 +13,14 @@ Rule of thumb: changes the game's outcome or facts → the core; changes the ord
 """
 
 import asyncio
+from collections.abc import Callable
 
 from story.core import Ending, InputMode, Reply, Status, pick_choice
 from story.shells.connection import Connection
-from story.shells.lobby import Lobby
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
-from story.shells.premise import PremiseForm
+from story.shells.screen.premise import PremiseForm
+from story.shells.screen.view import View, status_line
 from story.shells.text import ui_text
-from story.shells.view import View, status_line
 
 # Rules the interface's dialogs also need (which names are allowed) always come from here
 __all__ = ["MAX_NAME_LEN", "Client"]
@@ -29,15 +29,15 @@ UI = ui_text("shells")  # The shells' shared text (story/shells/ui/<lang>/shells
 
 
 class Client:
-    """The flow of one browser tab interacting with a human player: connect to the web server's lobby (lobby.py) and play in a room (room.py).
+    """The flow of one browser tab interacting with a human player: connect to the web server's lobby and play in a room (shells/rooms/).
     How a turn appears, how the ending is revealed one part at a time, the status bar, and the input box hint all live here.
 
     It has no core of its own: input goes to the room; replies, progress and narration being written are pushed back by the room, then handed to View according to the reply's phase."""
 
-    def __init__(self, view: View, lobby: Lobby | None, token: str = ""):
+    def __init__(self, view: View, connect: Callable[[], Connection] | None, token: str = ""):
         self.view = view
-        self.lobby = lobby
-        self.token = token  # An ID the browser remembers: when the same browser connects again, the new connection replaces the old one (see lobby.py)
+        self.connect = connect  # Opens a connection to the lobby (the web server passes lobby.connect); this side never sees the lobby itself
+        self.token = token  # An ID the browser remembers: when the same browser connects again, the new connection replaces the old one (see rooms/lobby.py)
         self.room: Connection | None = None  # The connection to the lobby (and rooms)
         self.replaced = False
         self.my_name = ""
@@ -60,7 +60,7 @@ class Client:
         return self.room is not None and self.room.open and not self.busy
 
     async def run(self) -> None:
-        self.room = self.lobby.connect()
+        self.room = self.connect()
         name = await self.ask_name(self.claim_seat)
         if name is None:
             self.view.exit()

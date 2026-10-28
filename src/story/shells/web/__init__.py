@@ -2,9 +2,9 @@
 
 The server (aiohttp) creates a shared-layer Client for each browser tab, with WebView (view.py) as its interface:
 each call from the shared layer becomes a JSON message sent over a WebSocket to the browser, and the browser (static/) only draws it.
-The flow is all in the shared layer (client.py).
+The flow is all in the shared layer (screen/client.py).
 
-The server has one lobby (lobby.py): each tab's Client connects to it, enters a name, then opens a room or joins someone else's;
+The server has one lobby (rooms/lobby.py), set up in hosting.py with every game in GAMES: each tab's Client connects to it, enters a name, then opens a room or joins someone else's;
 each room plays its own game (playing alone is a room with just you). The AI is called with the host's Gemini API key (config or environment variable); players never enter one.
 """
 
@@ -21,9 +21,10 @@ from aiohttp import WSMsgType, web
 
 from story import settings
 from story.core import MAX_PLAYERS
-from story.shells.client import Client
-from story.shells.lobby import MAX_ROOMS, Lobby
+from story.shells.rooms.lobby import MAX_ROOMS, Lobby
+from story.shells.screen.client import Client
 from story.shells.text import ui_text
+from story.shells.web.hosting import make_lobby
 from story.shells.web.view import WebView
 
 DEFAULT_HOST, DEFAULT_PORT = "127.0.0.1", 8080  # By default only accept connections from this computer
@@ -67,7 +68,7 @@ def make_app(lobby: Lobby) -> web.Application:
             return ws
         sessions += 1
         view = WebView(ws)
-        client = Client(view, lobby, token=request.query.get("token", "")[:64])
+        client = Client(view, lobby.connect, token=request.query.get("token", "")[:64])
         view.client = client
         writer = asyncio.create_task(view.write_loop())
         game = asyncio.create_task(client.run())
@@ -113,4 +114,4 @@ def main() -> None:
     if args.host != "127.0.0.1":
         print(UI["server_open_warning"], flush=True)
     print(UI["server_started"].format(host=args.host, port=args.port), flush=True)
-    web.run_app(make_app(Lobby.for_server(key)), host=args.host, port=args.port, print=None)
+    web.run_app(make_app(make_lobby(key)), host=args.host, port=args.port, print=None)

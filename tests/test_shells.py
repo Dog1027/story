@@ -53,9 +53,28 @@ def test_layers_only_depend_outward():
     assert problems == []
 
 
+def test_rooms_and_screens_only_meet_through_a_connection():
+    """Inside the shells: the lobby and rooms (rooms/) don't know which games exist, how things are shown, or the settings; each tab's flow
+    (screen/) doesn't know about rooms. They only share connection.py, players.py and text.py. Only web/ wires them to the games and settings."""
+    from pathlib import Path
+
+    import story.shells
+
+    root = Path(story.shells.__file__).parent
+    shared = ("story.core", "story.shells.connection", "story.shells.players", "story.shells.text")
+    allowed = {"rooms": (*shared, "story.shells.rooms"), "screen": (*shared, "story.shells.screen")}
+    problems = []
+    for part, ok in allowed.items():
+        for path in sorted((root / part).rglob("*.py")):
+            for module in re.findall(r"^\s*(?:from|import) (story[\w.]*)", path.read_text(encoding="utf-8"), re.M):
+                if not module.startswith(ok):
+                    problems.append(f"{path.relative_to(root)}: {module}")
+    assert problems == []
+
+
 def test_interfaces_go_through_the_shared_client_layer():
-    """The interface (the web View) only handles looks: it never builds a core, connects to rooms directly, or calls core methods; the flow always goes to the shared layer (client.py).
-    The web server (web/__init__.py) opens rooms and connections and doesn't count as the interface."""
+    """The interface (the web View) only handles looks: it never builds a core, connects to rooms directly, or calls core methods; the flow always goes to the shared layer (screen/client.py).
+    The web server (web/__init__.py, web/hosting.py) opens rooms and connections and doesn't count as the interface."""
     from pathlib import Path
 
     import story.shells.web.view
@@ -63,7 +82,7 @@ def test_interfaces_go_through_the_shared_client_layer():
     problems = []
     for path in [Path(story.shells.web.view.__file__)]:
         source = path.read_text(encoding="utf-8")
-        for name in ("AdventureCore", "SoupCore", "Connection", "story.shells.room", "story.shells.players"):
+        for name in ("AdventureCore", "SoupCore", "Connection", "story.shells.rooms.room", "story.shells.players"):
             if name in source:
                 problems.append(f"{path.name}: uses {name} (should go through the shared layer)")
         if re.search(r"\bcore\.\w+", source):

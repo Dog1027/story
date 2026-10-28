@@ -5,12 +5,13 @@ import asyncio
 import pytest
 from conftest import PUZZLE, FakeGroupEngine, FakeJudge
 
-import story.shells.lobby as lobby_module
+import story.shells.rooms.lobby as lobby_module
 from story.core import Reply
 from story.games import AdventureCore, SoupCore
 from story.games.adventure.prompting import AWAY_ACTION
 from story.shells.connection import Connection
-from story.shells.lobby import Lobby
+from story.shells.rooms.lobby import Lobby
+from story.shells.web.hosting import game_choices
 
 
 class Player:
@@ -52,7 +53,7 @@ def make_lobby(isolated, engine=None) -> Lobby:
             return SoupCore("test", players, save_path=isolated / "soup.json", judge=FakeJudge(), puzzles=[PUZZLE])
         return AdventureCore("test", players, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=engine)
 
-    lobby = Lobby(make_core)
+    lobby = Lobby(game_choices(), make_core)
     lobby.engine = engine
     return lobby
 

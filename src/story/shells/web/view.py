@@ -1,6 +1,6 @@
 """The web interface's View: turns each call from the shared layer into a JSON message for the browser, and waits for the browser's reply when the player must answer.
 
-The browser side (static/app.js) only draws; the flow is all in the shared layer (story.shells.client).
+The browser side (static/app.js) only draws; the flow is all in the shared layer (story.shells.screen.client).
 
 Server → browser: {"t": kind, ...}. Messages that need a reply carry "id", and the browser answers with {"t": "answer", "id": …, "value": …}.
 Browser → server:
@@ -18,9 +18,9 @@ from dataclasses import asdict
 from aiohttp import web
 
 from story.core import ChangeGroups
-from story.shells.client import MAX_NAME_LEN, Client
-from story.shells.premise import PremiseForm
-from story.shells.view import StatusLine, View
+from story.shells.screen.client import MAX_NAME_LEN, Client
+from story.shells.screen.premise import PremiseForm
+from story.shells.screen.view import StatusLine, View
 
 
 class WebView(View):

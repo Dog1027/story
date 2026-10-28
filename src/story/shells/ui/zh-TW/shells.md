@@ -1,5 +1,5 @@
 <!--
-外殼共用的文字：共用層（story/shells/client.py）、網頁版的大廳與房間（lobby.py、room.py）、名字檢查（players.py）、
+外殼共用的文字：共用層（story/shells/screen/client.py）、網頁版的大廳與房間（story/shells/rooms/）、名字檢查（players.py）、
 與網頁伺服器（web/__init__.py）。格式同 core.md。
 -->
 
@@ -72,7 +72,7 @@ Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
 ## list_sep
 、
 
-<!-- ---------- 大廳與房間（lobby.py、room.py） ---------- -->
+<!-- ---------- 大廳與房間（rooms/lobby.py、rooms/room.py） ---------- -->
 
 ## lobby_title
 <!-- 大廳的標題（狀態列上，後面接著在大廳的人） -->

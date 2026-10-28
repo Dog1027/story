@@ -6,27 +6,33 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from conftest import FakeGroupEngine
 
-import story.shells.lobby as lobby_module
 import story.shells.web as web
+import story.shells.web.hosting as hosting
 from story.games import AdventureCore
-from story.shells.lobby import Lobby
 
 
 @pytest.fixture(autouse=True)
 def fake_core(monkeypatch) -> list[str]:
     """Swap in a fake engine when the lobby builds a core; returns the API key each core got."""
     keys: list[str] = []
-
-    def make(api_key, players, *, save_path, log_path, client=None):
-        keys.append(api_key)
-        return AdventureCore(api_key, players, save_path=save_path, log_path=log_path, engine=FakeGroupEngine())
-
-    monkeypatch.setitem(lobby_module.GAMES, "adventure", make)
+    monkeypatch.setitem(hosting.GAMES, "adventure", fake_adventure(FakeGroupEngine, keys))
     return keys
 
 
+def fake_adventure(engine, keys=None) -> type:
+    """The adventure as registered in GAMES (same name and description), but with a fake engine instead of the AI."""
+
+    class FakeAdventure(AdventureCore):
+        def __init__(self, api_key, players, *, save_path, log_path, client=None):
+            if keys is not None:
+                keys.append(api_key)
+            super().__init__(api_key, players, save_path=save_path, log_path=log_path, engine=engine())
+
+    return FakeAdventure
+
+
 def app():
-    return web.make_app(Lobby.for_server("server-key"))
+    return web.make_app(hosting.make_lobby("server-key"))
 
 
 class Browser:
@@ -202,10 +208,7 @@ async def test_the_waiting_line_follows_the_opening_progress(isolated, monkeypat
             self.stage = ""
             super().start(state)
 
-    def make(api_key, players, *, save_path, log_path, client=None):
-        return AdventureCore(api_key, players, save_path=save_path, log_path=log_path, engine=SlowOpening())
-
-    monkeypatch.setitem(lobby_module.GAMES, "adventure", make)
+    monkeypatch.setitem(hosting.GAMES, "adventure", fake_adventure(SlowOpening))
     async with TestClient(TestServer(app())) as client:
         browser = await enter_name(client, "阿明")
         for _ in range(2):  # Open a room, start the game

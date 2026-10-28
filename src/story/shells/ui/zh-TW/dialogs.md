@@ -1,5 +1,5 @@
 <!--
-對話框的文字：網頁版（story/shells/web/static/app.js）與共用層（story/shells/client.py、premise.py）。
+對話框的文字：網頁版（story/shells/web/static/app.js）與共用層（story/shells/screen/client.py、premise.py）。
 格式同 core.md。網頁版由伺服器把這份連同 web.md 一起送給瀏覽器。
 -->
 
