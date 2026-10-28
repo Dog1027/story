@@ -27,10 +27,10 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 
 | 目錄 | 主要的檔案 |
 |---|---|
-| `core/` | `team.py`：`TeamGame`，每種玩法共用的流程（隊伍、接續存檔、收集每個人的行動、重來、再玩一次）。`reply.py`：`Reply`，每種玩法回給外殼的同一種回覆。`ai.py`：呼叫 Gemini。`saves.py`、`prompts.py`（讀文字檔）、`vocab.py`（遊戲詞彙）、`evals.py`（評估的共用部分） |
+| `core/` | `team.py`：`TeamGame`，每種玩法共用的流程（隊伍、接續存檔、收集每個人的行動、重來、再玩一次）。`reply.py`：`Reply`，每種玩法回給外殼的同一種回覆。`ai.py`：呼叫 Gemini（Gemini 偶爾讓請求排隊 15 秒以上，所以一段時間沒回應就再送一份，用先回來的）。`saves.py`、`prompts.py`（讀文字檔）、`vocab.py`（遊戲詞彙）、`evals.py`（評估的共用部分） |
 | `games/adventure/` | `game.py`：`AdventureCore`。`engine.py` 串起 `rules.py`（規則，純函式）、`prompting.py`（組提示詞）與 AI 呼叫。`models.py` 是存檔與 AI 回傳的格式。`genres/` 是題材包。`preview.py`（`just prompts`）、`evals.py`（`just eval` 的情境） |
 | `games/soup/` | `game.py`：`SoupCore`。`judge.py` 是 AI 裁判與出題，`puzzles/` 是題庫，`evals.py` 是 `just eval soup` 的情境 |
-| `shells/` | `client.py`：共用層，一個瀏覽器分頁一個 `Client`。`lobby.py`、`room.py`：大廳與房間，房間持有一局的核心。`web/`：網頁伺服器與瀏覽器頁面 |
+| `shells/` | `client.py`：共用層，一個瀏覽器分頁一個 `Client`。`view.py`：介面要實作的方法（`View`）。`premise.py`：冒險新故事對話框的規則。`lobby.py`、`room.py`：大廳與房間，房間持有一局的核心。`web/`：網頁伺服器與瀏覽器頁面 |
 
 這些規則有測試把關（`tests/test_shells.py`）：核心 import 玩法、玩法互相 import、外殼用了內部模組，測試都會失敗。
 
@@ -77,10 +77,12 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 
 ## 執行時產生的檔案
 
+不管從哪個資料夾啟動，都放在專案資料夾裡（`settings.DATA_DIR`）。
+
 | 檔案 | 內容 |
 |---|---|
 | `saves/team-名字.玩法.json` | 每一隊每種玩法的存檔（好幾個人時名字用 `+` 串起來） |
-| `saves/team-名字.玩法.log.jsonl` | 每回合一行：玩家行動、AI 提議與程式套用的變化、每次 AI 呼叫的種類（`kind`）、秒數與 token 用量。覺得慢或結果奇怪時看這裡 |
+| `saves/team-名字.玩法.log.jsonl` | 每回合一行：玩家行動、AI 提議與程式套用的變化、每次 AI 呼叫的種類（`kind`）、秒數、token 用量，以及有沒有再送一份（`hedged`）。覺得慢或結果奇怪時看這裡 |
 | `server.log` | `just start` 的伺服器輸出 |
 | `~/.config/story/config.toml` | 語言與 API key |
 

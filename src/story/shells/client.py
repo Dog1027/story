@@ -5,231 +5,27 @@ Division of labor:
 - The lobby and rooms (lobby.py, room.py): who's in which room; pass each person's input to the core and send replies to everyone in the room.
 - This layer (Client): "what to show when". Which dialog to pop up for a reply's phase, showing choices only after the text is typed out,
   starting the countdown once everyone has read, revealing the ending one part at a time…
-- The interface (an implementation of View, WebView on the web): only "what it looks like"; it draws each View method
-  and passes the player's input to Client (act, command).
+- The interface (an implementation of View in view.py, WebView on the web): only "what it looks like"; it draws each View method
+  and passes the player's input to Client (act, command). The new story dialog's rules are in premise.py.
 
 Put new features in this layer where possible; only new screen elements need a little display code in the interface.
 Rule of thumb: changes the game's outcome or facts → the core; changes the order, timing or flow people see → this layer; changes the looks → the interface.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
 
-from story.core import ChangeGroups, Ending, InputMode, Reply, Status, pick_choice
+from story.core import Ending, InputMode, Reply, Status, pick_choice
 from story.shells.connection import Connection
 from story.shells.lobby import Lobby
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
+from story.shells.premise import PremiseForm
 from story.shells.text import ui_text
+from story.shells.view import View, status_line
 
 # Rules the interface's dialogs also need (which names are allowed) always come from here
-__all__ = ["MAX_NAME_LEN", "Client", "PremiseForm", "StatusLine", "View", "status_line"]
+__all__ = ["MAX_NAME_LEN", "Client"]
 
 UI = ui_text("shells")  # The shells' shared text (story/shells/ui/<lang>/shells.md)
-
-
-# ---------- Display data for the interface: content and severity only, no colors or layout ----------
-
-
-@dataclass
-class StatusLine:
-    turn: int
-    mode: str  # "Timed mode" or "Normal mode", on the same line as the turn
-    timed: bool
-    characters: list[Status] = field(default_factory=list)  # One line per character; whether to warn and the words shown come from the game
-    named: bool = False  # Several characters: one line per character, with names
-
-
-def status_line(turn: int, characters: list[Status], timed: bool) -> StatusLine | None:
-    """With one character, no names; with several, one line per character."""
-    if not characters:
-        return None
-    mode = UI["mode_timed" if timed else "mode_normal"]
-    return StatusLine(turn, mode, timed, list(characters), named=len(characters) > 1)
-
-
-# ---------- Methods the interface implements ----------
-
-
-class View:
-    """What the interface provides. Client calls these methods as the game goes, and the interface only draws them.
-    async methods return only once the player has finished reading or answering."""
-
-    # The story area
-    def clear_story(self, premise: str) -> None:
-        """A new story starts: clear the story area, choices and status bar, and show the premise first (may be an empty string)."""
-        raise NotImplementedError
-
-    def show_action(self, text: str) -> None:
-        """The action the player just took (scroll to the bottom to see the result when it's your own)."""
-        raise NotImplementedError
-
-    def show_note(self, text: str) -> None:
-        """A line of explanation in the story area, e.g. "Loaded save: …" when loading."""
-        raise NotImplementedError
-
-    def start_narration(self) -> None:
-        """Start showing a passage of narration (e.g. with a typing effect). The text arrives through extend_narration(); hide the waiting hint too."""
-        raise NotImplementedError
-
-    def extend_narration(self, text: str) -> None:
-        """The full text of this narration received so far (the AI is still writing, so it keeps growing)."""
-        raise NotImplementedError
-
-    async def finish_narration(self, text: str) -> None:
-        """The complete narration; returns once all of it is shown."""
-        raise NotImplementedError
-
-    def show_past_narration(self, text: str) -> None:
-        """Earlier narration after loading or reconnecting: show the whole passage at once, without typing or scrolling."""
-        raise NotImplementedError
-
-    def discard_narration(self) -> None:
-        """Take back this unfinished narration (the AI failed and the turn didn't advance)."""
-        raise NotImplementedError
-
-    def show_changes(self, groups: ChangeGroups, name: str = "") -> None:
-        """Changes between turns (new, healed, gained…); has the character's name with several characters, empty when alone."""
-        raise NotImplementedError
-
-    def show_ending_title(self, title: str) -> None:
-        raise NotImplementedError
-
-    async def wait_enter(self, hint: str) -> None:
-        """Stop and wait for the player to press Enter before going on."""
-        raise NotImplementedError
-
-    # Choices and input
-    def prepare_choices(self, choices: list[str], timed: bool) -> None:
-        """Place the choices while the narration is still showing, but keep them invisible (so the interface can reserve the space); with timed, the countdown bar too."""
-        raise NotImplementedError
-
-    def show_choices(self, choices: list[str]) -> None:
-        """Show the choices (makes the ones placed by prepare_choices appear)."""
-        raise NotImplementedError
-
-    def mark_choice(self, index: int) -> None:
-        """Mark the input mode currently picked (turtle soup's "ask" and "guess"; see Reply.inputs); -1 clears the mark. Interfaces that don't need it can skip it."""
-
-    def set_hint(self, placeholder: str) -> None:
-        """The input box hint, e.g. "Waiting for Hua to act…" after acting on the web."""
-        raise NotImplementedError
-
-    def set_status(self, status: StatusLine | None) -> None:
-        raise NotImplementedError
-
-    def show_lobby(self, screen: dict) -> None:
-        """The web lobby or a room's waiting screen; the content is described at the top of lobby.py and room.py (view is lobby or room).
-        Choices are drawn as buttons, which send client.act(number) when pressed."""
-        raise NotImplementedError
-
-    def set_busy(self, busy: bool) -> None:
-        """The core is busy: don't accept input."""
-        raise NotImplementedError
-
-    def show_busy(self) -> None:
-        """Show the waiting hint (the text from client.busy_text(), which changes with progress)."""
-        raise NotImplementedError
-
-    # Timed mode: the room keeps time and sends time's up; the interface only shows the countdown
-    def start_timer(self, seconds: int) -> None:
-        raise NotImplementedError
-
-    def stop_timer(self) -> None:
-        raise NotImplementedError
-
-    # Notices and dialogs
-    def notify(self, text: str, error: bool = False, lasting: bool = False) -> None:
-        raise NotImplementedError
-
-    def show_activity(self, text: str) -> None:
-        """Brief activity that doesn't cover the story (e.g. "Hua acted" on the web) and disappears shortly. Interfaces that don't need it can skip it."""
-
-    def show_info(self, title: str, body: str) -> None:
-        raise NotImplementedError
-
-    async def ask_confirm(self, question: str, yes: str, no: str) -> bool:
-        raise NotImplementedError
-
-    async def ask_premise(self, form: "PremiseForm") -> tuple[str, bool, str] | None:
-        """The new story dialog: draw the genre menu, the genre description, the default opening and timed mode from form; pass the player's actions to form
-        and update the text box from what it returns. On start, return form.finish(text box, timed or not); None on leaving."""
-        raise NotImplementedError
-
-    async def ask_ending(self, title: str, record: str) -> bool:
-        """Show the ending and the journey record; returns whether to play again."""
-        raise NotImplementedError
-
-    async def ask_name(self, hint: str, error: str) -> str | None:
-        """Ask for a name; returns what the player typed (None if cancelled). error is why the last one couldn't be used, empty the first time; when hint is blank, the interface uses its own explanation."""
-        raise NotImplementedError
-
-    def exit(self) -> None:
-        raise NotImplementedError
-
-
-# ---------- The new story dialog ----------
-
-
-class PremiseForm:
-    """The rules of the new story dialog: the interface only draws it, passes the player's actions here, and updates the text box from what comes back.
-    None means leave the text box as is (the player edited it, or a later action has superseded this result)."""
-
-    def __init__(self, reply: Reply, request: Callable[..., Awaitable[Reply]]):
-        self.default = reply.premise_default  # The current default opening: used when the text box is blank or untouched
-        self.timed = reply.timed
-        self.genres = [(value, label) for value, label, _ in reply.genres]  # The genre menu: empty without genre packs, and then the interface doesn't show it
-        self.hints = {value: hint for value, _, hint in reply.genres}
-        self.genre = reply.genre if not self.genres or reply.genre in self.hints else self.genres[0][0]
-        self.request = request  # Sends commands to the core; see Client.ask_room()
-        self.asking = asyncio.Lock()  # One at a time: the core can't handle two requests at once
-        self.latest = 0  # The number of the latest action
-
-    def genre_options(self) -> list[tuple[str, str]]:
-        """The genre menu: (text shown, genre), in the order the game gives."""
-        return [(label, value) for value, label in self.genres]
-
-    def genre_hint(self, choice: str) -> str:
-        """The genre description under the menu."""
-        return self.hints.get(choice, "")
-
-    async def change_genre(self, choice: str, text: str) -> str | None:
-        """Change the genre: the randomly drawn opening switches to the new genre's too (not if the player edited the text box). text is the text box's current content."""
-        self.genre = choice
-        reply = await self._ask(f"/genre {choice}")
-        return None if reply is None or reply.error else self._new_default(reply.premise_default, text)
-
-    async def reroll(self, text: str) -> str | None:
-        """Another one: redraw from the genre packs' opening ideas without waiting for the AI. Pressing it always replaces the text box."""
-        reply = await self._ask(f"/genre {self.genre}", "/random")
-        return None if reply is None or reply.error else self._new_default(reply.premise_default, text, replace=True)
-
-    async def suggest(self, text: str) -> str:
-        """Suggest one: have the AI think of an opening, always replacing the text box. Raises RuntimeError on failure (the interface just shows a notice; starting a game isn't interrupted)."""
-        reply = await self._ask(f"/genre {self.genre}", "/suggest", latest_only=False)
-        if reply.error:
-            raise RuntimeError(reply.notice)
-        return self._new_default(reply.suggestion, text, replace=True)
-
-    def finish(self, text: str, timed: bool) -> tuple[str, bool, str]:
-        """Start pressed: (premise, timed or not, genre). A blank text box uses the default opening."""
-        return " ".join(text.split()) or self.default, timed, self.genre
-
-    async def _ask(self, *commands: str, latest_only: bool = True) -> Reply | None:
-        """With latest_only, returns None if another action came in while waiting (e.g. switching genres quickly); the old result isn't used."""
-        self.latest += 1
-        mine = self.latest
-        async with self.asking:
-            reply = await self.request(*commands)
-        return reply if not latest_only or mine == self.latest else None
-
-    def _new_default(self, premise: str, text: str, replace: bool = False) -> str | None:
-        edited = " ".join(text.split()) not in ("", " ".join(self.default.split()))
-        self.default = premise
-        return None if edited and not replace else premise
-
-
-# ---------- The shared flow ----------
 
 
 class Client:

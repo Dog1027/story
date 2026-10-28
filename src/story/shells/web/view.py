@@ -18,7 +18,9 @@ from dataclasses import asdict
 from aiohttp import web
 
 from story.core import ChangeGroups
-from story.shells.client import MAX_NAME_LEN, Client, PremiseForm, StatusLine, View
+from story.shells.client import MAX_NAME_LEN, Client
+from story.shells.premise import PremiseForm
+from story.shells.view import StatusLine, View
 
 BUSY_POLL = 0.3  # While waiting, how often (seconds) to check whether the progress text changed
 

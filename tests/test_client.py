@@ -10,7 +10,9 @@ from story.core import Reply
 from story.games import AdventureCore
 from story.games.adventure import GENRE_AUTO, GENRE_NONE
 from story.core import Status
-from story.shells.client import Client, PremiseForm, View, status_line
+from story.shells.client import Client
+from story.shells.premise import PremiseForm
+from story.shells.view import View, status_line
 from story.shells.connection import Connection
 from story.shells.lobby import Lobby
 

@@ -41,6 +41,15 @@ Rooms could also offer "Detective". Before the opening the AI writes a case; pla
 
 The hardest part is getting the AI to write a sound, fair case. The lesson from turtle soup puzzles: flash-lite's often contradict themselves, so they need a stronger model to write them and a strict check afterwards.
 
+### 4. The reply format: fields only one game uses
+
+The shells only read `Reply`'s fields, so whenever a game needs the shells to show something new, `Reply` gets a field. Some already belong to only one game:
+
+- The adventure: `premise_default`, `suggestion`, `genre`, `genres` (the new story dialog); the shells also have `PremiseForm` and the web's premise dialog just for it
+- Turtle soup: `inputs` (ask, guess, give up)
+
+With two games this is simplest; with more, `Reply` turns into a pile of fields each used by one game. If the detective game also needs its own setup form or input modes, turn them into a generic description then: for example, describe a setup form as "fields, buttons, menus" that the game fills in, have the shells draw one generic form, and move the adventure's premise dialog onto it too. Not now, so the abstraction isn't shaped by a single example.
+
 ## Other open items
 
 - [ ] **Narration too short**: `schema.md` asks for 150-300 characters a turn, but `just eval` mostly gets 116-145. Could change the wording in `schema.md` or `system.md` (e.g. state "at least 150 characters"), then compare before and after with `just eval`.
