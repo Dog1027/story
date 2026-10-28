@@ -28,7 +28,7 @@ core/     Core: the flow every game shares, the reply format,          Doesn't k
 
 | Folder | Main files |
 |---|---|
-| `core/` | `team.py`: `TeamGame`, the flow every game shares (the team, continuing saves, collecting everyone's actions, restarting, playing again). `reply.py`: `Reply`, the one reply format every game sends to the shells. `ai.py`: calling Gemini (Gemini sometimes leaves a request waiting 15+ seconds, so with no answer after a while it sends another copy and uses whichever answers first). `saves.py`, `prompts.py` (reading text files), `vocab.py` (game vocabulary), `evals.py` (the shared part of evals) |
+| `core/` | `team.py`: `TeamGame`, the flow every game shares (the team, continuing saves, collecting everyone's actions, restarting, playing again). `reply.py`: `Reply`, the one reply format every game sends to the shells. `ai.py`: calling Gemini. `saves.py`, `prompts.py` (reading text files), `vocab.py` (game vocabulary), `evals.py` (the shared part of evals) |
 | `games/adventure/` | `game.py`: `AdventureCore`. `engine.py` ties together `rules.py` (the rules, pure functions), `prompting.py` (building prompts) and the AI calls. `models.py` holds the save format and the AI's response formats. `genres/` holds the genre packs. `samples.py` is a sample story shared by `preview.py` (`just prompts`) and `evals.py` (`just eval` scenarios) |
 | `games/soup/` | `game.py`: `SoupCore`. `judge.py` is the AI judge and puzzle writer, `puzzles/` the puzzle bank, `evals.py` the `just eval soup` scenarios |
 | `shells/` | `rooms/` (the server side): `lobby.py` and `room.py`, the lobby and rooms; a room holds one game's core, runs it with `runner.py` (in a background thread, telling everyone how it's going) and times turns with `countdown.py`. They don't know which games exist. `screen/` (one per browser tab): `client.py`, the flow of what to show when; `view.py`, the methods an interface implements (`View`); `premise.py`, the rules of the new story dialog. It doesn't know about rooms. The two only meet through `connection.py`. `web/`: the web server and the browser page; `web/hosting.py` is the one place that hands the lobby the games in `GAMES`, the API key, the shared call limit and where saves go |
@@ -92,7 +92,7 @@ They always go in the project folder (`settings.DATA_DIR`), whatever folder the 
 | File | Contents |
 |---|---|
 | `saves/team-<names>.<game>.json` | Each team's save for each game (several names are joined with `+`) |
-| `saves/team-<names>.<game>.log.jsonl` | One line per turn: players' actions, the changes the AI proposed and the program applied, and each AI call's kind (`kind`), seconds, token usage, and whether a second copy was sent (`hedged`). Look here when things feel slow or results look odd |
+| `saves/team-<names>.<game>.log.jsonl` | One line per turn: players' actions, the changes the AI proposed and the program applied, and each AI call's kind (`kind`), seconds and token usage. Look here when things feel slow or results look odd |
 | `server.log` | Output of the server started by `just start` |
 | `~/.config/story/config.toml` | The language and API key |
 

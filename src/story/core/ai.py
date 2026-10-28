@@ -5,12 +5,9 @@ this module knows nothing about game rules or what the prompts say.
 """
 
 import json
-import queue
 import re
-import threading
 import time
 from collections.abc import Callable
-from itertools import chain
 from pathlib import Path
 
 import httpx
@@ -18,14 +15,10 @@ from google import genai
 from google.genai import types
 
 from story.core.prompts import UI  # Error messages shown to players (story/core/ui/<lang>/core.md)
-from story.core.ratelimit import LimitedClient, NoSlot
 
 MODEL = "gemini-3.5-flash-lite"
 REQUEST_TIMEOUT = 40  # Seconds to wait for one AI request; Gemini sometimes hangs a minute or two, and resending is usually faster
 REQUEST_ATTEMPTS = 3  # How many times to send on a timeout or a busy server (429, 5xx), including the first
-# Gemini sometimes leaves a request waiting 15-20 seconds before answering, regardless of its size, while most answer in 1-3 seconds.
-# With no answer after this many seconds, send the same request again and use whichever answers first (streams: the first chunk)
-HEDGE_AFTER = 5
 
 
 def new_client(api_key: str | None) -> genai.Client:
@@ -94,57 +87,6 @@ def partial_bool(text: str, key: str) -> bool | None:
     return None if match is None else match.group(1) == "true"
 
 
-def first_of(start: Callable[[bool, Callable[[], None]], object], hedge_after: float | None, discard: Callable[[object], None] = lambda result: None):
-    """Run start(spare=False, sent) in the background; if it has no result hedge_after seconds after it was sent, run start(spare=True, sent)
-    as a second copy and return whichever finishes first. start calls sent() when its request actually goes out, so time spent queuing
-    for a rate limit slot doesn't count as slowness. A spare copy may raise NoSlot (the limit is full): then only the first copy counts.
-    Returns (result, whether a second copy was sent). An error only counts once every copy sent has failed; discard() gets the copy that lost."""
-    if hedge_after is None:
-        return start(False, lambda: None), False
-    results: queue.Queue = queue.Queue()
-    sent = threading.Event()
-
-    def run(spare: bool) -> None:
-        try:
-            results.put((True, start(spare, sent.set if not spare else lambda: None)))
-        except NoSlot:
-            results.put((None, None))
-        except Exception as e:
-            results.put((False, e))
-
-    def drop_late() -> None:
-        ok, late = results.get()
-        if ok:
-            discard(late)
-
-    threading.Thread(target=run, args=(False,), daemon=True).start()
-    while not sent.wait(0.05) and results.empty():  # Waiting in line for a slot isn't slowness: count from when it goes out
-        pass
-    hedged = False
-    try:
-        ok, value = results.get(timeout=hedge_after)
-    except queue.Empty:
-        threading.Thread(target=run, args=(True,), daemon=True).start()
-        hedged, pending, error = True, 2, None
-        while pending:
-            ok, value = results.get()
-            pending -= 1
-            if ok:
-                break
-            if ok is None:  # The spare copy found no free slot and wasn't sent
-                hedged = False
-            else:
-                error = value
-        else:
-            raise error
-        if pending:
-            threading.Thread(target=drop_late, daemon=True).start()
-        return value, hedged
-    if not ok:
-        raise value
-    return value, hedged
-
-
 class AICaller:
     """Every AI call goes through here: records the kind, the seconds it took, and the token usage Gemini reports (prompt, cached, output, thinking)
     into each turn's log, to find out where waiting time goes."""
@@ -179,41 +121,24 @@ class AICaller:
             self._draft_text = value
             self.on_change()
 
-    def generate(self, kind: str, hedge_after: float | None = HEDGE_AFTER, **request):
-        """A call that returns the whole result at once. hedge_after=None sends only one copy (for calls that are slow by nature)."""
+    def generate(self, kind: str, **request):
+        """A call that returns the whole result at once."""
         started = time.monotonic()
         try:
-            response, hedged = first_of(lambda spare, sent: self._send(request, spare, sent), hedge_after)
+            response = self.client.models.generate_content(**request)
         except Exception as e:  # Failed even after the resends: record the failed call too, written with the next turn's log line
             self.record(kind, started, None, error=str(e)[:200])
             raise_friendly(e)
-        self.record(kind, started, response, **({"hedged": True} if hedged else {}))
+        self.record(kind, started, response)
         return response
-
-    def _send(self, request: dict, spare: bool, sent: Callable[[], None]):
-        """One copy of a generate() request (see first_of); a LimitedClient waits for a slot first."""
-        if isinstance(self.client, LimitedClient):
-            return self.client.generate(request, spare, sent)
-        sent()
-        return self.client.models.generate_content(**request)
 
     def stream(self, kind: str, on_text, **request):
         """A streaming call: on each chunk, calls on_text with the full text so far. Returns (full text, last chunk). If on_text raises StopStream, stops and propagates."""
         started, text, last, extra = time.monotonic(), "", None, {}
         chunks = None
-
-        def open_stream(spare: bool, sent: Callable[[], None]):
-            if isinstance(self.client, LimitedClient):
-                return self.client.open_stream(request, spare, sent)
-            sent()
-            stream = self.client.models.generate_content_stream(**request)
-            return stream, next(stream, None)
-
         try:
-            (chunks, head), hedged = first_of(open_stream, HEDGE_AFTER, discard=lambda late: close(late[0]))
-            if hedged:
-                extra["hedged"] = True
-            for chunk in chain([head] if head is not None else [], chunks):
+            chunks = self.client.models.generate_content_stream(**request)
+            for chunk in chunks:
                 last = chunk
                 if piece := chunk.text:
                     text += piece

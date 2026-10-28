@@ -17,10 +17,6 @@ WINDOW = 60  # Seconds
 RETRIES = 3  # How many times to resend when Gemini refuses (429)
 
 
-class NoSlot(Exception):
-    """A spare copy of a slow request (see ai.first_of) found the limit full: it isn't sent, so it never makes the queue longer."""
-
-
 class RateLimit:
     """Called from background threads (the core calls the AI in a background thread), so it uses a threading lock."""
 
@@ -51,20 +47,14 @@ class RateLimit:
         if on_queue and queued:
             on_queue(False)
 
-    def call(self, send, on_queue=None, spare: bool = False, on_sent: Callable[[], None] | None = None):
-        """Send once there's a slot, resending on 429. on_sent() is called when the request actually goes out, after any queuing.
-        spare: a second copy of a slow request; sent only if a slot is free right now and never resent, otherwise raises NoSlot."""
+    def call(self, send, on_queue=None):
+        """Send once there's a slot, resending on 429."""
         for attempt in range(RETRIES + 1):
-            if not spare:
-                self.wait(on_queue)
-            elif self.take():
-                raise NoSlot
-            if on_sent:
-                on_sent()
+            self.wait(on_queue)
             try:
                 return send()
             except errors.ClientError as e:
-                if spare or e.code != 429 or attempt == RETRIES:
+                if e.code != 429 or attempt == RETRIES:
                     raise
                 delay = re.search(r"retry in ([\d.]+)s", str(e))
                 time.sleep(float(delay.group(1)) if delay else 30)
@@ -75,9 +65,7 @@ class RateLimit:
 
 
 class LimitedClient:
-    """A Gemini client whose calls go through a RateLimit. AICaller uses generate() and open_stream() directly, so that a slow request's
-    second copy only counts its wait from when the first actually went out, and is only sent if a slot is free (see ai.first_of).
-    models has the same methods as a Gemini client's, for code that just makes calls."""
+    """A Gemini client whose calls go through a RateLimit: models has the same methods as a Gemini client's."""
 
     def __init__(self, limit: RateLimit, client, on_queue: Callable[[bool], None] | None = None):
         self.limit, self.client, self.on_queue = limit, client, on_queue  # Keep client: when it's collected, it closes the connection
@@ -90,14 +78,14 @@ class LimitedClient:
 
         self.models = SimpleNamespace(generate_content=lambda **request: self.generate(request), generate_content_stream=stream)
 
-    def generate(self, request: dict, spare: bool = False, on_sent: Callable[[], None] | None = None):
-        return self.limit.call(lambda: self.client.models.generate_content(**request), self.on_queue, spare, on_sent)
+    def generate(self, request: dict):
+        return self.limit.call(lambda: self.client.models.generate_content(**request), self.on_queue)
 
-    def open_stream(self, request: dict, spare: bool = False, on_sent: Callable[[], None] | None = None):
+    def open_stream(self, request: dict):
         """A streaming request is only sent when the first chunk is read, so reading the first chunk counts as the call. Returns (chunks, first chunk)."""
 
         def first():
             chunks = self.client.models.generate_content_stream(**request)
             return chunks, next(chunks, None)
 
-        return self.limit.call(first, self.on_queue, spare, on_sent)
+        return self.limit.call(first, self.on_queue)

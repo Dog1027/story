@@ -27,7 +27,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 
 | 目錄 | 主要的檔案 |
 |---|---|
-| `core/` | `team.py`：`TeamGame`，每種玩法共用的流程（隊伍、接續存檔、收集每個人的行動、重來、再玩一次）。`reply.py`：`Reply`，每種玩法回給外殼的同一種回覆。`ai.py`：呼叫 Gemini（Gemini 偶爾讓請求排隊 15 秒以上，所以一段時間沒回應就再送一份，用先回來的）。`saves.py`、`prompts.py`（讀文字檔）、`vocab.py`（遊戲詞彙）、`evals.py`（評估的共用部分） |
+| `core/` | `team.py`：`TeamGame`，每種玩法共用的流程（隊伍、接續存檔、收集每個人的行動、重來、再玩一次）。`reply.py`：`Reply`，每種玩法回給外殼的同一種回覆。`ai.py`：呼叫 Gemini。`saves.py`、`prompts.py`（讀文字檔）、`vocab.py`（遊戲詞彙）、`evals.py`（評估的共用部分） |
 | `games/adventure/` | `game.py`：`AdventureCore`。`engine.py` 串起 `rules.py`（規則，純函式）、`prompting.py`（組提示詞）與 AI 呼叫。`models.py` 是存檔與 AI 回傳的格式。`genres/` 是題材包。`samples.py` 是範例故事，`preview.py`（`just prompts`）與 `evals.py`（`just eval` 的情境）共用 |
 | `games/soup/` | `game.py`：`SoupCore`。`judge.py` 是 AI 裁判與出題，`puzzles/` 是題庫，`evals.py` 是 `just eval soup` 的情境 |
 | `shells/` | `rooms/`（伺服器這一端）：`lobby.py`、`room.py`，大廳與房間，房間持有一局的核心，用 `runner.py` 在背景執行緒呼叫它並告訴大家進度，用 `countdown.py` 計時；不知道有哪些玩法。`screen/`（每個瀏覽器分頁一份）：`client.py` 是什麼時候顯示什麼的流程，`view.py` 是介面要實作的方法（`View`），`premise.py` 是新故事對話框的規則；不知道房間的存在。兩邊只透過 `connection.py` 溝通。`web/`：網頁伺服器與瀏覽器頁面；`web/hosting.py` 是唯一把 `GAMES` 裡的玩法、API key、共用的次數限制與存檔位置交給大廳的地方 |
@@ -91,7 +91,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 | 檔案 | 內容 |
 |---|---|
 | `saves/team-名字.玩法.json` | 每一隊每種玩法的存檔（好幾個人時名字用 `+` 串起來） |
-| `saves/team-名字.玩法.log.jsonl` | 每回合一行：玩家行動、AI 提議與程式套用的變化、每次 AI 呼叫的種類（`kind`）、秒數、token 用量，以及有沒有再送一份（`hedged`）。覺得慢或結果奇怪時看這裡 |
+| `saves/team-名字.玩法.log.jsonl` | 每回合一行：玩家行動、AI 提議與程式套用的變化、每次 AI 呼叫的種類（`kind`）、秒數與 token 用量。覺得慢或結果奇怪時看這裡 |
 | `server.log` | `just start` 的伺服器輸出 |
 | `~/.config/story/config.toml` | 語言與 API key |
 
