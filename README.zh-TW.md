@@ -61,7 +61,7 @@ src/story/
 
 | 想改什麼 | 在哪裡 |
 |---|---|
-| AI 的寫法（寫作規則、字數、節奏） | `src/story/games/adventure/prompts/`，先看裡面的 [README](src/story/games/adventure/prompts/README.md) |
+| AI 的寫法（寫作規則、字數、節奏） | `src/story/games/adventure/prompts/`，先看裡面的 [README](src/story/games/adventure/prompts/README.zh-TW.md) |
 | 海龜湯裁判的標準 | `src/story/games/soup/prompts/` |
 | 故事長度、傷勢規則 | `src/story/games/adventure/rules.py` |
 | 使用的模型 | `src/story/core/ai.py` |

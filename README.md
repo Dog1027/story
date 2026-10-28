@@ -61,7 +61,7 @@ Layers stack from the inside out: the core doesn't know which games exist, games
 
 | To change | Look in |
 |---|---|
-| How the AI writes (rules, length, pacing) | `src/story/games/adventure/prompts/`, starting with its [README](src/story/games/adventure/prompts/README.md) (in Chinese) |
+| How the AI writes (rules, length, pacing) | `src/story/games/adventure/prompts/`, starting with its [README](src/story/games/adventure/prompts/README.md) |
 | How strict the turtle soup judge is | `src/story/games/soup/prompts/` |
 | Story length, wound rules | `src/story/games/adventure/rules.py` |
 | The model | `src/story/core/ai.py` |

@@ -60,7 +60,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 
 所有文字都是 markdown，跟著用它的那一層放，每種語言一個資料夾（`zh-TW/`、`en/`），段落一樣：
 
-- 給 AI 的：`prompts/語言/`。冒險的怎麼改，見 `games/adventure/prompts/README.md`
+- 給 AI 的：`prompts/語言/`。冒險的怎麼改，見 `games/adventure/prompts/README.zh-TW.md`
 - 給玩家看的：`ui/語言/`
 
 每段以 `## 名稱` 開頭，`{名稱}` 是程式填入的變數，`<!-- -->` 是給寫文字的人看的說明，不會送給 AI。測試會檢查每種語言的段落與變數都一樣、程式用到的文字都存在。
