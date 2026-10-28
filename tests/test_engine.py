@@ -532,6 +532,19 @@ def test_no_second_copy_when_the_rate_limit_is_full(monkeypatch):
         first_of(lambda spare, sent: limit.call(fails, spare=spare, on_sent=sent), 0.05)
 
 
+def test_a_connection_cut_off_mid_answer_can_be_retried():
+    """Not just timeouts: a connection reset partway through a stream is also an AI failure players can retry, not a crash."""
+    import httpx
+
+    from story.core.ai import raise_friendly
+
+    for error in (httpx.ReadTimeout("slow"), httpx.ConnectError("down"), httpx.RemoteProtocolError("reset"), httpx.ReadError("broken")):
+        with pytest.raises(RuntimeError):
+            raise_friendly(error)
+    with pytest.raises(KeyError):
+        raise_friendly(KeyError("a bug stays a bug"))
+
+
 def test_overall_level_words_are_not_conditions():
     """The AI sometimes reports a status bar verdict (fine, badly hurt…) as a wound name: ignore it."""
     from story.games.adventure.models import ConditionChange

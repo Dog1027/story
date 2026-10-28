@@ -91,3 +91,5 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 `just test` 跑全部，約 10 秒。不會連到 Gemini，也不會動到你的存檔：AI 由假物件代替（`tests/conftest.py`），每個測試在暫存資料夾裡執行。真的 AI 寫得好不好用 `just eval` 檢查：情境寫在每種玩法自己的 `evals.py`，`story/evals.py` 把它們收集起來執行。
 
 每次 push 到 GitHub 時，GitHub Actions 會自動跑 `just lint` 與 `just test`（`.github/workflows/test.yml`）。
+
+程式出了意料之外的錯誤時（不是 AI 呼叫失敗），核心會從存檔還原這回合，讓玩家再試一次；房間也有最後一道保護，連線與房間都保留。完整的錯誤原因寫在伺服器的輸出（`just start` 時是 `server.log`）。

@@ -83,7 +83,11 @@ The server's Gemini API key is invalid or lacks permission. Please tell whoever 
 This turn didn't go through; please choose your action again. 
 
 ## timeout
-Gemini took too long to respond or couldn't be reached. Please try again later.
+Gemini took too long to respond, couldn't be reached, or the connection broke off. Please try again later.
+
+## unexpected
+<!-- The program itself failed (not an AI call): the turn has been restored and can be tried again -->
+a problem in the program itself (details are in the server's server.log)
 
 ## unparsable
 <!-- The AI's response was malformed. Variable: {reason} -->

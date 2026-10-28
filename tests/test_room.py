@@ -510,3 +510,20 @@ async def test_a_room_plays_turtle_soup_together(lobby):
     ended = await guest.reply(lambda r: r.phase == "ended")
     assert ended.ending.title == "小華 解開了謎題" and ended.ending.epilogue == PUZZLE.truth
     await host.expect(is_lobby("阿明 的房間"))  # Afterwards back to the waiting screen, where the game can be chosen again
+
+
+async def test_an_unexpected_error_in_the_room_keeps_everyone_connected(lobby, caplog):
+    """The last line of defence: if handling a message fails in a way nobody expected, the room and connections stay, and everyone gets their screen back."""
+    host, guest = await start_story(lobby)
+    await host.reply(lambda r: bool(r.narration))
+    await guest.reply(lambda r: bool(r.narration))
+    core = room_of(lobby).core
+    send_as = core.send_as
+    core.send_as = lambda name, text: {}["bug"]
+    await guest.send("2")
+    assert "伺服器出了點問題" in (await guest.expect(lambda m: m["type"] == "notice"))["text"]
+    assert (await host.reply(lambda r: r.actor == "阿明")).choices == ["阿明往上爬", "阿明躲起來"]  # Screens are put back
+    assert "unexpected error" in caplog.text and len(lobby.rooms) == 1
+    core.send_as = send_as
+    await guest.send("2")  # The connection still works
+    assert (await guest.reply(lambda r: not r.actor)).choices == []  # Acted: no choices left

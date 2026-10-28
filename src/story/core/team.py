@@ -9,6 +9,7 @@ view(), waiting(), failure replies, and building replies. Subclasses handle: wha
 the ending, the status bar, /help, plus the game's name (title) and the save format (state_class). A save must have names, premise, turn, game_over.
 """
 
+import logging
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -24,6 +25,11 @@ CONTINUE_CHOICES = [UI["choice_continue"], UI["choice_new_game"]]
 CONFIRM_CHOICES = [UI["choice_confirm"], UI["choice_cancel"]]
 PLAY_AGAIN_CHOICES = [UI["choice_play_again"]]
 FAILURES = (errors.APIError, RuntimeError)  # Calling the AI failed: stay in the same phase and let players retry
+log = logging.getLogger(__name__)
+
+
+class WrongUsage(ValueError):
+    """The shells called the core the wrong way (a bug in the calling code): raised as is, not turned into a reply."""
 
 
 class TeamGame:
@@ -107,7 +113,13 @@ class TeamGame:
             "ending": self._on_ending,
             "ended": self._on_ended,
         }[self._phase]
-        return handler(raw)
+        try:
+            return handler(raw)
+        except WrongUsage:
+            raise
+        except Exception as e:  # A bug, or an error nobody expected: restore and let players retry instead of ending the game
+            log.exception("unexpected error in phase %s for input %r", self._phase, raw)
+            return self._recover(e)
 
     def send_as(self, name: str, text: str) -> Reply:
         """Send input as a given player, in any order. Outside of play (premise, confirmations…), the same as send()."""
@@ -169,7 +181,7 @@ class TeamGame:
         else:
             actor = self._actor()
             if actor is None:
-                raise ValueError("With several players, actions must be sent with send_as(name, text) so it's clear whose action it is")
+                raise WrongUsage("With several players, actions must be sent with send_as(name, text) so it's clear whose action it is")
             self.pending[actor] = action
             if self.waiting():
                 return self._reply(**self._screen())  # Still waiting for others: shells show who hasn't acted using waiting()
@@ -222,6 +234,15 @@ class TeamGame:
         if self.state is None or self._phase not in ("playing", "ending"):
             return {}
         return {"actor": actor or "", "choices": self._choices(actor) if actor else [], "time_limit": self._time_limit()}
+
+    def _recover(self, e: Exception) -> Reply:
+        """An unexpected error: the state may be half changed, so restore it from the save and take back this turn's actions, like a failed AI call."""
+        if self.state is not None:
+            self.state = load(self.save_path, self.state_class) or self.state
+        self.pending = {}
+        playing = self._phase == "playing"
+        notice = UI["failed"].format(hint=UI["failed_turn"] if playing else "", error=UI["unexpected"])
+        return self._reply(error="api", notice=notice, **self._screen())
 
     def _failed(self, e: Exception, retry_screen, hint: str = "") -> Reply:
         """Calling the AI failed: stay in the same phase so players can retry."""

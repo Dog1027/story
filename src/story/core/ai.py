@@ -47,8 +47,8 @@ def is_key_error(e: Exception) -> bool:
 
 
 def raise_friendly(e: Exception) -> None:
-    """Still timing out or unreachable after the resends: turn it into an error the core handles; re-raise anything else as is."""
-    if isinstance(e, (httpx.TimeoutException, httpx.ConnectError)):
+    """Still timing out, unreachable or cut off mid-answer after the resends: turn it into an error the core handles; re-raise anything else as is."""
+    if isinstance(e, httpx.TransportError):  # Timeouts, failed connections, connections reset partway through a stream…
         raise RuntimeError(UI["timeout"]) from e
     raise e
 

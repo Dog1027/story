@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import html
 import json
+import logging
 import re
 import sys
 from pathlib import Path
@@ -105,6 +106,9 @@ def main() -> None:
     key = settings.api_key()
     if not key:
         sys.exit(UI["server_no_key"])
+
+    # Unexpected errors go to the output (server.log under just start) with the full traceback, to find out what happened
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     if args.host != "127.0.0.1":
         print(UI["server_open_warning"], flush=True)

@@ -29,6 +29,7 @@ Room → player
 """
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 
@@ -38,6 +39,7 @@ from story.shells.connection import Connection
 from story.shells.text import ui_text
 
 UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
+log = logging.getLogger(__name__)
 TITLES = {code: game.title for code, game in GAMES.items()}  # Game code → name
 STARTS = {UI["start_game"].format(game=title): code for code, title in TITLES.items()}  # The host picks the game on the waiting screen
 LEAVE = UI["leave_room"]
@@ -202,7 +204,10 @@ class Room:
     async def _on_send_message(self, name: str, message: dict) -> None:
         text = str(message.get("text", "")).strip()
         async with self._using_core():
-            await self._on_send(name, text, form=bool(message.get("form")), answer=bool(message.get("answer")))
+            try:
+                await self._on_send(name, text, form=bool(message.get("form")), answer=bool(message.get("answer")))
+            except Exception:
+                await self._recover(name, message)
         if self.on_change:
             await self.on_change()
 
@@ -368,8 +373,24 @@ class Room:
         await asyncio.sleep(seconds + TIMEOUT_GRACE)
         async with self._using_core():
             self.countdown = None
-            if self.core and self.core.phase == "playing" and self.core.waiting():
-                await self._route(await self._call(lambda: self.core.send("/timeout"), busy=True))
+            try:
+                if self.core and self.core.phase == "playing" and self.core.waiting():
+                    await self._route(await self._call(lambda: self.core.send("/timeout"), busy=True))
+            except Exception:
+                await self._recover("", {"type": "timeout"})
+
+    async def _recover(self, name: str, message: dict) -> None:
+        """The last line of defence: something nobody expected failed while handling a message (the core already turns its own errors into replies).
+        Log the details, tell people, and put everyone's current screen back, keeping the room and the connections."""
+        log.exception("unexpected error in %s's room handling %r from %r", self.host, message, name)
+        try:
+            for member in self._online_members():
+                await self._send_notice(member.name, UI["room_error"])
+                if self.core is not None and self.core.phase == "playing":
+                    await self._send_reply(member.name, self.core.view(member.name))
+            await self._broadcast_waiting()
+        except Exception:
+            log.exception("could not restore the screens after the error")
 
     def _stop_countdown(self) -> None:
         if self.countdown and self.countdown is not asyncio.current_task():

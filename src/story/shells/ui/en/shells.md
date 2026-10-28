@@ -150,6 +150,10 @@ The room is full (at most {max} players).
 <!-- Variable: {name} -->
 {name} went offline.
 
+## room_error
+<!-- An unexpected error while the room handled a message (details go to server.log): the room and connections are kept -->
+Something went wrong on the server and that didn't go through. Please try again.
+
 ## host_setting_up
 The host is setting up the game. Please wait.
 
