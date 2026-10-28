@@ -569,14 +569,13 @@ setInterval(() => {
 let closeCurrent = null;
 const sheetQueue = []; // When a dialog is already open, later ones wait in line instead of covering the one being answered
 
-// top: dialogs that need typing (name, story premise) appear at the top of the screen, so the phone keyboard sliding up from below doesn't cover them
-function openSheet(build, onClose, dismissible = true, top = false) {
+// Every dialog is centered on computers and comes up from the bottom on phones (style.css)
+function openSheet(build, onClose, dismissible = true) {
   if (closeCurrent) {
-    sheetQueue.push([build, onClose, dismissible, top]);
+    sheetQueue.push([build, onClose, dismissible]);
     return;
   }
   const overlay = $("overlay"), sheet = $("sheet");
-  overlay.classList.toggle("top", top);
   sheet.replaceChildren();
   let done = false;
   const close = (value) => {
@@ -669,7 +668,7 @@ function nameSheet({ id, hint, error, max_len }) {
     name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
     sheet.append(tag("h2", "", t("name_title")), tag("p", "hint", hint || t("name_hint")), name, errorLine);
     sheet.append(buttons([[t("leave"), () => close(null)], [t("enter"), submit, true]]));
-  }, (value) => answer(id, value), false, true);
+  }, (value) => answer(id, value), false);
 }
 
 
@@ -743,7 +742,7 @@ function premiseSheet({ id, default: initial, timed, genre, options, hints }) {
   }, (value) => {
     state.premise = null;
     answer(id, value);
-  }, false, true);
+  }, false);
 }
 
 // ---------- Notices ----------
