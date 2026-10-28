@@ -106,4 +106,5 @@ no content
 Help
 
 ## memory_title
-What the program remembers
+<!-- The title /state shows ("Current info" in the web page's top-right menu) -->
+Current info

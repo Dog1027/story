@@ -512,7 +512,6 @@ $("input-form").addEventListener("submit", (event) => {
     if (state.active >= 0) choose(state.active);
     return;
   }
-  if (text === "/help") return helpSheet();
   if (text.startsWith("/")) return send({ t: "command", text });
   send({ t: "act", text });
 });
@@ -629,8 +628,17 @@ function infoSheet(title, body) {
   });
 }
 
-function helpSheet() {
-  infoSheet(t("menu_help"), t("help"));
+// Changing names leaves the room, and the save belongs to the team's names, so it's like starting over: ask first
+function renameSheet() {
+  openSheet((sheet, close) => {
+    sheet.append(tag("h2", "", t("rename_question")), tag("p", "", t("rename_warning")));
+    sheet.append(buttons([[t("rename_no"), () => close(false), true], [t("rename_yes"), () => close(true)]]));
+  }, (sure) => {
+    if (!sure) return;
+    saveName(""); // Forget the name and reconnect: leaves the current room and asks for a name again
+    state.exited = true;
+    location.reload();
+  });
 }
 
 // The server decides whether a name can be used; if not, it asks again with the reason (error)
@@ -781,13 +789,9 @@ menu.addEventListener("click", (event) => {
   if (button.dataset.command) {
     menu.hidden = true;
     if (!state.busy && !state.typing) send({ t: "command", text: button.dataset.command });
-  } else if (button.dataset.local === "help") {
-    menu.hidden = true;
-    helpSheet();
   } else if (button.dataset.local === "rename") {
-    saveName(""); // Forget the name and reconnect: leaves the current room and asks for a name again
-    state.exited = true;
-    location.reload();
+    menu.hidden = true;
+    renameSheet();
   } else if (button.dataset.themeChoice) {
     const choice = button.dataset.themeChoice;
     if (choice === "system") delete document.documentElement.dataset.theme;

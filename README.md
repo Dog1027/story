@@ -43,7 +43,7 @@ Open `http://<this computer's IP>:8080` (locally <http://localhost:8080>) on a p
 
 ### Controls
 
-Click a choice (or press its number), or type your own action. Press Enter to speed up text. `/help` lists commands and `/state` shows what the program remembers, or use the ⋯ menu. Every turn saves automatically to `saves/team-<names>.<game>.json`.
+Click a choice (or press its number), or type your own action. Press Enter to speed up text. `/help` lists commands and `/state` shows the current info (bag, facts, key events…), or use the ⋯ menu. Every turn saves automatically to `saves/team-<names>.<game>.json`.
 
 ## For developers
 

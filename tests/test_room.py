@@ -171,7 +171,7 @@ async def test_only_host_answers_dialogs_and_restarts(lobby):
     await guest.expect(lambda m: m["type"] == "notice" and "只有房主" in m["text"])
     await guest.send("/timeout")  # Players can't call time for everyone
     await guest.send("/state")
-    assert (await guest.reply(lambda r: r.info is not None)).info[0] == "程式記住的東西"
+    assert (await guest.reply(lambda r: r.info is not None)).info[0] == "目前資訊"
     assert lobby.engine.rounds == []
 
 

@@ -111,7 +111,7 @@ def test_timeout_sends_timeout_action(core):
 def test_info_commands_do_not_advance_the_story(core):
     new_game(core)
     reply = core.send("/state")
-    assert reply.info[0] == "程式記住的東西" and reply.narration == ""
+    assert reply.info[0] == "目前資訊" and reply.narration == ""
     assert "[背包]\n  鑰匙" in reply.info[1]  # The status bar doesn't show the bag; the full contents are here
     assert reply.choices == ["往上爬", "檢查鑰匙"]
     assert core.send("/help").info[0] == "說明"

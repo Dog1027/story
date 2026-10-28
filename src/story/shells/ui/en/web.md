@@ -16,17 +16,28 @@ Story
 Menu
 
 ## menu_state
-What the program remembers
+<!-- Sends /state: the bag, established facts, key events, the story summary (in turtle soup, the scenario and the questions asked) -->
+Current info
 
 ## menu_restart
 Start over
 
-## menu_help
-Help
-
 ## menu_rename
-<!-- Forget the name this browser remembers and enter again (leaves the current room) -->
+<!-- Forget the name this browser remembers and enter again (leaves the current room); asks rename_question first -->
 Change name
+
+## rename_question
+Change your name?
+
+## rename_warning
+<!-- The confirmation before changing names: saves belong to the team's names, so a new name means starting over -->
+You'll leave the current room, and it's like starting over: the save belongs to your current name, so a new name can't continue it (come back with your current name later to pick it up again).
+
+## rename_yes
+Change name
+
+## rename_no
+Cancel
 
 ## menu_theme
 Appearance
@@ -134,16 +145,3 @@ fallen
 ## seconds
 <!-- Seconds left on the countdown. Variable: {seconds} -->
 {seconds}s
-
-## help
-Choices: tap one, or choose with ↑↓ in the input box and press Enter, or type its number.
-Your own action: just write what you want to do in the input box.
-While text is appearing: tap the story or press Enter to speed up, again to show it all.
-You can also scroll back while text is appearing; scroll to the bottom to follow new text again.
-
-The ⋯ menu at the top right:
-What the program remembers: inventory, established facts, key events, story summary
-Start over: abandon this story and begin a new one
-Appearance: follow the system, light, or dark
-
-Timed mode (chosen when starting a new story): a countdown appears when things get tense; when it runs out, you hesitated. Everyone in the room shares one countdown, which starts once everyone has read the text.

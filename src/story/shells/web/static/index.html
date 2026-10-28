@@ -57,7 +57,6 @@
   <div id="menu" class="menu" hidden role="menu">
     <button type="button" data-command="/state" role="menuitem">{{menu_state}}</button>
     <button type="button" data-command="/restart" role="menuitem">{{menu_restart}}</button>
-    <button type="button" data-local="help" role="menuitem">{{menu_help}}</button>
     <button type="button" data-local="rename" role="menuitem">{{menu_rename}}</button>
     <div class="menu-theme" role="group" aria-label="{{menu_theme}}">
       <span>{{menu_theme}}</span>
@@ -77,6 +76,6 @@
   <!-- Interface text (story/shells/ui/<lang>/dialogs.md, web.md): the server replaces names in double braces with this language's text; T is the whole string table -->
   <script>const T = {{texts}};</script>
   <!-- ?v= is a version number: bump it when app.js or style.css changes so browsers drop their cached copies -->
-  <script src="/static/app.js?v=26"></script>
+  <script src="/static/app.js?v=27"></script>
 </body>
 </html>

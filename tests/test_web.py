@@ -218,3 +218,15 @@ async def test_the_waiting_line_follows_the_opening_progress(isolated, monkeypat
         for stage in ("規劃故事大綱", "寫開場"):
             await browser.expect("busy_line", lambda m, stage=stage: m["text"] == f"故事生成中：{stage}…")
         await browser.expect("choices", lambda m: m["choices"] == ["阿明往上爬", "阿明躲起來"])
+
+
+async def test_the_menu_has_current_info_start_over_and_change_name():
+    """The ⋯ menu: current info, start over, change name (changing names asks first in the page: it's like starting over). No help item."""
+    import re
+
+    async with TestClient(TestServer(app())) as client:
+        page = await (await client.get("/")).text()
+        items = re.findall(r'role="menuitem">([^<]+)<', page)
+        assert items == ["目前資訊", "重新開始", "換名字"]
+        script = await (await client.get("/static/app.js")).text()
+        assert "renameSheet()" in script and "rename_warning" in script
