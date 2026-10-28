@@ -52,7 +52,10 @@ button { cursor: pointer; }
 }
 .bar, .status { max-width: var(--column); margin: 0 auto; }
 .bar { display: flex; align-items: center; gap: 12px; }
-.mark { font-family: var(--serif); font-weight: 600; letter-spacing: 0.08em; }
+.mark { font-family: var(--serif); font-weight: 600; letter-spacing: 0.08em; display: inline-flex; align-items: center; gap: 8px; }
+.logo { width: 24px; height: 24px; flex: none; }
+.logo-tile { fill: var(--accent); }
+.logo-ink { fill: var(--accent-ink); stroke: var(--accent-ink); }
 .turn { color: var(--muted); font-variant-numeric: tabular-nums; }
 .mode { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--sev-3) 14%, transparent); color: var(--sev-3); }
 .icon-button { margin-left: auto; border: 0; background: none; font-size: 20px; line-height: 1; padding: 4px 8px; border-radius: 8px; color: var(--muted); }

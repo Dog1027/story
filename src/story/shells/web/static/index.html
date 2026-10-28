@@ -7,7 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600&display=swap">
-  <link rel="stylesheet" href="/static/style.css?v=24">
+  <link rel="icon" href="/static/logo.svg?v=1" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css?v=25">
   <script>
     // Appearance: follow the system, or the light/dark choice the player made in the menu (stored only in this browser)
     try {
@@ -20,7 +21,20 @@
   <div id="app">
     <header id="top">
       <div class="bar">
-        <span class="mark">Story</span>
+        <span class="mark">
+          <!-- The same mark as logo.svg, drawn with the page's colors so it follows the light/dark theme -->
+          <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+            <rect class="logo-tile" x="1" y="1" width="30" height="30" rx="8"/>
+            <g class="logo-ink" stroke-linecap="round" stroke-linejoin="round">
+              <path stroke-width="0" d="M5.5 20.5c3.6-1.6 7.1-1.6 10.5 0.4v5.1c-3.4-2-6.9-2-10.5-0.4z"/>
+              <path stroke-width="0" d="M26.5 20.5c-3.6-1.6-7.1-1.6-10.5 0.4v5.1c3.4-2 6.9-2 10.5-0.4z"/>
+              <path fill="none" stroke-width="2.2" d="M16 19.5v-5.5M16 14l-3.8-4.3M16 14l5.4-6.1"/>
+              <circle cx="21.4" cy="7.9" r="2.3" stroke-width="0"/>
+              <circle cx="10.6" cy="7.9" r="1.7" fill="none" stroke-width="1.4"/>
+            </g>
+          </svg>
+          Story
+        </span>
         <span id="turn" class="turn"></span>
         <span id="mode" class="mode" hidden></span>
         <button id="menu-button" class="icon-button" type="button" aria-label="{{menu}}" aria-haspopup="true">⋯</button>

@@ -79,6 +79,14 @@ async def test_page_is_served_with_phone_support():
         assert script.status == 200 and script.headers["Cache-Control"] == "no-cache"  # After an update, no stale cached file is used
 
 
+async def test_page_has_the_logo():
+    async with TestClient(TestServer(app())) as client:
+        page = await (await client.get("/")).text()
+        assert 'rel="icon" href="/static/logo.svg' in page and 'class="logo"' in page  # The favicon and the header mark
+        logo = await client.get("/static/logo.svg")
+        assert logo.status == 200 and logo.content_type == "image/svg+xml"
+
+
 async def test_playing_alone_in_own_room(isolated, fake_core):
     async with TestClient(TestServer(app())) as client:
         browser = await enter_own_room(client)
