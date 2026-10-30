@@ -1,6 +1,7 @@
 """What the core sends back to the shells: Reply and the Status, Ending, InputMode and SetupForm inside it. Every game uses the same reply,
 so shells don't need to know which game is being played."""
 
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from typing import Literal
 
@@ -28,7 +29,7 @@ Tone = Literal["light", "moderate", "severe", "good", "bad", "plain", "muted"]
 ChangeGroups = list[tuple[str, list[tuple[str, Tone]]]]  # [(label, [(text, tone)])]
 
 
-def join(items) -> str:
+def join(items: Iterable[str]) -> str:
     return UI["list_sep"].join(items)
 
 
@@ -98,7 +99,7 @@ class Reply:
     info: tuple[str, str] | None = None  # Content to show separately: (title, body), e.g. memory or help
     form: SetupForm | None = None  # setup: a free-text form the game declares; None means pick one of choices
     ending: Ending | None = None  # ended: the epilogue and journey record
-    error: Literal["api"] | None = None  # Calling the AI failed (notice says why): stays in the same phase and can be retried
+    error: Literal["api"] | None = None  # The request failed and nothing changed (notice says why): calling the AI failed, or something unexpected broke; stays in the same phase and can be retried
     actor: str = ""  # The player who sent the input (the subject of send_as and view; the only player when alone): their name while they haven't acted this turn, and choices are theirs
     inputs: list[InputMode] = field(default_factory=list)  # When present, choices are input modes (see InputMode), not actions
 

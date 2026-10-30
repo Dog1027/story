@@ -22,7 +22,8 @@ class Vocab:
         return self.table[category][code]
 
     def code(self, category: str, text: str) -> str:
-        """This language's word → code (the AI returns words)."""
+        """This language's word → code (the AI returns words). The result is always one of the category's codes (checked in __init__),
+        so callers cast it to that category's Literal."""
         return next(c for c, w in self.table[category].items() if w == text)
 
     def words(self, category: str):

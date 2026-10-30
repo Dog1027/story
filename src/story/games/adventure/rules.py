@@ -3,10 +3,10 @@
 All pure functions that only read and write the game state (models.py); they never call the AI or build prompts.
 """
 
-from typing import Literal, get_args
+from typing import Literal, cast, get_args
 
 from story.core import prompts
-from story.games.adventure.models import VOCAB, Character, Condition, GameState, Level, Severity, TimeOfDay, Turn, code
+from story.games.adventure.models import VOCAB, Character, Condition, ConditionKind, GameState, Level, Severity, TimeOfDay, TimeSpan, Turn, code
 
 TARGET_TURNS = 30  # The planned story length (turns); past it, the AI is only reminded to wrap up, never forced to end
 ACT_TURNS = TARGET_TURNS // 4  # Expected turns per act; staying too long reminds the AI to move on
@@ -94,9 +94,9 @@ def advance_clock(state: GameState, time_passed: str, start_time_of_day: str) ->
     state.turn += 1
     is_opening_turn = state.turn == 1
     if state.minutes is None:  # The opening: the AI picks the time from the story, and no time passes this turn
-        state.minutes, elapsed = TIME_OF_DAY_START[code("time_of_day", start_time_of_day)] * HOUR, 0
+        state.minutes, elapsed = TIME_OF_DAY_START[cast(TimeOfDay, code("time_of_day", start_time_of_day))] * HOUR, 0
     else:
-        elapsed = TIME_SPANS[code("time_span", time_passed)]
+        elapsed = TIME_SPANS[cast(TimeSpan, code("time_span", time_passed))]
         state.minutes += elapsed
     return elapsed, is_opening_turn
 
@@ -135,7 +135,7 @@ def apply_condition_changes(who: Character, changed: list, removed_names: list[s
         name = prompts.clip(change.name.strip(), MAX_CONDITION_LEN)
         if not name or name in VOCAB.table["level"].values():  # Words like "fine" or "badly hurt" judge the overall condition; they aren't wounds
             continue
-        kind, severity = code("kind", change.kind), code("severity", change.severity)
+        kind, severity = cast(ConditionKind, code("kind", change.kind)), cast(Severity, code("severity", change.severity))
         existing = next((c for c in who.conditions if c.name == name), None)
         if existing:
             existing.kind = kind  # The AI may correct the category

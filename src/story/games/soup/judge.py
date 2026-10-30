@@ -4,11 +4,12 @@ The AI only proposes: it judges the answers and which key points were hit; wheth
 """
 
 from difflib import SequenceMatcher
+from typing import cast
 
 from google.genai import types
 
 from story.core.ai import MODEL, AICaller, AIFailed
-from story.games.soup.models import Judgement, Move, Puzzle, PuzzleCheck, PuzzleDraft, SoupState, code, word
+from story.games.soup.models import Judgement, Move, Puzzle, PuzzleCheck, PuzzleDraft, SoupAnswer, SoupState, code, word
 from story.games.soup.puzzles import MAX_POINTS, MIN_POINTS
 from story.games.soup.text import TEXT, UI
 
@@ -74,7 +75,7 @@ class SoupJudge(AICaller):
             if ruling is None:
                 raise AIFailed(UI["no_ruling"])  # Someone was left out: redo the turn rather than guess an answer
             if move.kind == "ask":
-                move.answer = code("soup_answer", ruling.answer)
+                move.answer = cast(SoupAnswer, code("soup_answer", ruling.answer))
             else:
                 move.points = sorted({c.point for c in ruling.points if 1 <= c.point <= total and c.stated and quoted(c.quote, move.text)})
                 move.hit = len(move.points)

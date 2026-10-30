@@ -11,6 +11,7 @@ import logging
 import random
 import threading
 from pathlib import Path
+from typing import Literal
 
 from story.core.ai import AIFailed, GeminiClient
 from story.core.reply import Ending, Reply, SetupForm, Status, Tone, join, pick_choice
@@ -18,7 +19,7 @@ from story.core.team import PLAY_AGAIN_CHOICES, ReplayFields, StatusFields, Team
 from story.games.adventure.engine import Engine
 from story.games.adventure.models import Character, GameState, word
 from story.games.adventure.prompting import AWAY_ACTION, TIMEOUT_ACTION, TURN
-from story.games.adventure.records import DEFAULT_PREMISE, change_groups, ending_record, memory_text, snapshot
+from story.games.adventure.records import DEFAULT_PREMISE, Snapshot, change_groups, ending_record, memory_text, snapshot
 from story.games.adventure.rules import condition_list, warning_level
 from story.games.adventure.text import UI
 
@@ -109,7 +110,7 @@ class AdventureCore(TeamGame[GameState]):
         self._save()
         return self._turn_reply(before=None)
 
-    def _ask_premise(self, suggestion: str = "", notice: str = "", error=None) -> Reply:
+    def _ask_premise(self, suggestion: str = "", notice: str = "", error: Literal["api"] | None = None) -> Reply:
         self._phase = "setup"
         if not (self.suggested or self.drawn or self.last_premise):  # The first new story: draw an opening at random
             self.drawn = self._draw_premise()
@@ -121,7 +122,7 @@ class AdventureCore(TeamGame[GameState]):
         characters = [Character(name=n) for n in self._players]
         return GameState(premise=premise, characters=characters, timed_mode=self.timed, **self._genre_fields())
 
-    def _genre_fields(self) -> dict:
+    def _genre_fields(self) -> dict[str, str | bool]:
         """The new game's genre fields: a chosen genre applies directly; with "auto", the AI picks from the catalog when planning the outline."""
         if self.genre in self.engine.genres:
             return {"genre": self.genre}
@@ -188,7 +189,7 @@ class AdventureCore(TeamGame[GameState]):
             ending=Ending(title=s.ending_title, epilogue=s.epilogue, record=ending_record(s)),
         )
 
-    def _turn_reply(self, before) -> Reply:
+    def _turn_reply(self, before: dict[str, Snapshot] | None) -> Reply:
         s = self.game
         changes = []
         if before is not None:

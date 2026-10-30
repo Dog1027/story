@@ -13,7 +13,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Protocol, TypedDict
+from typing import Literal, Protocol, TypedDict
 
 from story.core.ai import AIFailed, GeminiClient, is_key_error
 from story.core.reply import AWAY, MAX_PLAYERS, RESTART, TIMEOUT, UI, InputMode, Phase, Reply, Status, pick_choice
@@ -52,9 +52,19 @@ class AIProgress(Protocol):
 
 class GameMaker(Protocol):
     """How shells build a game (each game class in story.games.GAMES): the host's key, the team, where its save and log go,
-    and optionally a Gemini client to share (e.g. one limited by RateLimit). Games may take more keyword arguments for tests."""
+    and optionally a Gemini client to share (e.g. one limited by RateLimit). Games may take more keyword arguments for tests.
+    Shells also show its title and description in the game picker."""
+
+    title: str
+    description: str
 
     def __call__(self, api_key: str, players: list[str], *, save_path: Path, log_path: Path | None = None, client: GeminiClient | None = None) -> TeamGame: ...
+
+
+class RetryScreen(Protocol):
+    """Builds the screen to show again after a failure (see _failed), with these Reply fields added."""
+
+    def __call__(self, *, error: Literal["api"], notice: str) -> Reply: ...
 
 
 # What the hooks below return, spread into a Reply: the keys are Reply's field names
@@ -312,8 +322,8 @@ class TeamGame[S: TeamSave]:
         notice = UI["failed"].format(hint=hint, error=UI["unexpected"])
         return self._reply(error="api", notice=notice, **self._screen())
 
-    def _failed(self, e: Exception, retry_screen, hint: str = "") -> Reply:
-        """Calling the AI failed: stay in the same phase so players can retry."""
+    def _failed(self, e: AIFailed, retry_screen: RetryScreen, hint: str = "") -> Reply:
+        """Calling the AI failed: stay in the same phase so players can retry. retry_screen builds that phase's screen with the error and notice added."""
         notice = UI["key_invalid"] if is_key_error(e) else UI["failed"].format(hint=hint, error=str(e)[:300])
         return retry_screen(error="api", notice=notice)
 
