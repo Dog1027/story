@@ -14,7 +14,7 @@ from story.games.adventure.game import GENRE_AUTO, GENRE_NONE
 from story.shells.connection import Connection
 from story.shells.rooms.lobby import Lobby
 from story.shells.screen.client import Client
-from story.shells.screen.premise import PremiseForm
+from story.shells.screen.premise import PremiseFailed, PremiseForm
 from story.shells.screen.view import View, status_line
 from story.shells.web.hosting import game_choices
 
@@ -296,10 +296,12 @@ async def test_premise_form_drops_results_overtaken_by_a_newer_action():
     assert form.genre == "克蘇魯"
 
 
-async def test_premise_form_suggest_errors_are_raised_for_the_interface_to_show():
-    form, _ = premise_form(**{"/suggest": Reply(phase="setup", error="api", notice="額度用完了")})
-    with pytest.raises(RuntimeError, match="額度用完了"):
-        await form.suggest("")
+async def test_premise_form_errors_are_raised_for_the_interface_to_show():
+    failed = Reply(phase="setup", error="api", notice="額度用完了")
+    form, _ = premise_form(**{"/suggest": failed, "/random": failed, "/genre": failed})
+    for action in (form.suggest(""), form.reroll(""), form.change_genre("武俠", "")):
+        with pytest.raises(PremiseFailed, match="額度用完了"):
+            await action
 
 
 # ---------- The connection to the room ----------

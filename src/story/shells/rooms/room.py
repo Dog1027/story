@@ -175,7 +175,7 @@ class Room:
             await self._send_reply(name, self.core.view(name))
             await self._broadcast_waiting()
             if left := self.countdown.remaining():
-                await member.conn.send({"type": "timer", "seconds": left})
+                await self._safe_write(member, {"type": "timer", "seconds": left})
         elif name == self.host and self.host_reply:
             await self._send_reply(name, self.host_reply)
         else:
@@ -189,7 +189,8 @@ class Room:
         else:
             self.members[name].online = False
         online = self.online
-        if name == self.host:
+        was_host = name == self.host
+        if was_host:
             self.host = online[0] if online else ""
         if not online:
             return
@@ -197,7 +198,7 @@ class Room:
             await self._broadcast_lobby()
             return
         await self._broadcast_notice(UI["room_left"].format(name=name))
-        if self.host_reply and name != self.host:
+        if self.host_reply and was_host:
             await self._send_reply(self.host, self.host_reply)  # The old host left, so the new host answers
         self.countdown.left_room(name, online)  # They might have been the last one still reading
         # Stand in for them in the background: that may call the AI, and leaving must not wait for it (the lobby frees their name only

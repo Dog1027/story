@@ -233,6 +233,17 @@ async def test_host_leaving_passes_the_dialog_to_the_next_player(lobby):
     assert (await guest.reply()).phase == "setup"  # Hua becomes the host
 
 
+async def test_a_guest_leaving_does_not_reopen_the_hosts_dialog(lobby):
+    host, guest, other = await gather(lobby, "阿明", "小華", "小美")
+    await host.send("1")
+    await host.reply()  # The host gets the premise dialog
+    other.conn.close()
+    await host.expect(lambda m: m["type"] == "notice" and "小美" in m["text"])
+    await host.send("燈塔")
+    await host.expect(lambda m: m["type"] == "new_story")
+    assert not any(m["type"] == "reply" and m["reply"]["phase"] == "setup" for m in host.messages)  # Messages arrive in order: a resend would have come before new_story
+
+
 class TimedEngine(FakeGroupEngine):
     def start(self, state):
         super().start(state)

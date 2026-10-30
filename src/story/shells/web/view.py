@@ -13,14 +13,17 @@ Browser → server:
 """
 
 import asyncio
+import logging
 from dataclasses import asdict
 
 from aiohttp import web
 
 from story.core import ChangeGroups
 from story.shells.screen.client import Client
-from story.shells.screen.premise import PremiseForm
+from story.shells.screen.premise import PremiseFailed, PremiseForm
 from story.shells.screen.view import StatusLine, View
+
+log = logging.getLogger(__name__)
 
 
 class WebView(View):
@@ -86,7 +89,11 @@ class WebView(View):
                 premise = await form.suggest(text)
             else:
                 return
-        except Exception as e:  # Network, key and other errors only show a notice; they don't interrupt starting a new game
+        except (PremiseFailed, ConnectionError) as e:  # The AI failing or the room going away only shows a notice; it doesn't interrupt starting a new game
+            self.post("premise_update", req=req, text=None, error=str(e)[:200])
+            return
+        except Exception as e:  # A bug: still just a notice for the player, but logged so it can be found
+            log.exception("premise dialog action %r failed", action)
             self.post("premise_update", req=req, text=None, error=str(e)[:200])
             return
         self.post("premise_update", req=req, text=premise, error="")
@@ -184,9 +191,9 @@ class WebView(View):
             )
         finally:
             self.premise_form = None
-        if not answer:
-            return None
-        text, timed = answer  # The browser returns the text box content and whether it's timed; the genre went to form when it changed
+        if not isinstance(answer, list) or len(answer) != 2:
+            return None  # Closed (null), or not the [text, timed] pair the page sends
+        text, timed = answer  # The text box content and whether it's timed; the genre went to form when it changed
         return form.finish(str(text), bool(timed))
 
     async def ask_ending(self, title: str, record: str) -> bool:

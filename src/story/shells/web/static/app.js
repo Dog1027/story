@@ -701,7 +701,10 @@ function premiseSheet({ id, default: initial, timed, genre, options, hints }) {
       send({ t: "premise_event", req, text: area.value, ...fields });
     });
     state.premise = { update: (reply) => { const done = pending[reply.req]; delete pending[reply.req]; if (done) done(reply); } };
-    const show = (reply) => { if (reply.text !== null && reply.text !== undefined) area.value = reply.text; };
+    const show = (reply) => {
+      if (reply.error) toast(reply.error, { error: true });
+      else if (reply.text !== null && reply.text !== undefined) area.value = reply.text;
+    };
 
     select.addEventListener("change", async () => {
       genreHint.textContent = hints[select.value] || "";

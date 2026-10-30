@@ -6,9 +6,14 @@ from collections.abc import Awaitable, Callable
 from story.core import Reply, SetupForm
 
 
+class PremiseFailed(Exception):
+    """The game couldn't carry out a premise dialog action; the message is its notice for the player."""
+
+
 class PremiseForm:
     """The rules of the setup form dialog: the interface only draws it, passes the player's actions here, and updates the text box from what comes back.
-    None means leave the text box as is (the player edited it, or a later action has superseded this result)."""
+    None means leave the text box as is (the player edited it, or a later action has superseded this result). Every action raises PremiseFailed
+    when the game reports an error (the interface just shows a notice; starting a game isn't interrupted), and ConnectionError if the room is gone."""
 
     def __init__(self, reply: Reply, request: Callable[..., Awaitable[Reply]]):
         form = reply.form or SetupForm()
@@ -33,18 +38,19 @@ class PremiseForm:
         """Change the genre: the randomly drawn opening switches to the new genre's too (not if the player edited the text box). text is the text box's current content."""
         self.genre = choice
         reply = await self._ask(f"/genre {choice}")
-        return None if reply is None or reply.error or reply.form is None else self._new_default(reply.form.default, text)
+        return None if reply is None or reply.form is None else self._new_default(reply.form.default, text)
 
     async def reroll(self, text: str) -> str | None:
         """Another one: redraw from the genre packs' opening ideas without waiting for the AI. Pressing it always replaces the text box."""
         reply = await self._ask(f"/genre {self.genre}", "/random")
-        return None if reply is None or reply.error or reply.form is None else self._new_default(reply.form.default, text, replace=True)
+        return None if reply is None or reply.form is None else self._new_default(reply.form.default, text, replace=True)
 
     async def suggest(self, text: str) -> str:
-        """Suggest one: have the AI think of an opening, always replacing the text box. Raises RuntimeError on failure (the interface just shows a notice; starting a game isn't interrupted)."""
+        """Suggest one: have the AI think of an opening, always replacing the text box."""
         reply = await self._ask(f"/genre {self.genre}", "/suggest", latest_only=False)
-        if reply.error or reply.form is None:
-            raise RuntimeError(reply.notice)
+        assert reply is not None  # Not latest_only: never superseded
+        if reply.form is None:
+            raise PremiseFailed(reply.notice)
         return self._new_default(reply.form.suggestion, text, replace=True)
 
     def setup_commands(self, timed: bool) -> list[str]:
@@ -61,7 +67,11 @@ class PremiseForm:
         mine = self.latest
         async with self.asking:
             reply = await self.request(*commands)
-        return reply if not latest_only or mine == self.latest else None
+        if latest_only and mine != self.latest:
+            return None
+        if reply.error:
+            raise PremiseFailed(reply.notice)
+        return reply
 
     def _new_default(self, premise: str, text: str, replace: bool = False) -> str | None:
         edited = " ".join(text.split()) not in ("", " ".join(self.default.split()))
