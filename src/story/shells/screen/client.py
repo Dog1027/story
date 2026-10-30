@@ -22,6 +22,8 @@ from story.shells.screen.premise import PremiseForm
 from story.shells.screen.view import View, status_line
 from story.shells.text import UI
 
+MAX_INPUT_LEN = 1000  # Longest input passed on (an action, a question, a premise): it goes into prompts sent on the host's key
+
 
 class Client:
     """The flow of one browser tab interacting with a human player: connect to the web server's lobby and play in a room (shells/rooms/).
@@ -130,7 +132,7 @@ class Client:
 
     async def deliver(self, text: str, form: bool = False, answer: bool = False) -> None:
         """Pass a line of input to the room; the reply will be pushed back by the room. form marks an action in the new game dialog: it gets a reply only with answer."""
-        await self.room.send({"type": "send", "text": text, "form": form, "answer": answer})
+        await self.room.send({"type": "send", "text": text[:MAX_INPUT_LEN], "form": form, "answer": answer})
 
     def set_busy(self, busy: bool) -> None:
         self.busy = busy

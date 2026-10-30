@@ -27,6 +27,8 @@ def test_environment_variables_win(monkeypatch):
 
 def test_old_files_move_into_the_config(isolated):
     (isolated / "api_key").write_text("old-key\n")
+    assert settings.api_key() is None  # Reading never changes files: setup moves them on launch
+    settings.migrate()
     assert settings.api_key() == "old-key"
     assert not (isolated / "api_key").exists()
     assert 'api_key = "old-key"' in (isolated / "config.toml").read_text()
@@ -41,7 +43,7 @@ def test_sections_are_kept_as_tables(isolated):
 
 def test_first_launch_asks_only_for_what_is_missing(monkeypatch):
     """First launch: ask for the language and API key and save them; nothing already in the config is asked again."""
-    from story import setup
+    from story.shells import setup
 
     monkeypatch.delenv("STORY_LANG")
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
@@ -56,7 +58,7 @@ def test_first_launch_asks_only_for_what_is_missing(monkeypatch):
 
 
 def test_no_questions_when_not_in_a_terminal(monkeypatch):
-    from story import setup
+    from story.shells import setup
 
     monkeypatch.delenv("STORY_LANG")
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)  # E.g. just start in the background

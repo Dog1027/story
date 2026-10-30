@@ -15,7 +15,7 @@ Phase = Literal[
     "ended",  # The ending is ready; can play again
 ]
 
-MAX_PLAYERS = 4  # Most players on a team
+MAX_PLAYERS = 4
 
 # Changes between turns (Reply.changes). Each item carries a tone, and shells decide how to present it (e.g. which color):
 # light/moderate/severe = how bad a new condition is; good = better or healed; bad = worse; plain = ordinary (an item gained); muted = minor (an item lost)
@@ -40,7 +40,7 @@ class Status:
 
     items: list[tuple[str, str]]  # Items to list: (text, tone code). Conditions and severities in the adventure (body first, then mind; "fine" when there are none); question count and points hit in turtle soup
     warning: str = ""  # The overall condition code to warn the player about (serious, dying: another wound could kill); empty when not in danger
-    name: str = ""  # Name
+    name: str = ""
     alive: bool = True  # Whether the character is still alive
     warning_text: str = ""  # The word shown for the warning, e.g. "badly hurt"
 

@@ -49,17 +49,17 @@ class Engine(AICaller):
 
     def start(self, state: GameState) -> None:
         """Plan the hidden story outline first, then write the opening (with the "auto" genre, pick a genre before everything else).
-        This calls the AI several times and takes longer than a normal turn, so stage tells the shells how far along it is."""
+        This calls the AI several times and takes longer than a normal turn, so progress tells the shells how far along it is."""
         try:
             if state.genre_pending and self.genres:
-                self.stage = UI["stage_genre"]
+                self.progress = UI["stage_genre"]
                 self.pick_genre(state)
-            self.stage = UI["stage_arc"]
+            self.progress = UI["stage_arc"]
             self.plan_arc(state)
-            self.stage = UI["stage_opening"]
+            self.progress = UI["stage_opening"]
             self._advance(state, None)
         finally:
-            self.stage, self.draft = "", ""
+            self.progress, self.draft = "", ""
 
     def pick_genre(self, state: GameState) -> None:
         """The players chose "auto": give the AI the genre catalog and have it pick one for the premise. Pick first so the outline can use the genre's guide and twist ideas."""

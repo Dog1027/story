@@ -1,9 +1,9 @@
 <!--
 Text shared by the shells: the shared layer (story/shells/screen/client.py), the web lobby and rooms (story/shells/rooms/), name checks (players.py),
-and the web server (web/__init__.py). Same format as core.md.
+and the web server (web/server.py). Same format as core.md.
 -->
 
-<!-- ---------- First-launch setup (story/setup.py) ---------- -->
+<!-- ---------- First-launch setup (story/shells/setup.py) ---------- -->
 
 ## language_name
 <!-- This language's name, shown when choosing a language -->

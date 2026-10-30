@@ -101,19 +101,19 @@ class AICaller:
         self.client = client or new_client(api_key)
         self.log_path = log_path  # One log per team; None writes nothing (e.g. just prompts)
         self.calls: list[dict] = []  # AI calls since the last log line (cleared once written)
-        self.on_change: Callable[[], None] = lambda: None  # Called (from the worker thread) whenever stage or draft changes
-        self._stage_text = ""
+        self.on_change: Callable[[], None] = lambda: None  # Called (from the worker thread) whenever progress or draft changes
+        self._progress_text = ""
         self._draft_text = ""
 
     @property
-    def stage(self) -> str:
+    def progress(self) -> str:
         """What's happening now during a long job (e.g. "planning the story outline"), shown on the waiting screen; empty otherwise."""
-        return self._stage_text
+        return self._progress_text
 
-    @stage.setter
-    def stage(self, value: str) -> None:
-        if value != self._stage_text:
-            self._stage_text = value
+    @progress.setter
+    def progress(self, value: str) -> None:
+        if value != self._progress_text:
+            self._progress_text = value
             self.on_change()
 
     @property

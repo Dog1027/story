@@ -60,3 +60,21 @@ def test_every_games_scenarios_are_gathered_from_games():
     """Each game in GAMES with an evals.py next to it is gathered automatically: a new game's scenarios need no change to story/evals.py."""
     found = evals.scenarios()
     assert {"opening", "agency", "judge", "soup"} <= set(found)
+
+
+def test_soup_scenario_runs_with_a_fake_judge(monkeypatch, capsys):
+    """Every sample guess names a puzzle in the bank and has a valid range, and the scenario reports one check per guess."""
+    from story.games.soup.models import Judgement, Ruling
+
+    class SoupGemini(FakeGemini):
+        def generate_content(self, model, contents, config):
+            if getattr(config, "response_schema", None) is Judgement:  # Hits nothing: "incomplete" rows pass, "complete" ones fail
+                return type("Response", (), {"parsed": Judgement(rulings=[Ruling(move=i, answer="是", points=[]) for i in range(1, 20)])})()
+            return super().generate_content(model, contents, config)
+
+    monkeypatch.setattr(evals.settings, "api_key", lambda: "key")
+    monkeypatch.setattr(evals, "RPM", 60_000)
+    monkeypatch.setattr(evals, "new_client", lambda key: SoupGemini())
+    evals.main(["soup", "--runs", "1"])
+    out = capsys.readouterr().out
+    assert "hits 0-" in out and "Passed" in out

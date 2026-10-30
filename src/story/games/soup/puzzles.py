@@ -12,7 +12,13 @@ from story.games.soup.models import Puzzle
 from story.games.soup.text import UI
 
 BUILTIN_DIR = Path(__file__).resolve().parent / "puzzles" / prompts.LANGUAGE
-PERSONAL_DIR = settings.CONFIG_DIR / "puzzles" / prompts.LANGUAGE
+
+
+def personal_dir() -> Path:
+    """Your own puzzles, next to the config (read when loading, so it follows settings.CONFIG_DIR)."""
+    return settings.CONFIG_DIR / "puzzles" / prompts.LANGUAGE
+
+
 MIN_POINTS, MAX_POINTS = 2, 4  # How many key points
 
 
@@ -35,7 +41,7 @@ def load_puzzles(dirs: list[Path] | None = None) -> tuple[list[Puzzle], list[str
     """Read every puzzle; returns (puzzles, skipped puzzles with reasons). Later folders win (personal over built-in)."""
     found: dict[str, Puzzle] = {}
     problems: list[str] = []
-    for root in dirs if dirs is not None else [BUILTIN_DIR, PERSONAL_DIR]:
+    for root in dirs if dirs is not None else [BUILTIN_DIR, personal_dir()]:
         if not root.is_dir():
             continue
         for path in sorted(root.glob("*.md")):

@@ -83,12 +83,12 @@ class SoupJudge(AICaller):
         prompt = SOUP["make"].format(avoid="\n".join(f"- {t}" for t in avoid) or "-")
         try:
             for _ in range(MAKE_ATTEMPTS):
-                self.stage = UI["soup_stage_make"]
+                self.progress = UI["soup_stage_make"]
                 draft = self._write_puzzle(prompt)
                 if draft is None:
                     self.write_log({"puzzle": None, "problem": "unparsable"})
                     continue
-                self.stage = UI["soup_stage_check"]
+                self.progress = UI["soup_stage_check"]
                 problem = self._find_problem(draft)
                 self.write_log({"puzzle": draft.title, "problem": problem})  # Log every attempt, to help tune the check
                 if not problem:
@@ -96,7 +96,7 @@ class SoupJudge(AICaller):
                 prompt += "\n\n" + SOUP["retry"].format(problem=problem)
             return None
         finally:
-            self.stage = ""
+            self.progress = ""
 
     def _write_puzzle(self, prompt: str) -> Puzzle | None:
         """One attempt at a puzzle; None if the AI's answer can't be used (unparsable, blank parts, too few key points)."""

@@ -1,9 +1,9 @@
 <!--
 外殼共用的文字：共用層（story/shells/screen/client.py）、網頁版的大廳與房間（story/shells/rooms/）、名字檢查（players.py）、
-與網頁伺服器（web/__init__.py）。格式同 core.md。
+與網頁伺服器（web/server.py）。格式同 core.md。
 -->
 
-<!-- ---------- 第一次啟動時的設定（story/setup.py） ---------- -->
+<!-- ---------- 第一次啟動時的設定（story/shells/setup.py） ---------- -->
 
 ## language_name
 <!-- 選語言時顯示的這個語言的名稱 -->

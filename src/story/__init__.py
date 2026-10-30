@@ -2,7 +2,7 @@
 
 import sys
 
-from story import setup
+from story.shells import setup
 
 
 def main() -> None:

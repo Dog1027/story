@@ -6,8 +6,8 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from conftest import PUZZLE, FakeGroupEngine, FakeJudge
 
-import story.shells.web as web
 import story.shells.web.hosting as hosting
+import story.shells.web.server as web
 from story.games import AdventureCore, SoupCore
 
 
@@ -203,9 +203,9 @@ async def test_the_waiting_line_follows_the_opening_progress(isolated, monkeypat
 
     class SlowOpening(FakeGroupEngine):
         def start(self, state):
-            for self.stage in ("規劃故事大綱", "寫開場"):
+            for self.progress in ("規劃故事大綱", "寫開場"):
                 time.sleep(0.3)
-            self.stage = ""
+            self.progress = ""
             super().start(state)
 
     monkeypatch.setitem(hosting.GAMES, "adventure", fake_adventure(SlowOpening))

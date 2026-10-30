@@ -74,7 +74,7 @@ def test_rooms_and_screens_only_meet_through_a_connection():
 
 def test_interfaces_go_through_the_shared_client_layer():
     """The interface (the web View) only handles looks: it never builds a core, connects to rooms directly, or calls core methods; the flow always goes to the shared layer (screen/client.py).
-    The web server (web/__init__.py, web/hosting.py) opens rooms and connections and doesn't count as the interface."""
+    The web server (web/server.py, web/hosting.py) opens rooms and connections and doesn't count as the interface."""
     from pathlib import Path
 
     import story.shells.web.view

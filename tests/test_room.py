@@ -299,9 +299,9 @@ class SlowOpeningEngine(FakeGroupEngine):
     def start(self, state):
         import time
 
-        for self.stage in ("規劃故事大綱", "寫開場"):
+        for self.progress in ("規劃故事大綱", "寫開場"):
             time.sleep(0.5)
-        self.stage = ""
+        self.progress = ""
         super().start(state)
 
 

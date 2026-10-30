@@ -92,7 +92,7 @@ def test_every_ui_text_used_in_the_code_exists():
 
 
 def test_web_page_is_filled_with_the_language_texts():
-    from story.shells.web import PAGE
+    from story.shells.web.server import PAGE
 
     assert "{{" not in PAGE and 'lang="zh-Hant"' in PAGE and "const T = {" in PAGE
 

@@ -86,8 +86,8 @@ class TeamGame:
             return self._reply(choices=CONTINUE_CHOICES, notice=UI["found_save"].format(turn=state.turn, premise=state.premise))
         return self._new_game()
 
-    def action_for(self, text: str) -> str | None:
-        """The action this input stands for in the game (e.g. "2" → the second choice), so shells can show it before the reply arrives.
+    def action_for(self, text: str, name: str | None = None) -> str | None:
+        """The action this input from player name stands for in the game (e.g. "2" → their second choice); name may be left out when playing alone.
         None when it isn't an action (a command, blank, not in a game)."""
         raw = text.strip()
         if self._phase != "playing" or not raw:
@@ -96,7 +96,7 @@ class TeamGame:
             return self.timeout_action
         if raw == "/away":
             return self.away_action
-        return self._action(raw, self._actor())
+        return self._action(raw, self._actor(name))
 
     def send(self, text: str) -> Reply:
         """Send one input and get the reply. May call the AI, so it can take a few seconds."""
@@ -218,11 +218,12 @@ class TeamGame:
         self.pending = {}
         return self._reply(notice=UI["resumed"].format(premise=self.state.premise), **self._replay(), **self._screen())
 
-    def _actor(self) -> str | None:
-        """Whose input this is: the player given to send_as(), or the only player. None if they've already acted or are out."""
+    def _actor(self, name: str | None = None) -> str | None:
+        """Whose input this is: name if given, else the player given to send_as(), else the only player. None if they've already acted or are out."""
         if self.state is None:
             return None
-        name = self._as if self._as is not None else (self._players[0] if len(self._players) == 1 else None)
+        if name is None:
+            name = self._as if self._as is not None else (self._players[0] if len(self._players) == 1 else None)
         return name if name in self.waiting() else None
 
     def _screen(self) -> dict:

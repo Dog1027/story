@@ -21,10 +21,9 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
         monkeypatch.delenv(var, raising=False)
-    monkeypatch.setattr("story.settings.CONFIG_DIR", tmp_path)  # Can't see your config (config.toml)
+    monkeypatch.setattr("story.settings.CONFIG_DIR", tmp_path)  # Can't see your config (config.toml), genre packs or puzzles
     monkeypatch.setattr("story.settings.CONFIG_PATH", tmp_path / "config.toml")
     monkeypatch.setattr("story.settings.DATA_DIR", tmp_path)  # saves/ and eval_results/ go here, never the real ones
-    monkeypatch.setattr("story.games.adventure.genres.PERSONAL_DIR", tmp_path / "genres")  # Can't see your personal genre packs
     return tmp_path
 
 
@@ -132,18 +131,18 @@ def make_engine(*beats, genres=None, **kwargs) -> tuple[Engine, FakeGemini]:
 
 
 class Watched:
-    """Like AICaller: setting stage or draft calls on_change(), which a room sets through core.watch() to hear about progress."""
+    """Like AICaller: setting progress or draft calls on_change(), which a room sets through core.watch() to hear about progress."""
 
     on_change = staticmethod(lambda: None)
-    _stage_text = _draft_text = ""
+    _progress_text = _draft_text = ""
 
     @property
-    def stage(self):
-        return self._stage_text
+    def progress(self):
+        return self._progress_text
 
-    @stage.setter
-    def stage(self, value):
-        self._stage_text = value
+    @progress.setter
+    def progress(self, value):
+        self._progress_text = value
         self.on_change()
 
     @property
@@ -260,7 +259,7 @@ class FakeJudge(Watched):
     """A fake judge: questions are always answered "yes"; a guess containing 「全部」 ("all") hits every key point, otherwise one."""
 
     def __init__(self, puzzle=None, fail_with=None):
-        self.stage = ""
+        self.progress = ""
         self.puzzle, self.fail_with = puzzle, fail_with
         self.rounds: list[list[tuple[str, str, str]]] = []
         self.avoided: list[str] = []

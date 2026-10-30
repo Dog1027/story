@@ -255,7 +255,7 @@ class Room:
         if text == "/restart" and name != self.host:
             await self._send_notice(name, UI["host_only_restart"])
             return
-        if text.startswith("/") and self.core.action_for(text) is None:  # /state, /restart, or an unknown command: reply only to the sender
+        if text.startswith("/") and self.core.action_for(text, name) is None:  # /state, /restart, or an unknown command: reply only to the sender
             # (some games' actions start with a slash too, like turtle soup's /ask: those are actions, so the last one shows everyone the wait)
             reply = await self.runner.call(lambda: self.core.send_as(name, text))
             await self._route(reply, only=name)

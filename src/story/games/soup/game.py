@@ -54,7 +54,7 @@ class SoupCore(TeamGame):
 
     @property
     def progress(self) -> str:
-        return self.judge.stage
+        return self.judge.progress
 
     def watch(self, on_change) -> None:
         self.judge.on_change = on_change

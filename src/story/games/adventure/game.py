@@ -64,7 +64,7 @@ class AdventureCore(TeamGame):
 
     @property
     def progress(self) -> str:
-        return self.engine.stage
+        return self.engine.progress
 
     @property
     def draft(self) -> str:

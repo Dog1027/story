@@ -1,4 +1,5 @@
 """First-launch setup: ask for the language and API key in the terminal and save them to the config (story/settings.py).
+Runs on every launch, before anything imports the core; it also moves old settings files into the config.
 
 Only asks for what the config (and environment) doesn't have yet, so later launches don't ask again. Doesn't ask when not run in a terminal (e.g. a server started in the background).
 The language comes first: the program fixes the language when the core is imported, so this runs before that import and only then reads that language's text.
@@ -12,7 +13,7 @@ from pathlib import Path
 
 from story import settings
 
-LANGUAGES_DIR = Path(__file__).resolve().parent / "shells" / "ui"  # Only languages with interface text can be chosen
+LANGUAGES_DIR = Path(__file__).resolve().parent / "ui"  # Only languages with interface text can be chosen
 
 
 def language_names() -> dict[str, str]:
@@ -26,6 +27,7 @@ def language_names() -> dict[str, str]:
 
 def run() -> None:
     """Ask for the language and API key if the config doesn't have them (the web server calls the AI with the host's key)."""
+    settings.migrate()
     if not sys.stdin.isatty():
         return
     if not (settings.get("language") or "STORY_LANG" in os.environ):

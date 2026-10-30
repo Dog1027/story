@@ -20,19 +20,17 @@ CONFIG_DIR = Path.home() / ".config" / "story"
 DATA_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = CONFIG_DIR / "config.toml"
 KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
-OLD_FILES = {"api_key": "api_key"}  # Each setting used to have its own file; moved into config.toml when read
+OLD_FILES = {"api_key": "api_key"}  # Each setting used to have its own file; migrate() moves them into config.toml
 
 
 def load() -> dict:
-    """Read the config, flattened to {"section.name": value}; empty if there is none. An old api_key file is moved in first."""
+    """Read the config, flattened to {"section.name": value}; empty if there is none. Only reads: importing the core reads the language through here."""
     try:
         data = _flatten(tomllib.loads(CONFIG_PATH.read_text(encoding="utf-8")))
     except FileNotFoundError:
         data = {}
     except tomllib.TOMLDecodeError as e:
         raise SystemExit(f"{CONFIG_PATH} is not valid TOML: {e}") from e
-    if _migrate(data):
-        _write(data)
     return data
 
 
@@ -62,8 +60,9 @@ def api_key() -> str | None:
     return get("api_key")
 
 
-def _migrate(data: dict) -> bool:
-    changed = False
+def migrate() -> None:
+    """Move settings from the old one-file-per-setting layout into config.toml (setup.run() calls this on launch)."""
+    data, changed = load(), False
     for key, name in OLD_FILES.items():
         old = CONFIG_DIR / name
         if not old.is_file():
@@ -73,7 +72,8 @@ def _migrate(data: dict) -> bool:
             data[key] = value
         old.unlink()
         changed = True
-    return changed
+    if changed:
+        _write(data)
 
 
 def _flatten(table: dict, prefix: str = "") -> dict:

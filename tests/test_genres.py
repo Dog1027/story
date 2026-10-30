@@ -3,7 +3,7 @@
 from conftest import HERO, FakeEngine, beat, make_engine, solo
 
 from story.games import AdventureCore
-from story.games.adventure import GENRE_AUTO, GENRE_NONE
+from story.games.adventure.game import GENRE_AUTO, GENRE_NONE
 from story.games.adventure.genres import BUILTIN_DIR, MAX_GUIDE, load_genres
 from story.games.adventure.records import DEFAULT_PREMISE
 

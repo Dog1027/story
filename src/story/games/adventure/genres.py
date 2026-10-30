@@ -28,7 +28,13 @@ from story.games.adventure.text import UI  # Messages about genre pack format pr
 
 # A full set of genre packs per language (like the prompts; the language comes from story/settings.py)
 BUILTIN_DIR = Path(__file__).resolve().parent / "genres" / prompts.LANGUAGE
-PERSONAL_DIR = settings.CONFIG_DIR / "genres" / prompts.LANGUAGE
+
+
+def personal_dir() -> Path:
+    """Your own genre packs, next to the config (read when loading, so it follows settings.CONFIG_DIR)."""
+    return settings.CONFIG_DIR / "genres" / prompts.LANGUAGE
+
+
 # Length limits (characters in Chinese, words in English; see prompts.text_length)
 MAX_DESCRIPTION = 200  # Description: the whole catalog is sent every time an outline is planned
 MAX_GUIDE = 2000  # Writing guidance: sent every turn; too long slows things down and dilutes the other rules
@@ -106,7 +112,7 @@ def load_genres(dirs: list[Path] | None = None) -> tuple[dict[str, Genre], list[
     """Read every genre pack; returns (genre name → genre, skipped genres with reasons). Later folders win (personal over built-in)."""
     genres: dict[str, Genre] = {}
     problems: list[str] = []
-    for root in dirs if dirs is not None else [BUILTIN_DIR, PERSONAL_DIR]:
+    for root in dirs if dirs is not None else [BUILTIN_DIR, personal_dir()]:
         if not root.is_dir():
             continue
         for folder in sorted(p for p in root.iterdir() if p.is_dir()):

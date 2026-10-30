@@ -10,7 +10,7 @@ import story.shells.screen.client as client_module
 from story.core import Reply, Status
 from story.core.ai import AIFailed
 from story.games import AdventureCore
-from story.games.adventure import GENRE_AUTO, GENRE_NONE
+from story.games.adventure.game import GENRE_AUTO, GENRE_NONE
 from story.shells.connection import Connection
 from story.shells.rooms.lobby import Lobby
 from story.shells.screen.client import Client
@@ -315,6 +315,14 @@ async def test_room_hint_stops_waiting_once_the_story_ends():
     await client.show_reply(Reply(phase="ending"))
     hints = [c[1] for c in view.calls if c[0] == "set_hint"]
     assert hints[-1] == client_module.UI["hint_input"]
+
+
+async def test_long_input_is_cut_before_it_reaches_the_room():
+    """Whatever a browser sends, at most MAX_INPUT_LEN characters go on to the core (and into prompts on the host's key)."""
+    client = Client(RecordingView(), connect=None)
+    client.room, server = Connection.pair()
+    await client.send("長" * (client_module.MAX_INPUT_LEN + 50))
+    assert len((await server.receive())["text"]) == client_module.MAX_INPUT_LEN
 
 
 async def test_client_stops_taking_input_when_the_connection_closes():
