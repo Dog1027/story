@@ -7,9 +7,7 @@ from dataclasses import dataclass, field
 
 from story.core import ChangeGroups, Status
 from story.shells.screen.premise import PremiseForm
-from story.shells.text import ui_text
-
-UI = ui_text("shells")  # The shells' shared text (story/shells/ui/<lang>/shells.md)
+from story.shells.text import UI
 
 
 @dataclass
@@ -141,8 +139,8 @@ class View:
         """Show the ending and the journey record; returns whether to play again."""
         raise NotImplementedError
 
-    async def ask_name(self, error: str) -> str | None:
-        """Ask for a name; returns what the player typed (None if cancelled). error is why the last one couldn't be used, empty the first time."""
+    async def ask_name(self, error: str, max_len: int) -> str | None:
+        """Ask for a name of at most max_len characters; returns what the player typed (None if cancelled). error is why the last one couldn't be used, empty the first time."""
         raise NotImplementedError
 
     def exit(self) -> None:

@@ -4,11 +4,10 @@ The AI only proposes: it judges the answers and which key points were hit; wheth
 """
 
 from difflib import SequenceMatcher
-from pathlib import Path
 
 from google.genai import types
 
-from story.core.ai import MODEL, AICaller
+from story.core.ai import MODEL, AICaller, AIFailed
 from story.games.soup.models import Judgement, Move, Puzzle, PuzzleCheck, PuzzleDraft, SoupState, code, word
 from story.games.soup.puzzles import MAX_POINTS, MIN_POINTS
 from story.games.soup.text import TEXT, UI
@@ -45,9 +44,6 @@ def quoted(quote: str, guess: str) -> bool:
 
 
 class SoupJudge(AICaller):
-    def __init__(self, api_key: str | None = None, client=None, log_path: Path | None = None):
-        super().__init__(api_key, client, log_path)
-
     def judge(self, state: SoupState, moves: list[Move]) -> None:
         """Rule on this turn's questions and guesses, writing the answers and key points hit into moves."""
         listed = "\n".join(
@@ -68,13 +64,13 @@ class SoupJudge(AICaller):
             ),
         )
         if not isinstance(response.parsed, Judgement):
-            raise RuntimeError(UI["soup_no_ruling"])
+            raise AIFailed(UI["soup_no_ruling"])
         rulings = {r.move: r for r in response.parsed.rulings}
         total = len(state.puzzle.key_points)
         for i, move in enumerate(moves, 1):
             ruling = rulings.get(i)
             if ruling is None:
-                raise RuntimeError(UI["soup_no_ruling"])  # Someone was left out: redo the turn rather than guess an answer
+                raise AIFailed(UI["soup_no_ruling"])  # Someone was left out: redo the turn rather than guess an answer
             if move.kind == "ask":
                 move.answer = code("soup_answer", ruling.answer)
             else:
@@ -88,12 +84,12 @@ class SoupJudge(AICaller):
         try:
             for _ in range(MAKE_ATTEMPTS):
                 self.stage = UI["soup_stage_make"]
-                draft = self._draft(prompt)
+                draft = self._write_puzzle(prompt)
                 if draft is None:
                     self.write_log({"puzzle": None, "problem": "unparsable"})
                     continue
                 self.stage = UI["soup_stage_check"]
-                problem = self._problem(draft)
+                problem = self._find_problem(draft)
                 self.write_log({"puzzle": draft.title, "problem": problem})  # Log every attempt, to help tune the check
                 if not problem:
                     return draft
@@ -102,7 +98,8 @@ class SoupJudge(AICaller):
         finally:
             self.stage = ""
 
-    def _draft(self, prompt: str) -> Puzzle | None:
+    def _write_puzzle(self, prompt: str) -> Puzzle | None:
+        """One attempt at a puzzle; None if the AI's answer can't be used (unparsable, blank parts, too few key points)."""
         response = self.generate(
             "puzzle",
             model=WRITER_MODEL,
@@ -122,7 +119,7 @@ class SoupJudge(AICaller):
             return None
         return Puzzle(title=draft.title.strip(), surface=draft.surface.strip(), truth=draft.truth.strip(), key_points=points)
 
-    def _problem(self, puzzle: Puzzle) -> str:
+    def _find_problem(self, puzzle: Puzzle) -> str:
         """Check a puzzle: an empty string if it holds up, otherwise what's wrong."""
         response = self.generate(
             "puzzle_check",

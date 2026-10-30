@@ -25,8 +25,8 @@ from story.games.adventure.rules import (
     body_score,
     ending_allowed,
     mind_conditions,
+    parts_to_compact,
     time_of_day,
-    to_compact,
 )
 from story.games.adventure.text import TEXT
 
@@ -75,7 +75,7 @@ def names_text(names: list[str]) -> str:
     return TURN["names_sep"].join(names)
 
 
-def character_status(c: Character) -> dict:
+def character_facts(c: Character) -> dict:
     """One character in the game state: body, mind, overall (how far from death), bag."""
     key, empty = STATUS_KEYS, STATUS_EMPTY
     if not c.alive:
@@ -149,7 +149,7 @@ class PromptBuilder:
 
     def compaction(self, state: GameState) -> str:
         """When the story log gets too long: fold the oldest turns, older key events and facts into the long-term summary."""
-        turns, old_events, old_flags = to_compact(state)
+        turns, old_events, old_flags = parts_to_compact(state)
         old = old_events + old_flags
         parts = [MEMORY["summary"].format(summary=state.summary or MEMORY["summary_none"])]
         if turns:
@@ -193,7 +193,7 @@ class PromptBuilder:
             key["turn"]: state.turn,
             key["time"]: time_text(state),
             key["flags"]: state.flags or [STATUS_EMPTY["flags"]],
-            key["characters"]: [character_status(c) for c in state.characters],
+            key["characters"]: [character_facts(c) for c in state.characters],
         }
         return CONTEXT["status"].format(json=json.dumps(status, ensure_ascii=False, separators=(",", ":")))
 

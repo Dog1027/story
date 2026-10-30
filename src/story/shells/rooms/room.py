@@ -36,15 +36,19 @@ from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from story.core import MAX_PLAYERS, Game, Reply, pick_choice
+from story.core import MAX_PLAYERS, Reply, TeamGame, pick_choice
 from story.shells.connection import Connection
 from story.shells.rooms.countdown import Countdown
 from story.shells.rooms.runner import CoreRunner
-from story.shells.text import ui_text
+from story.shells.text import UI
 
-UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
 log = logging.getLogger(__name__)
 LEAVE = UI["leave_room"]
+
+
+# make_core(players, on_queue, game) builds a game's core: game is the code of one of the room's GameChoices;
+# on_queue(queued) lets the screen show "queued" while an AI call waits in line
+MakeCore = Callable[[list[str], Callable[[bool], None], str], TeamGame]
 
 
 @dataclass(frozen=True)
@@ -67,11 +71,10 @@ class Room:
     def __init__(
         self,
         games: list[GameChoice],
-        make_core: Callable[[list[str], Callable[[bool], None], str], Game],
+        make_core: MakeCore,
         on_change: Callable[[], Awaitable[None]] | None = None,
     ):
-        """games are the games the host can pick. make_core(players, on_queue, game) builds this game's core: game is the code of one of games;
-        on_queue(queued) lets the screen show "queued" while an AI call waits in line.
+        """games are the games the host can pick, and make_core builds the one picked (see MakeCore).
         on_change() is awaited after input that may change what the lobby shows (a game started, back to waiting)."""
         self.games = {g.code: g for g in games}
         self.starts = {UI["start_game"].format(game=g.title): g.code for g in games}  # The options that start each game
@@ -81,7 +84,7 @@ class Room:
         self.game = ""  # The name of this game (shown on the lobby's room card)
         self.members: dict[str, Member] = {}  # In the order they came in; people who disconnect mid-game are kept so they can reconnect
         self.host = ""
-        self.core: Game | None = None
+        self.core: TeamGame | None = None
         self.host_reply: Reply | None = None  # The screen waiting for the host's answer (save, premise, confirm restart), resent when the host changes
         self.lock = asyncio.Lock()  # Held while using the core (see _using_core); messages that don't need the core never wait for it
         self.runner = CoreRunner(self._broadcast)  # Calls the core in a background thread and tells everyone how it's going
@@ -262,14 +265,14 @@ class Room:
     async def _act(self, name: str, text: str) -> None:
         resolving = self.core.waiting() == [name]
         await self._route(await self.runner.call(lambda: self.core.send_as(name, text), busy=resolving), only=name)
-        await self._fill_offline()
 
     async def _fill_offline(self) -> None:
-        """Everyone online has acted and only offline people are left: send "away" for them so the turn can advance."""
-        if self.core is None or self.core.phase != "playing" or not self.online:
-            return
-        waiting = self.core.waiting()
-        if waiting and not any(self.members[n].online for n in waiting if n in self.members):
+        """Everyone online has acted and only offline people are left: send "away" for them, one at a time, so the turn can advance.
+        Runs whenever someone is done with the core (see _using_core)."""
+        while self.core is not None and self.core.phase == "playing" and self.online:
+            waiting = self.core.waiting()
+            if not waiting or any(self.members[n].online for n in waiting if n in self.members):
+                return
             await self._act(waiting[0], "/away")  # The core decides the text for the AI
 
     # ---------- Replies ----------
@@ -310,11 +313,15 @@ class Room:
             # endlessly (and an epilogue that fails calls the AI every time); anyone can send something to try again
             await self._route(await self.runner.call(lambda: self.core.send(""), busy=True))
         elif phase == "ended":
-            self.core = None  # Back to the waiting screen; the same people can play again
-            self.runner.attach(None)
-            for name in [m.name for m in self.members.values() if not m.online]:
-                del self.members[name]
-            await self._broadcast_lobby()
+            await self._back_to_waiting()
+
+    async def _back_to_waiting(self) -> None:
+        """The game is over: drop the core and anyone offline, and show the waiting screen; the same people can play again."""
+        self.core = None
+        self.runner.attach(None)
+        for name in [m.name for m in self.members.values() if not m.online]:
+            del self.members[name]
+        await self._broadcast_lobby()
 
     async def _send_reply(self, name: str, reply: Reply) -> None:
         member = self.members.get(name)
@@ -326,7 +333,7 @@ class Room:
 
     async def _time_up(self) -> None:
         async with self._using_core():
-            self.countdown.over()  # Only now: while waiting for the core, a turn that advanced still stops (cancels) this countdown
+            self.countdown.detach()  # Only now: while waiting for the core, a turn that advanced still stops (cancels) this countdown
             try:
                 if self.core and self.core.phase == "playing" and self.core.waiting():
                     await self._route(await self.runner.call(lambda: self.core.send("/timeout"), busy=True))

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from google.genai import types
 
-from story.core.ai import MODEL, AICaller, StopStream, partial_bool, partial_string
+from story.core.ai import MODEL, AICaller, AIFailed, StopStream, partial_bool, partial_string
 from story.games.adventure.genres import Genre, load_genres
 from story.games.adventure.models import Epilogue, GameState, GenrePick, StoryArc, StoryBeat, Turn
 from story.games.adventure.prompting import MEMORY, SYSTEM_PROMPT, TURN, PromptBuilder, clock_text, format_actions
@@ -22,7 +22,7 @@ from story.games.adventure.rules import (
     clamp_time_limit,
     ending_allowed,
     needs_compaction,
-    to_compact,
+    parts_to_compact,
 )
 from story.games.adventure.text import UI
 
@@ -43,7 +43,7 @@ class Engine(AICaller):
     ):
         super().__init__(api_key, client, log_path)
         self.genres = load_genres()[0] if genres is None else genres  # Genre packs (see genres.py)
-        self.build = PromptBuilder(self.genres)  # Builds the prompts
+        self.build = PromptBuilder(self.genres)
 
     # ---------- Public interface ----------
 
@@ -63,26 +63,21 @@ class Engine(AICaller):
 
     def pick_genre(self, state: GameState) -> None:
         """The players chose "auto": give the AI the genre catalog and have it pick one for the premise. Pick first so the outline can use the genre's guide and twist ideas."""
-        picked = ""
-        if self.genres:
-            response = self.generate(
-                "genre",
-                model=MODEL,
-                contents=self.build.pick_genre(state),
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=GenrePick,
-                    thinking_config=types.ThinkingConfig(thinking_level="low"),
-                ),
-            )
-            if isinstance(response.parsed, GenrePick):
-                picked = response.parsed.genre.strip()
+        response = self.generate(
+            "genre",
+            model=MODEL,
+            contents=self.build.pick_genre(state),
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=GenrePick,
+                thinking_config=types.ThinkingConfig(thinking_level="low"),
+            ),
+        )
+        picked = response.parsed.genre.strip() if isinstance(response.parsed, GenrePick) else ""
         state.genre, state.genre_pending = (picked if picked in self.genres else ""), False  # Not in the catalog (or blank): no genre
 
     def plan_arc(self, state: GameState) -> None:
         """Have the AI plan the story outline. If it fails before the opening, a later turn makes one from the story so far and picks which act to continue from by the turn number."""
-        if state.genre_pending:
-            self.pick_genre(state)
         response = self.generate(
             "arc",
             model=MODEL,
@@ -119,7 +114,7 @@ class Engine(AICaller):
         )
         text = (response.text or "").strip().strip("「」\"")
         if not text:
-            raise RuntimeError(UI["no_suggestion"])
+            raise AIFailed(UI["no_suggestion"])
         return text
 
     def write_epilogue(self, state: GameState) -> None:
@@ -131,7 +126,7 @@ class Engine(AICaller):
             config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, response_mime_type="application/json", response_schema=Epilogue),
         )
         if not isinstance(response.parsed, Epilogue):
-            raise RuntimeError(UI["no_epilogue"])
+            raise AIFailed(UI["no_epilogue"])
         state.ending_title, state.epilogue = response.parsed.title.strip(), response.parsed.text.strip()
         self.write_log({"turn": state.turn, "epilogue": state.ending_title})
 
@@ -142,10 +137,10 @@ class Engine(AICaller):
         prompt = self.build.turn(state, actions)
         try:
             # game_over is the first field the AI writes: an early ending is caught before any narration appears, so players never see the discarded version
-            return self.stream_beat(SYSTEM_PROMPT, prompt, stop_on_ending=not ending_allowed(state, state.turn + 1))
+            return self.stream_beat(prompt, stop_on_ending=not ending_allowed(state, state.turn + 1))
         except EndingTooEarly:
             self.draft = ""
-            return self.stream_beat(SYSTEM_PROMPT, prompt + "\n\n" + TURN["early_ending_retry"], kind="rewrite")
+            return self.stream_beat(prompt + "\n\n" + TURN["early_ending_retry"], kind="rewrite")
 
     def _advance(self, state: GameState, actions: dict[str, str] | None) -> None:
         beat = self._next_beat(state, actions)
@@ -210,40 +205,40 @@ class Engine(AICaller):
             "time": clock_text(state.minutes),
         })
 
-    def stream_beat(self, system: str, prompt: str, kind: str = "turn", stop_on_ending: bool = False, prefix: str = "") -> StoryBeat:
-        """A streaming call returning one turn's structured response (StoryBeat). Updates draft (with prefix in front) as narration arrives, so shells can show it early.
+    def stream_beat(self, prompt: str, kind: str = "turn", stop_on_ending: bool = False) -> StoryBeat:
+        """A streaming call returning one turn's structured response (StoryBeat). Updates draft as narration arrives, so shells can show it early.
         With stop_on_ending, stops as soon as the AI declares the ending (EndingTooEarly)."""
 
         def on_text(text: str) -> None:
             if stop_on_ending and partial_bool(text, "game_over") is True:
                 raise EndingTooEarly
             if (narration := partial_string(text, "narration")) is not None:
-                self.draft = prefix + narration
+                self.draft = narration
 
         text, last = self.stream(
             kind,
             on_text,
             model=MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(system_instruction=system, response_mime_type="application/json", response_schema=StoryBeat),
+            config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, response_mime_type="application/json", response_schema=StoryBeat),
         )
         try:
             return StoryBeat.model_validate_json(text)
         except ValueError as e:
             reason = last.candidates[0].finish_reason if last is not None and last.candidates else UI["no_content"]
-            raise RuntimeError(UI["unparsable"].format(reason=reason)) from e
+            raise AIFailed(UI["unparsable"].format(reason=reason)) from e
 
     # ---------- Memory compaction ----------
 
     def needs_compaction(self, state: GameState) -> bool:
+        """Whether compact_memory() has anything to do. Part of the engine's interface to the game, so the game never reaches into rules.py
+        and the test engines can stand in for it."""
         return needs_compaction(state)
 
     def compact_memory(self, state: GameState) -> None:
         """When the story log gets too long, fold the oldest turns (down to half), older key events and facts into the long-term summary.
-        The core calls this in the background while players read. Rare: a 30-turn story is only about 7,000–8,000 characters."""
-        if not needs_compaction(state):
-            return
-        turns, old_events, old_flags = to_compact(state)
+        The core calls this in the background while players read, only when needs_compaction(). Rare: a 30-turn story is only about 7,000–8,000 characters."""
+        turns, old_events, old_flags = parts_to_compact(state)
         response = self.generate(
             "compaction",
             model=MODEL,

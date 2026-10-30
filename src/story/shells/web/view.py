@@ -18,7 +18,7 @@ from dataclasses import asdict
 from aiohttp import web
 
 from story.core import ChangeGroups
-from story.shells.screen.client import MAX_NAME_LEN, Client
+from story.shells.screen.client import Client
 from story.shells.screen.premise import PremiseForm
 from story.shells.screen.view import StatusLine, View
 
@@ -66,7 +66,7 @@ class WebView(View):
         elif kind in ("act", "command") and self.client.ready:
             text = str(message.get("text", "")).strip()
             if text:
-                self.spawn(self.client.act(text) if kind == "act" else self.client.command(text))
+                self.spawn(self.client.act(text) if kind == "act" else self.client.send(text))  # A command isn't shown in the story area
         elif kind == "premise_event" and self.premise_form:
             self.spawn(self.answer_premise(self.premise_form, message))
 
@@ -192,8 +192,8 @@ class WebView(View):
     async def ask_ending(self, title: str, record: str) -> bool:
         return bool(await self.ask("ending", title=title, record=record))
 
-    async def ask_name(self, error: str) -> str | None:
-        raw = await self.ask("name", error=error, max_len=MAX_NAME_LEN)
+    async def ask_name(self, error: str, max_len: int) -> str | None:
+        raw = await self.ask("name", error=error, max_len=max_len)
         return None if raw is None else str(raw)
 
     def exit(self) -> None:

@@ -6,3 +6,4 @@ from pathlib import Path
 from story.core import Texts
 
 ui_text = Texts(Path(__file__).resolve().parent).ui
+UI = ui_text("shells")  # The text shared by the screen flow, rooms and web server (shells.md)

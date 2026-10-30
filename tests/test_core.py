@@ -3,6 +3,7 @@
 import pytest
 from conftest import HERO, FakeEngine, InvalidKeyError
 
+from story.core.ai import AIFailed
 from story.core.saves import load
 from story.games import AdventureCore
 from story.games.adventure.models import GameState
@@ -28,6 +29,14 @@ def new_game(core, *inputs):
 
 
 # ---------- New game ----------
+
+
+def test_a_broken_save_is_moved_aside_and_the_team_starts_over(engine, isolated):
+    """A save that can't be read (broken, or from an older format) doesn't stop the team from playing, and isn't deleted."""
+    (isolated / "save.json").write_text("{not json", encoding="utf-8")
+    core = AdventureCore("test", [HERO], engine=engine, save_path=isolated / "save.json")
+    assert core.start().phase == "setup"
+    assert (isolated / "save.json.broken").read_text(encoding="utf-8") == "{not json"
 
 
 def test_first_reply_asks_for_premise(core):
@@ -167,7 +176,7 @@ def test_invalid_key_keeps_state_and_can_retry(core, engine, isolated):
 
 def test_other_api_error(core, engine):
     new_game(core)
-    engine.fail_with = RuntimeError("模型輸出無法解析")
+    engine.fail_with = AIFailed("模型輸出無法解析")
     reply = core.send("1")
     assert reply.error == "api" and "模型輸出無法解析" in reply.notice
 

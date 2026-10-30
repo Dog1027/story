@@ -8,6 +8,7 @@ import pytest
 # The language is fixed at import time: tests always use Chinese, whatever your config or environment chooses
 os.environ["STORY_LANG"] = "zh-TW"
 
+from story.core.ai import AIFailed
 from story.games.adventure.engine import Engine
 from story.games.adventure.models import Character, Condition, GameState, GenrePick, StoryArc, StoryBeat, Turn
 from story.games.adventure.prompting import format_actions
@@ -240,7 +241,7 @@ class FakeGroupEngine(Watched):
         state.ending_title, state.epilogue = "燈塔雙人行", "兩人的故事結束了。"
 
 
-class InvalidKeyError(RuntimeError):
+class InvalidKeyError(AIFailed):
     """Simulates Gemini reporting an invalid API key."""
 
     code = 400

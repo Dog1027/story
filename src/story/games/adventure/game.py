@@ -7,6 +7,7 @@ A reply is the narration plus extra data (choices, the status bar, the countdown
 The API key, player names, the countdown and the typing effect belong to the shells, not here.
 """
 
+import logging
 import random
 import threading
 from pathlib import Path
@@ -20,6 +21,7 @@ from story.games.adventure.records import DEFAULT_PREMISE, change_groups, ending
 from story.games.adventure.rules import condition_list, warning_level
 from story.games.adventure.text import UI
 
+log = logging.getLogger(__name__)
 GENRE_AUTO, GENRE_NONE = "auto", "none"  # The two special genre options: AI picks from the premise, or no genre (shown as genre_label())
 
 
@@ -74,6 +76,7 @@ class AdventureCore(TeamGame):
     # ---------- New game: the story premise ----------
 
     def _new_game(self) -> Reply:
+        self._wait_compaction()  # The last game's compaction must not save over the new game
         if self.state is not None:
             self.last_premise = self.state.premise  # Play again keeps the last game's premise
         return self._ask_premise()
@@ -224,7 +227,7 @@ class AdventureCore(TeamGame):
 
     def _status(self) -> dict:
         s = self.state
-        return {"turn": s.turn, "timed": s.timed_mode, "characters": [character_status(c) for c in s.characters]}
+        return {"turn": s.turn, "timed": s.timed_mode, "characters": [status_bar(c) for c in s.characters]}
 
     def _next_timed(self) -> bool:
         return self.timed
@@ -259,8 +262,9 @@ class AdventureCore(TeamGame):
         def run() -> None:
             try:
                 self.engine.compact_memory(state)
-            except Exception:
-                return  # A failure is fine; it's retried next turn
+            except Exception:  # A failure is fine (it's retried next turn), but log why
+                log.exception("memory compaction failed")
+                return
             if state is self.state:  # If a new game started meanwhile, don't overwrite the save with the old one
                 self._save()
 
@@ -273,7 +277,7 @@ class AdventureCore(TeamGame):
             self._compaction = None
 
 
-def character_status(c: Character) -> Status:
+def status_bar(c: Character) -> Status:
     """One character's status for the shells to show (one item in Reply.characters)."""
     warning = warning_level(c) if c.alive else ""
     return Status(items=condition_list(c) or [(word("level", "healthy"), "good")], warning=warning, name=c.name,

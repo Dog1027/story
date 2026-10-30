@@ -156,7 +156,7 @@ class SoupCore(TeamGame):
             lines.append(UI["soup_solved"].format(names=join(self._who(n) for n in s.winners)))
         elif last and s.game_over:
             lines.append(UI["soup_all_gave_up"])
-        elif any(m.kind == "give_up" for m in moves) and not (last and s.game_over):
+        elif any(m.kind == "give_up" for m in moves):
             lines.append(UI["soup_give_up_pending"])
         return "\n\n".join(lines)
 

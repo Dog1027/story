@@ -1,10 +1,13 @@
 """Saves: write a game's state (a pydantic model) to JSON and read it back. Each game has its own save format; this only reads and writes files."""
 
+import logging
 import os
 import tempfile
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+
+log = logging.getLogger(__name__)
 
 
 def save(state: BaseModel, path: Path) -> None:
@@ -20,8 +23,14 @@ def save(state: BaseModel, path: Path) -> None:
         raise
 
 
-def load(path: Path, kind: type[BaseModel]):
-    """Read a save; None if there is none. kind is the save format (GameState for the adventure, SoupState for turtle soup)."""
+def load[S: BaseModel](path: Path, kind: type[S]) -> S | None:
+    """Read a save; None if there is none. kind is the save format (GameState for the adventure, SoupState for turtle soup).
+    A save that can't be read (broken, or from an older format) counts as none: it's renamed to *.broken so nothing is lost, and the team can start over."""
     if not path.exists():
         return None
-    return kind.model_validate_json(path.read_text(encoding="utf-8"))
+    try:
+        return kind.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValidationError):
+        log.exception("could not read the save %s; moved it aside", path)
+        path.replace(path.with_name(path.name + ".broken"))
+        return None

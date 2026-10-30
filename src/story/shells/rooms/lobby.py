@@ -29,21 +29,19 @@ Lobby → player
 """
 
 import asyncio
-from collections.abc import Callable
 
-from story.core import MAX_PLAYERS, Game, pick_choice
+from story.core import MAX_PLAYERS, pick_choice
 from story.shells.connection import Connection
 from story.shells.players import InvalidName, check_name
-from story.shells.rooms.room import GameChoice, Room
-from story.shells.text import ui_text
+from story.shells.rooms.room import GameChoice, MakeCore, Room
+from story.shells.text import UI
 
-UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
 MAX_ROOMS = 10  # Most rooms at once: everyone shares one key, and too many rooms means constant queuing
 
 
 class Lobby:
-    def __init__(self, games: list[GameChoice], make_core: Callable[[list[str], Callable[[bool], None], str], Game]):
-        """games are the games a room's host can pick; make_core(players, on_queue, game) builds a game's core. See Room.
+    def __init__(self, games: list[GameChoice], make_core: MakeCore):
+        """games are the games a room's host can pick; make_core builds a game's core. See Room.
         The web server decides both (story.shells.web.hosting): the lobby itself doesn't know which games exist."""
         self.games = games
         self.make_core = make_core
@@ -73,54 +71,65 @@ class Lobby:
     # ---------- Connections ----------
 
     async def serve(self, conn: Connection) -> None:
+        """One player's connection, from entering a name until it ends."""
         name = None
         try:
-            while name is None:  # If the name can't be used, let the player try another
-                message = await conn.receive()
-                if not message or message.get("type") != "join":
-                    return
-                raw, token = message.get("name", ""), str(message.get("token", ""))[:64]
-                async with self.lock:
-                    try:
-                        claimed = check_name(raw)
-                    except InvalidName as e:
-                        await conn.send({"type": "rejected", "reason": str(e)})
-                        continue
-                    old = self.people.get(claimed) if token and self.tokens.get(claimed) == token else None  # The same browser again
-                    if old is None and claimed in self.people:
-                        await conn.send({"type": "rejected", "reason": UI["room_name_taken"]})
-                        continue
-                    name = claimed
-                    if old is not None:  # Replace the old connection: take the same seat without leaving, so the room doesn't close for being empty
-                        await self._send_to(old, {"type": "replaced"})
-                        old.close()
-                    else:
-                        self.where[name] = None
-                    self.people[name], self.tokens[name] = conn, token
-                    await conn.send({"type": "joined"})
-                    room = self.where[name]
-                    back = room or next((r for r in self.rooms if r.playing and name in r.members), None)
-                if room is not None:
-                    self.shown.pop(name, None)
-                    await room.add(name, conn)
-                elif back:  # Someone who disconnected mid-game is back: straight to their room
-                    await self._enter(name, back)
-                else:
-                    await self._show_rooms(clear_for=name)
+            name = await self._join(conn)
+            if name is None:
+                return
             while message := await conn.receive():
                 await self._on_message(name, message)
         except ConnectionError:
             pass
         finally:
             if name and self.people.get(name) is conn:  # Replaced by a new connection: nothing to clean up, the seat already belongs to it
-                await self._leave_room(name, back_to_lobby=False)
-                async with self.lock:
-                    del self.people[name], self.where[name], self.tokens[name]
-                    self.options.pop(name, None)
-                    self.shown.pop(name, None)
-                await self._show_rooms()
+                await self._forget(name)
             conn.close()
             self.links.pop(conn, None)
+
+    async def _join(self, conn: Connection) -> str | None:
+        """Take a name for this connection, letting the player try another until one can be used; None if they leave first.
+        Then put them where they belong: their seat (same browser again), their room (back mid-game), or the lobby."""
+        while True:
+            message = await conn.receive()
+            if not message or message.get("type") != "join":
+                return None
+            raw, token = message.get("name", ""), str(message.get("token", ""))[:64]
+            async with self.lock:
+                try:
+                    name = check_name(raw)
+                except InvalidName as e:
+                    await conn.send({"type": "rejected", "reason": str(e)})
+                    continue
+                old = self.people.get(name) if token and self.tokens.get(name) == token else None  # The same browser again
+                if old is None and name in self.people:
+                    await conn.send({"type": "rejected", "reason": UI["room_name_taken"]})
+                    continue
+                if old is not None:  # Replace the old connection: take the same seat without leaving, so the room doesn't close for being empty
+                    await self._send_to(old, {"type": "replaced"})
+                    old.close()
+                else:
+                    self.where[name] = None
+                self.people[name], self.tokens[name] = conn, token
+                await conn.send({"type": "joined"})
+                room = self.where[name]
+            if room is not None:
+                self.shown.pop(name, None)
+                await room.add(name, conn)
+            elif back := next((r for r in self.rooms if r.playing and name in r.members), None):  # Disconnected mid-game: straight back
+                await self._enter(name, back)
+            else:
+                await self._show_rooms(clear_for=name)
+            return name
+
+    async def _forget(self, name: str) -> None:
+        """Their connection ended: leave their room (a game in progress keeps their seat) and free the name."""
+        await self._leave_room(name, back_to_lobby=False)
+        async with self.lock:
+            del self.people[name], self.where[name], self.tokens[name]
+            self.options.pop(name, None)
+            self.shown.pop(name, None)
+        await self._show_rooms()
 
     # ---------- Input ----------
 

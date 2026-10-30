@@ -8,6 +8,7 @@ import pytest
 from conftest import AI_PUZZLE, PUZZLE, FakeJudge
 
 from story.core import prompts
+from story.core.ai import AIFailed
 from story.games.soup import SoupCore
 from story.games.soup.judge import SoupJudge
 from story.games.soup.models import Judgement, Move, PointCheck, PuzzleCheck, PuzzleDraft, Ruling, SoupState
@@ -86,7 +87,7 @@ def test_the_truth_is_revealed_only_when_everyone_gives_up_in_the_same_round(iso
 def test_a_failed_ruling_takes_back_the_whole_round(isolated):
     judge = FakeJudge()
     core, _ = started(isolated, players=("阿明", "小華"), judge=judge)
-    judge.fail_with = RuntimeError("裁判當機")
+    judge.fail_with = AIFailed("裁判當機")
     core.send_as("阿明", "/ask 一")
     reply = core.send_as("小華", "/ask 二")
     assert reply.error == "api" and core.waiting() == ["阿明", "小華"]  # Everyone acts again
@@ -102,7 +103,7 @@ def test_ai_puzzles_and_falling_back_to_the_bank(isolated):
     reply = core.send("2")
     assert "【AI 的題目】" in reply.narration and judge.avoided == ["空號"]  # Don't repeat a puzzle from the bank
 
-    for made, note in ((None, "不夠合理"), (RuntimeError("額度用完"), "額度用完")):
+    for made, note in ((None, "不夠合理"), (AIFailed("額度用完"), "額度用完")):
         (isolated / "soup.json").unlink()  # The last game's save: otherwise it first asks whether to continue
         core = soup(isolated, judge=FakeJudge(puzzle=made))
         core.start()

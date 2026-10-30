@@ -4,24 +4,22 @@ how it's going while they wait. It knows nothing about the room's members; it on
 import asyncio
 from collections.abc import Awaitable, Callable
 
-from story.core import Game, Reply
-from story.shells.text import ui_text
-
-UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
+from story.core import Reply, TeamGame
+from story.shells.text import UI
 
 
 class CoreRunner:
     def __init__(self, broadcast: Callable[[dict], Awaitable[None]]):
         """broadcast(message) sends a message to everyone in the room."""
         self.broadcast = broadcast
-        self.core: Game | None = None
+        self.core: TeamGame | None = None
         self.busy = False  # Everyone sees "writing the story" (a call made with busy=True is running)
         self.queued = False  # An AI call is queued (all rooms share one key's call limit)
         self.reported = ("", "")  # The progress and draft everyone was last told about during this call
         self.loop: asyncio.AbstractEventLoop | None = None  # For news from the thread running the core (see changed)
         self.tasks: set[asyncio.Task] = set()  # Progress reports on their way
 
-    def attach(self, core: Game | None) -> None:
+    def attach(self, core: TeamGame | None) -> None:
         """The core to run (None once the game is over). Hears about its progress from now on."""
         self.core = core
         if core is not None:

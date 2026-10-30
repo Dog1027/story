@@ -40,10 +40,15 @@ def is_key_error(e: Exception) -> bool:
     return code in (400, 401, 403) and ("API key" in text or "API_KEY" in text)
 
 
+class AIFailed(RuntimeError):
+    """Calling the AI didn't give a usable result (timed out, cut off, unparsable, left something out); the message is shown to players.
+    Games raise it for their own checks too. The core treats it as retryable; any other RuntimeError is a bug."""
+
+
 def raise_friendly(e: Exception) -> NoReturn:
     """Still timing out, unreachable or cut off mid-answer after the resends: turn it into an error the core handles; re-raise anything else as is."""
     if isinstance(e, httpx.TransportError):  # Timeouts, failed connections, connections reset partway through a stream…
-        raise RuntimeError(UI["timeout"]) from e
+        raise AIFailed(UI["timeout"]) from e
     raise e
 
 
@@ -92,7 +97,7 @@ class AICaller:
     """Every AI call goes through here: records the kind, the seconds it took, and the token usage Gemini reports (prompt, cached, output, thinking)
     into each turn's log, to find out where waiting time goes."""
 
-    def __init__(self, api_key: str | None, client, log_path: Path | None):
+    def __init__(self, api_key: str | None = None, client=None, log_path: Path | None = None):
         self.client = client or new_client(api_key)
         self.log_path = log_path  # One log per team; None writes nothing (e.g. just prompts)
         self.calls: list[dict] = []  # AI calls since the last log line (cleared once written)

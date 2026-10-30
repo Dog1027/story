@@ -11,7 +11,7 @@ TIMEOUT_GRACE = 1  # Wait a little after the countdown ends to make up for netwo
 class Countdown:
     def __init__(self, announce: Callable[[int], Awaitable[None]], time_up: Callable[[], Awaitable[None]]):
         """announce(seconds) tells everyone the countdown started; time_up() is awaited when it runs out (the room sends /timeout).
-        time_up() should call over() once it may act, i.e. once it has the core: until then stop() still cancels it."""
+        time_up() should call detach() once it may act, i.e. once it has the core: until then stop() still cancels it."""
         self.announce, self.time_up = announce, time_up
         self.task: asyncio.Task | None = None
         self.reading = False  # Started, but still waiting for everyone to finish reading
@@ -51,7 +51,7 @@ class Countdown:
             self.task.cancel()
         self.task, self.reading = None, False
 
-    def over(self) -> None:
+    def detach(self) -> None:
         """Called by time_up() once it may act: from now on stop() no longer cancels it (it may even start the next countdown)."""
         if self.task is asyncio.current_task():
             self.task = None

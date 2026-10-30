@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from conftest import ARC, FakeGroupEngine, InvalidKeyError, cond, make_engine, pbeat, upd
 
+from story.core.ai import AIFailed
 from story.core.saves import load
 from story.games import AdventureCore
 from story.games.adventure.models import Character, GameState
@@ -226,7 +227,7 @@ def test_failed_timeout_round_does_not_get_stuck(core, engine):
     core.start()
     core.send("")
     act(core, "1")
-    engine.fail_with = RuntimeError("503 UNAVAILABLE")
+    engine.fail_with = AIFailed("503 UNAVAILABLE")
     reply = core.send("/timeout")
     assert reply.error == "api" and "請重新選擇行動" in reply.notice
     assert core.waiting() == ["阿明", "小華"]

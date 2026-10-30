@@ -20,12 +20,7 @@ from story.shells.connection import Connection
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 from story.shells.screen.premise import PremiseForm
 from story.shells.screen.view import View, status_line
-from story.shells.text import ui_text
-
-# Rules the interface's dialogs also need (which names are allowed) always come from here
-__all__ = ["MAX_NAME_LEN", "Client"]
-
-UI = ui_text("shells")  # The shells' shared text (story/shells/ui/<lang>/shells.md)
+from story.shells.text import UI
 
 
 class Client:
@@ -67,7 +62,7 @@ class Client:
             self.view.exit()
             return
         self.my_name = name
-        inbox = asyncio.create_task(self.process_inbox())
+        inbox = asyncio.create_task(self.show_queued())
         try:
             await self.listen()
         finally:
@@ -81,7 +76,7 @@ class Client:
         """Ask for a name and take its seat in the lobby, asking again with the reason when it can't be used."""
         error = ""
         while True:
-            raw = await self.view.ask_name(error)
+            raw = await self.view.ask_name(error, MAX_NAME_LEN)
             if raw is None:
                 return None
             try:
@@ -122,10 +117,6 @@ class Client:
             return
         mode = self.inputs[self.input_mode]
         await self.send(f"{mode.command} {text}", echo=UI["input_echo"].format(label=mode.label, text=text))
-
-    async def command(self, text: str) -> None:
-        """A command (/state, /restart, etc.), not shown in the story area."""
-        await self.send(text)
 
     async def send(self, text: str, echo: str = "") -> None:
         """Send a line of text and show the reply. echo is the player's action to show in the story area first."""
@@ -174,7 +165,7 @@ class Client:
         progress = self.progress
         return UI["busy"].format(label=self.busy_label or UI["busy_default"], progress=UI["busy_progress"].format(progress=progress) if progress else "")
 
-    async def handle(self, reply: Reply) -> None:
+    async def show_reply(self, reply: Reply) -> None:
         """Decide what happens next from the reply's phase."""
         if reply.phase != "playing":
             self.waiting = []  # This game's actions are over (the ending, back to the premise…): the hint no longer says "waiting for X"
@@ -213,8 +204,11 @@ class Client:
         if answer is None:
             return
         premise, want_timed, genre = answer
-        for command in [f"/timed {'on' if want_timed else 'off'}"] * (want_timed != reply.timed) + [f"/genre {genre}"]:
-            await self.deliver(command, form=True)  # The mode and genre chosen in the premise dialog: no need to show the reply
+        commands = [f"/genre {genre}"]  # The mode and genre chosen in the premise dialog: no need to show the reply
+        if want_timed != reply.timed:
+            commands.insert(0, f"/timed {'on' if want_timed else 'off'}")
+        for command in commands:
+            await self.deliver(command, form=True)
         self.clear_story(premise)
         await self.send(premise)
 
@@ -354,12 +348,13 @@ class Client:
         self.waiting = names
         self.refresh_hint()
 
-    async def process_inbox(self) -> None:
+    async def show_queued(self) -> None:
+        """Show queued replies and lobby screens one at a time, each once the last has finished showing."""
         while True:
             message = await self.inbox.get()
             kind = message["type"]
             if kind == "reply":
-                await self.handle(Reply.from_dict(message["reply"]))
+                await self.show_reply(Reply.from_dict(message["reply"]))
             elif kind == "lobby":
                 self.show_lobby(message)
 

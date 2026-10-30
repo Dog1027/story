@@ -196,7 +196,7 @@ def needs_compaction(state: GameState) -> bool:
     return history_size(state.recent) > HISTORY_BUDGET or len(state.key_events) > KEEP_EVENTS * 2 or len(state.flags) > KEEP_FLAGS * 2
 
 
-def to_compact(state: GameState) -> tuple[list[Turn], list[str], list[str]]:
+def parts_to_compact(state: GameState) -> tuple[list[Turn], list[str], list[str]]:
     """What this compaction folds into the summary: the oldest turns, older key events, older facts."""
     return oldest_turns_to_compact(state.recent), state.key_events[:-KEEP_EVENTS], state.flags[:-KEEP_FLAGS]
 

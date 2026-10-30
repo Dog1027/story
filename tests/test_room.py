@@ -7,6 +7,7 @@ from conftest import PUZZLE, FakeGroupEngine, FakeJudge
 
 import story.shells.rooms.lobby as lobby_module
 from story.core import Reply
+from story.core.ai import AIFailed
 from story.games import AdventureCore, SoupCore
 from story.games.adventure.prompting import AWAY_ACTION
 from story.shells.connection import Connection
@@ -276,7 +277,7 @@ async def test_failed_timeout_round_restarts_the_countdown(isolated):
         host, guest = await start_story(lobby)
         await host.reply()
         await guest.reply()
-        engine.fail_with = RuntimeError("503 UNAVAILABLE")
+        engine.fail_with = AIFailed("503 UNAVAILABLE")
         for player in (host, guest):
             await player.conn.send({"type": "ready"})
         await host.expect(lambda m: m["type"] == "timer")
@@ -651,7 +652,7 @@ async def test_a_countdown_stopped_while_waiting_for_the_core_does_not_time_out(
 
     async def time_up():
         await gate.wait()  # Waiting for the core, which someone else is using
-        countdown.over()
+        countdown.detach()
         acted.append(True)
 
     countdown = module.Countdown(announce, time_up)

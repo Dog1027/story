@@ -8,6 +8,7 @@ from conftest import FakeEngine
 
 import story.shells.screen.client as client_module
 from story.core import Reply, Status
+from story.core.ai import AIFailed
 from story.games import AdventureCore
 from story.games.adventure import GENRE_AUTO, GENRE_NONE
 from story.shells.connection import Connection
@@ -112,7 +113,7 @@ class RecordingView(View):
         self.record("ask_ending", title)
         return self.play_again
 
-    async def ask_name(self, error):
+    async def ask_name(self, error, max_len):
         return "阿明"
 
     def exit(self):
@@ -229,7 +230,7 @@ class StreamingEngine(FakeEngine):
             time.sleep(0.03)
         self.draft = ""
         if self.fail:
-            raise RuntimeError("503 UNAVAILABLE")
+            raise AIFailed("503 UNAVAILABLE")
         super().act(state, action)
         state.current_narration = text
 
@@ -311,7 +312,7 @@ async def test_room_hint_stops_waiting_once_the_story_ends():
     view = RecordingView()
     client = Client(view, connect=None)
     client.waiting = ["小華"]
-    await client.handle(Reply(phase="ending"))
+    await client.show_reply(Reply(phase="ending"))
     hints = [c[1] for c in view.calls if c[0] == "set_hint"]
     assert hints[-1] == client_module.UI["hint_input"]
 

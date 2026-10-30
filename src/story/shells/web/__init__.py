@@ -23,12 +23,11 @@ from story import settings
 from story.core import MAX_PLAYERS
 from story.shells.rooms.lobby import MAX_ROOMS, Lobby
 from story.shells.screen.client import Client
-from story.shells.text import ui_text
+from story.shells.text import UI, ui_text
 from story.shells.web.hosting import make_lobby
 from story.shells.web.view import WebView
 
 DEFAULT_HOST, DEFAULT_PORT = "127.0.0.1", 8080  # By default only accept connections from this computer
-UI = ui_text("shells")  # story/shells/ui/<lang>/shells.md
 MAX_SESSIONS = MAX_ROOMS * MAX_PLAYERS  # Most people online at once: every room full, so too many connections can't exhaust the host
 STATIC = Path(__file__).parent / "static"
 

@@ -17,14 +17,14 @@ from pathlib import Path
 from google.genai import errors
 from pydantic import BaseModel
 
-from story.core.ai import is_key_error
+from story.core.ai import AIFailed, is_key_error
 from story.core.reply import MAX_PLAYERS, UI, Phase, Reply, pick_choice
 from story.core.saves import load, save
 
 CONTINUE_CHOICES = [UI["choice_continue"], UI["choice_new_game"]]
 CONFIRM_CHOICES = [UI["choice_confirm"], UI["choice_cancel"]]
 PLAY_AGAIN_CHOICES = [UI["choice_play_again"]]
-FAILURES = (errors.APIError, RuntimeError)  # Calling the AI failed: stay in the same phase and let players retry
+FAILURES = (errors.APIError, AIFailed)  # Calling the AI failed: stay in the same phase and let players retry
 log = logging.getLogger(__name__)
 
 
