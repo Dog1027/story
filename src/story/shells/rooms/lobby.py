@@ -233,7 +233,4 @@ class Lobby:
 
     @staticmethod
     async def _send_to(conn: Connection, message: dict) -> None:
-        try:
-            await conn.send(message)
-        except ConnectionError:
-            pass  # They already disconnected; handled when serve() ends
+        await conn.send_if_open(message)  # If they already disconnected, that's handled when serve() ends

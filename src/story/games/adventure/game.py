@@ -106,7 +106,9 @@ class AdventureCore(TeamGame[GameState]):
             self.engine.start(state)
         except AIFailed as e:
             return self._failed(e, self._ask_premise)
-        self.state, self._phase, self.last_premise, self.suggested, self.drawn = state, "playing", premise, "", ""
+        self.state, self._phase = state, "playing"
+        self.last_premise = premise
+        self.suggested = self.drawn = ""  # Used up: the next new story draws or suggests afresh
         self._save()
         return self._turn_reply(before=None)
 

@@ -6,6 +6,8 @@ every message goes to JSON and back, so the two ends share no objects and the me
 
 import asyncio
 import json
+from collections.abc import Coroutine
+from typing import Any
 
 
 class Connection:
@@ -35,6 +37,13 @@ class Connection:
         # To JSON and back: the two ends never share an object and only get JSON types (tuples become lists), so the message format is the only contract
         self.outbox.put_nowait(json.loads(json.dumps(message, ensure_ascii=False)))
 
+    async def send_if_open(self, message: dict) -> None:
+        """send(), but a closed connection is fine: the receiver already left, and whoever handles their leaving deals with it."""
+        try:
+            await self.send(message)
+        except ConnectionError:
+            pass
+
     async def receive(self) -> dict | None:
         """Receive the next message; None once the connection is over."""
         if self.closed:
@@ -46,3 +55,23 @@ class Connection:
             self.closed = True
             self.outbox.put_nowait(None)  # Ends the other end's receive()
             self.inbox.put_nowait(None)  # Also ends a receive() still waiting on this end
+
+
+class BackgroundTasks:
+    """Work started in the background and cancelled together (e.g. when a room closes). Keeps each task referenced until it ends,
+    since asyncio only keeps a weak reference to a running task."""
+
+    def __init__(self) -> None:
+        self._running: set[asyncio.Task] = set()
+
+    def spawn(self, coroutine: Coroutine[Any, Any, None]) -> None:
+        task = asyncio.create_task(coroutine)
+        self._running.add(task)
+        task.add_done_callback(self._running.discard)
+
+    def cancel(self) -> None:
+        for task in list(self._running):
+            task.cancel()
+
+    def __len__(self) -> int:
+        return len(self._running)

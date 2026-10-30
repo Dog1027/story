@@ -19,6 +19,7 @@ from dataclasses import asdict
 from aiohttp import web
 
 from story.core import ChangeGroups
+from story.shells.connection import BackgroundTasks
 from story.shells.screen.client import Client
 from story.shells.screen.premise import PremiseFailed, PremiseForm
 from story.shells.screen.view import StatusLine, View
@@ -34,7 +35,7 @@ class WebView(View):
         self.pending: dict[int, asyncio.Future] = {}
         self.next_id = 0
         self.premise_form: PremiseForm | None = None  # While the premise dialog is open: its rules (shared layer)
-        self.tasks: set[asyncio.Task] = set()  # Work started by player input (cancelled together when the connection ends)
+        self.tasks = BackgroundTasks()  # Work started by player input (cancelled together when the connection ends)
 
     # ---------- Sending and receiving ----------
 
@@ -69,14 +70,9 @@ class WebView(View):
         elif kind in ("act", "command") and self.client.ready:
             text = str(message.get("text", "")).strip()
             if text:
-                self.spawn(self.client.act(text) if kind == "act" else self.client.send(text))  # A command isn't shown in the story area
+                self.tasks.spawn(self.client.act(text) if kind == "act" else self.client.send(text))  # A command isn't shown in the story area
         elif kind == "premise_event" and self.premise_form:
-            self.spawn(self.answer_premise(self.premise_form, message))
-
-    def spawn(self, coroutine) -> None:
-        task = asyncio.create_task(coroutine)
-        self.tasks.add(task)
-        task.add_done_callback(self.tasks.discard)
+            self.tasks.spawn(self.answer_premise(self.premise_form, message))
 
     async def answer_premise(self, form: PremiseForm, message: dict) -> None:
         action, text, req = message.get("action"), str(message.get("text", "")), message.get("req")
@@ -101,8 +97,7 @@ class WebView(View):
     def close(self) -> None:
         for future in self.pending.values():
             future.cancel()
-        for task in list(self.tasks):
-            task.cancel()
+        self.tasks.cancel()
 
     # ---------- View ----------
 

@@ -75,7 +75,8 @@ class SoupCore(TeamGame[SoupState]):
         if puzzle is None:
             return self._reply(choices=PUZZLE_CHOICES, notice=UI["no_puzzles"])
         self.played.add(puzzle.title)
-        self.state, self.pending, self._phase = SoupState(puzzle=puzzle, from_ai=from_ai, players=self._players), {}, "playing"
+        self.state, self._phase = SoupState(puzzle=puzzle, from_ai=from_ai, players=self._players), "playing"
+        self.pending = {}
         self._save()
         return self._reply(narration="\n\n".join(filter(None, [note, self._surface()])), **self._screen())
 

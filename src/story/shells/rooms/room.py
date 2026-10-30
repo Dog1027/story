@@ -37,7 +37,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from story.core import AWAY, HOST_PHASES, MAX_PLAYERS, RESTART, TIMEOUT, Reply, TeamGame, pick_choice
-from story.shells.connection import Connection
+from story.shells.connection import BackgroundTasks, Connection
 from story.shells.rooms.countdown import Countdown
 from story.shells.rooms.runner import CoreRunner
 from story.shells.text import UI
@@ -80,7 +80,7 @@ class Room:
         self.starts = {UI["start_game"].format(game=g.title): g.code for g in games}  # The options that start each game
         self.make_core = make_core
         self.on_change = on_change
-        self.tasks: set[asyncio.Task] = set()  # Input that uses the core, handled in the background (see handle())
+        self.tasks = BackgroundTasks()  # Input that uses the core, handled in the background (see handle())
         self.game_title = ""  # The name of the game being played (shown on the lobby's room card)
         self.members: dict[str, Member] = {}  # In the order they came in; people who disconnect mid-game are kept so they can reconnect
         self.host = ""
@@ -129,20 +129,14 @@ class Room:
         connection keeps being read (so leaving is noticed at once). The core's lock takes them one at a time, in the order they came."""
         kind = message.get("type")
         if kind == "send":
-            self._spawn(self._on_send_message(name, message))
+            self.tasks.spawn(self._on_send_message(name, message))
         elif kind == "ready":
             self.countdown.finished_reading(name, self.online)
 
     async def close(self) -> None:
         self.countdown.stop()
-        for task in list(self.tasks):
-            task.cancel()
+        self.tasks.cancel()
         self.runner.close()
-
-    def _spawn(self, coroutine) -> None:
-        task = asyncio.create_task(coroutine)
-        self.tasks.add(task)
-        task.add_done_callback(self.tasks.discard)
 
     @asynccontextmanager
     async def _using_core(self):
@@ -213,7 +207,7 @@ class Room:
         self.countdown.left_room(name, online)  # They might have been the last one still reading
         # Stand in for them in the background: that may call the AI, and leaving must not wait for it (the lobby frees their name only
         # once this returns). If the core is busy, whoever is using it stands in for them on the way out anyway
-        self._spawn(self._stand_in())
+        self.tasks.spawn(self._stand_in())
 
     async def _stand_in(self) -> None:
         async with self._using_core():
@@ -429,7 +423,4 @@ class Room:
 
     @staticmethod
     async def _safe_write(member: Member, message: dict) -> None:
-        try:
-            await member.conn.send(message)
-        except ConnectionError:
-            pass  # They already disconnected; the lobby handles their leaving
+        await member.conn.send_if_open(message)  # If they already disconnected, the lobby handles their leaving

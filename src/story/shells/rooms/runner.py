@@ -5,6 +5,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 
 from story.core import Reply, TeamGame
+from story.shells.connection import BackgroundTasks
 from story.shells.text import UI
 
 
@@ -17,7 +18,7 @@ class CoreRunner:
         self.queued = False  # An AI call is queued (all rooms share one key's call limit)
         self.reported = ("", "")  # The progress and draft everyone was last told about during this call
         self.loop: asyncio.AbstractEventLoop | None = None  # For news from the thread running the core (see changed)
-        self.tasks: set[asyncio.Task] = set()  # Progress reports on their way
+        self.tasks = BackgroundTasks()  # Progress reports on their way
 
     def attach(self, core: TeamGame | None) -> None:
         """The core to run (None once the game is over). Hears about its progress from now on."""
@@ -64,13 +65,10 @@ class CoreRunner:
                 await self.broadcast({"type": "busy", "on": False})
 
     def close(self) -> None:
-        for task in list(self.tasks):
-            task.cancel()
+        self.tasks.cancel()
 
     def _spawn_report(self) -> None:
-        task = asyncio.create_task(self._report())
-        self.tasks.add(task)
-        task.add_done_callback(self.tasks.discard)
+        self.tasks.spawn(self._report())
 
     async def _report(self) -> None:
         """Tell everyone the progress (a new story calls the AI several times) and the narration so far, if they changed."""
