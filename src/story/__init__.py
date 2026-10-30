@@ -11,6 +11,6 @@ def main() -> None:
     setup.run()  # Must run before importing the core: the language is fixed at import time
     if "--setup-only" in sys.argv[1:]:
         return
-    from story.shells.web import main as web_main
+    from story.shells.web.server import main as web_main
 
     web_main()

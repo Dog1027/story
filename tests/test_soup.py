@@ -9,7 +9,7 @@ from conftest import AI_PUZZLE, PUZZLE, FakeJudge
 
 from story.core import prompts
 from story.core.ai import AIFailed
-from story.games.soup import SoupCore
+from story.games.soup.game import SoupCore
 from story.games.soup.judge import SoupJudge
 from story.games.soup.models import Judgement, Move, PointCheck, PuzzleCheck, PuzzleDraft, Ruling, SoupState
 from story.games.soup.puzzles import BUILTIN_DIR, load_puzzles
