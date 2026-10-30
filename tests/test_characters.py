@@ -46,7 +46,7 @@ def test_shared_rules_apply_per_character():
     )
     state = group_state()
     engine.start(state)
-    engine.act(state, {"阿明": "包紮", "小華": "丟掉繩子"})
+    engine.play_turn(state, {"阿明": "包紮", "小華": "丟掉繩子"})
     assert [(c.name, c.severity) for c in by_name(state)["阿明"].conditions] == [("刀傷", "moderate")]  # At most one level better
     assert by_name(state)["小華"].inventory == []  # Can't lose what you don't have
 
@@ -66,7 +66,7 @@ def test_one_character_dies_others_continue():
     )
     state = group_state()
     engine.start(state)
-    engine.act(state, {"阿明": "硬闖", "小華": "等待"})
+    engine.play_turn(state, {"阿明": "硬闖", "小華": "等待"})
     assert not by_name(state)["阿明"].alive and by_name(state)["阿明"].choices == []
     assert by_name(state)["小華"].alive and not state.game_over
     assert "（倒下的場景）" in state.current_narration
@@ -78,7 +78,7 @@ def test_everyone_dead_ends_the_game():
     engine, _ = make_engine(pbeat(upd("阿明"), upd("小華")), pbeat(upd("阿明", conditions_changed=lethal), upd("小華", conditions_changed=lethal)))
     state = group_state()
     engine.start(state)
-    engine.act(state, {"阿明": "a", "小華": "b"})
+    engine.play_turn(state, {"阿明": "a", "小華": "b"})
     assert state.game_over
     assert "隊伍全員都在這趟旅程中倒下了" in ending_record(state)
 
@@ -87,7 +87,7 @@ def test_dead_characters_get_no_updates():
     engine, _ = make_engine(pbeat(upd("小華"), upd("阿明", items_gained=["寶劍"])))
     state = group_state(turn=3, minutes=600)
     state.characters[0].alive = False
-    engine.act(state, {"小華": "a"})
+    engine.play_turn(state, {"小華": "a"})
     assert by_name(state)["阿明"].inventory == []
 
 
@@ -95,7 +95,7 @@ def test_group_early_ending_is_ignored():
     """The same with several characters: when the AI declares the ending too early, have it rewrite; if the rewrite still ends, ignore it."""
     engine, gemini = make_engine(pbeat(upd("阿明"), upd("小華"), game_over=True), pbeat(upd("阿明"), upd("小華"), game_over=True))
     state = group_state(turn=5, minutes=0, arc=ARC, act=1)
-    engine.act(state, {"阿明": "a", "小華": "b"})
+    engine.play_turn(state, {"阿明": "a", "小華": "b"})
     assert not state.game_over and len(gemini.prompts) == 2
 
 
@@ -104,7 +104,7 @@ def test_group_prompt_contents():
     state = group_state()
     engine.start(state)
     assert "# 主角" in gemini.prompts[0] and "阿明、小華" in gemini.prompts[0]  # The outline knows there are two leads
-    engine.act(state, {"阿明": "推開門", "小華": "點燈"})
+    engine.play_turn(state, {"阿明": "推開門", "小華": "點燈"})
     prompt = gemini.prompts[-1]
     assert "阿明：推開門\n小華：點燈" in prompt
     assert '"名字":"阿明"' in prompt and '"名字":"小華"' in prompt

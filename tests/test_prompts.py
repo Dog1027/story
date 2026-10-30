@@ -46,7 +46,7 @@ def test_assembled_prompts_have_no_unfilled_variables():
     """Prompts built for various scenarios: every variable is filled in (no {name} left in text sent to the AI)."""
     for act, act_turns in ((0, 0), (1, ACT_TURNS), (2, 6), (3, 2)):
         engine, gemini = make_engine(beat())
-        engine.act(solo(premise="x", turn=8, minutes=0, arc=ARC, act=act, act_turns=act_turns, timed_mode=True), {HERO: "往上爬"})
+        engine.play_turn(solo(premise="x", turn=8, minutes=0, arc=ARC, act=act, act_turns=act_turns, timed_mode=True), {HERO: "往上爬"})
         assert not PLACEHOLDER.search(gemini.prompts[-1])
     engine, gemini = make_engine(beat())
     engine.start(solo(premise="燈塔"))

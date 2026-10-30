@@ -30,7 +30,7 @@ class Countdown:
         self.stop()
         self.task = asyncio.create_task(self._run(seconds, wait_first=False))
 
-    def read(self, name: str, online: list[str]) -> None:
+    def finished_reading(self, name: str, online: list[str]) -> None:
         """name finished reading the narration: start if everyone online has."""
         self.read_by.add(name)
         self._start_if_all_read(online)

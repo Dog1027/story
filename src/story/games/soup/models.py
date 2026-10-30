@@ -95,9 +95,9 @@ class SoupState(BaseModel):
         """Which game this is, when a save is found or loaded (the story premise in the adventure, the puzzle title here)."""
         return self.puzzle.title
 
-    def questions(self, name: str) -> int:
+    def question_count(self, name: str) -> int:
         return sum(1 for r in self.rounds for m in r if m.name == name and m.kind == "ask")
 
-    def best(self, name: str) -> int:
+    def best_hits(self, name: str) -> int:
         """The most key points this person has hit in a guess."""
         return max((m.hit for r in self.rounds for m in r if m.name == name and m.kind == "guess"), default=0)

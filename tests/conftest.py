@@ -190,7 +190,7 @@ class FakeEngine(Watched):
         me.choices = ["往上爬", "檢查鑰匙"]
         state.current_time_limit = 10 if state.timed_mode else 0
 
-    def act(self, state, actions):
+    def play_turn(self, state, actions):
         if self.fail_with:
             state.turn += 99  # Simulates failing halfway through changes
             raise self.fail_with
@@ -231,7 +231,7 @@ class FakeGroupEngine(Watched):
         for c in state.characters:
             c.choices = [f"{c.name}往上爬", f"{c.name}躲起來"]
 
-    def act(self, state, actions):
+    def play_turn(self, state, actions):
         if self.fail_with:
             state.turn += 99
             raise self.fail_with

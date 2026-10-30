@@ -95,7 +95,7 @@ class Engine(AICaller):
         state.arc.acts = state.arc.acts[:4]
         state.act, state.act_turns = min(3, state.turn // ACT_TURNS), 0  # A late outline: estimate the current act from the turn number
 
-    def act(self, state: GameState, actions: dict[str, str]) -> None:
+    def play_turn(self, state: GameState, actions: dict[str, str]) -> None:
         """Every character has acted ({name: action}): advance a turn."""
         if state.arc is None:
             self.plan_arc(state)

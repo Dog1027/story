@@ -118,7 +118,7 @@ def opening(t: AdventureTrial) -> GameState:
 def early(t: AdventureTrial) -> GameState:
     state = sample_state(1, "", act=1, act_turns=3, turn=12, current_narration=SAMPLE["early_narration"])
     action = SAMPLE["early_action"]
-    t.engine.act(state, mine(action))
+    t.engine.play_turn(state, mine(action))
     t.check("didn't try to write an ending", not t.tried_ending(), "the AI started writing an ending and was asked to rewrite")
     t.basics(state)
     t.judge("the narration isn't written as an ending", "no_ending", action=action, narration=state.current_narration,
@@ -128,7 +128,7 @@ def early(t: AdventureTrial) -> GameState:
 
 def reveal(t: AdventureTrial) -> GameState:
     state = sample_state(1, "", act=2, act_turns=ACT_TURNS, turn=18, current_narration=SAMPLE["reveal_narration"])
-    t.engine.act(state, mine(SAMPLE["reveal_action"]))
+    t.engine.play_turn(state, mine(SAMPLE["reveal_action"]))
     t.basics(state)
     t.judge("revealed the hidden truth", "reveal", twist=ARC.twist, clues="\n".join(f"- {c}" for c in ARC.clues),
             narration=state.current_narration)
@@ -138,7 +138,7 @@ def reveal(t: AdventureTrial) -> GameState:
 def agency(t: AdventureTrial) -> GameState:
     state = sample_state(1, "")
     action = first_action()
-    t.engine.act(state, mine(action))
+    t.engine.play_turn(state, mine(action))
     t.basics(state)
     t.judge("doesn't decide for the player", "agency", action=action, narration=state.current_narration)
     return state
@@ -147,7 +147,7 @@ def agency(t: AdventureTrial) -> GameState:
 def reckless(t: AdventureTrial) -> GameState:
     state = sample_state(1, "", current_narration=SAMPLE["armed"])
     before = body_score(state.characters[0])
-    t.engine.act(state, mine(SAMPLE["reckless_action"]))
+    t.engine.play_turn(state, mine(SAMPLE["reckless_action"]))
     after = body_score(state.characters[0])
     t.check("a reckless action caused wounds (wound total up by at least 2)", after - before >= 2, f"wound total {before} → {after}")
     t.basics(state, may_end=True)
@@ -157,7 +157,7 @@ def reckless(t: AdventureTrial) -> GameState:
 def dying(t: AdventureTrial) -> GameState:
     state = sample_state(1, "", current_narration=SAMPLE["armed"])
     state.characters[0].conditions = conditions("dying_wounds")
-    t.engine.act(state, mine(SAMPLE["dying_action"]))
+    t.engine.play_turn(state, mine(SAMPLE["dying_action"]))
     level = body_level(state.characters[0])
     t.check("taking risks while dying is fatal", level == "dead", f"overall condition: {level}")
     return state

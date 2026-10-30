@@ -190,8 +190,8 @@ class SoupCore(TeamGame[SoupState]):
         total = len(s.puzzle.key_points)
         characters = []
         for name in s.players:
-            best = s.best(name)
-            items: list[tuple[str, Tone]] = [(UI["status_questions"].format(count=s.questions(name)), "muted")]
+            best = s.best_hits(name)
+            items: list[tuple[str, Tone]] = [(UI["status_questions"].format(count=s.question_count(name)), "muted")]
             items.append((UI["status_best"].format(hit=best, total=total), "good" if best else "muted"))
             characters.append(Status(items=items, name=name))
         return {"turn": s.turn + 1 if not s.game_over else s.turn, "timed": False, "characters": characters}

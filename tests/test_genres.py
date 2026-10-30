@@ -79,7 +79,7 @@ def test_chosen_genre_guide_sits_in_the_stable_part_of_the_prompt():
     assert "用古白話" in arc_prompt and "題材目錄" not in arc_prompt  # A genre is already chosen: the outline follows it, with no need to pick
     assert "# 轉折靈感" in arc_prompt and "師父才是元兇" in arc_prompt
     assert "命名素材" in opening and "沈青衣" in opening
-    engine.act(state, {HERO: "上路"})
+    engine.play_turn(state, {HERO: "上路"})
     prompt = gemini.prompts[-1]
     assert prompt.index("# 題材：武俠") < prompt.index("# 劇情紀錄")
     assert "命名素材" not in prompt

@@ -162,7 +162,7 @@ class AdventureCore(TeamGame[GameState]):
         """Have the AI write this turn, save, and return this turn's reply."""
         self._wait_compaction()
         before = {c.name: snapshot(c) for c in self.game.characters}
-        self.engine.act(self.game, actions)
+        self.engine.play_turn(self.game, actions)
         self.pending = {}  # Before building the reply: the new turn's choices go to whoever hasn't acted in it
         self._save()
         if self.game.game_over:

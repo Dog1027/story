@@ -258,11 +258,11 @@ def test_progress_tells_what_the_opening_is_doing(isolated):
 def test_an_unexpected_error_restores_the_turn_instead_of_ending_the_game(core, engine, caplog):
     """A bug (not an AI failure) during a turn: restore from the save, take back the actions, log it, and let players try again."""
     new_game(core)
-    act = engine.act
-    engine.act = lambda state, actions: (state.characters[0].inventory.append("半路拿到的"), {}["bug"])
+    play_turn = engine.play_turn
+    engine.play_turn = lambda state, actions: (state.characters[0].inventory.append("半路拿到的"), {}["bug"])
     reply = core.send("1")
     assert reply.error == "api" and reply.phase == "playing" and "程式本身的問題" in reply.notice
     assert core.state.turn == 1 and "半路拿到的" not in core.state.characters[0].inventory  # Restored from the save
     assert "unexpected error" in caplog.text and "KeyError" in caplog.text  # The details are in the server's log
-    engine.act = act
+    engine.play_turn = play_turn
     assert core.send("1").narration == "你選擇了「往上爬」。"  # The same action can be sent again

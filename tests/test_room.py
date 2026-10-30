@@ -373,14 +373,14 @@ async def test_one_player_can_start_alone(lobby):
 class StreamingGroupEngine(FakeGroupEngine):
     """Writes narration slowly while advancing a turn (updating draft), like a real AI streaming."""
 
-    def act(self, state, actions):
+    def play_turn(self, state, actions):
         import time
 
         for i in range(1, 6):
             self.draft = "大家往上爬"[:i]
             time.sleep(0.15)
         self.draft = ""
-        super().act(state, actions)
+        super().play_turn(state, actions)
 
 
 async def test_everyone_sees_the_narration_while_it_is_written(isolated):
@@ -407,9 +407,9 @@ class StuckEngine(FakeGroupEngine):
         super().__init__()
         self.release = threading.Event()
 
-    def act(self, state, actions):
+    def play_turn(self, state, actions):
         self.release.wait(5)
-        super().act(state, actions)
+        super().play_turn(state, actions)
 
 
 async def test_coming_back_while_the_room_stands_in_for_you_still_gets_the_turn(isolated):

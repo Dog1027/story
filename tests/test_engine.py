@@ -30,7 +30,7 @@ def play(*beats, timed=False, **kwargs):
     state = solo(premise="測試", timed_mode=timed)
     engine.start(state)
     for _ in beats[1:]:
-        engine.act(state, {HERO: "行動"})
+        engine.play_turn(state, {HERO: "行動"})
     return state, engine, gemini
 
 
@@ -86,7 +86,7 @@ def test_ai_can_correct_kind_of_old_condition():
     engine, _ = make_engine(beat(conditions_changed=[cond("驚魂未定", "中", "精神")]))
     state = solo(premise="舊存檔", turn=5, minutes=0, conditions=[Condition(name="驚魂未定", severity="moderate")])
     assert hero(state).conditions[0].kind == "body"  # Old saves always treat it as body first
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert hero(state).conditions[0].kind == "mind"
 
 
@@ -126,7 +126,7 @@ def test_lethal_injury_ends_game_and_asks_ai_for_death_scene():
     )
     state = solo(premise="x")
     engine.start(state)
-    engine.act(state, {HERO: "硬闖"})
+    engine.play_turn(state, {HERO: "硬闖"})
     assert body_score(hero(state)) >= DEATH_SCORE
     assert state.game_over
     assert hero(state).choices == []
@@ -151,7 +151,7 @@ def test_time_passes_by_category():
 def test_old_save_without_clock_lets_ai_choose_time():
     engine, gemini = make_engine(beat(start_time_of_day="夜晚"))
     state = solo(premise="舊存檔", turn=30)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert '"時間":"尚未確定"' in gemini.prompts[-1]
     assert state.minutes == 20 * HOUR
 
@@ -197,7 +197,7 @@ def test_time_limit_is_ignored_in_normal_mode():
 def test_no_time_limit_when_game_over():
     engine, _ = make_engine(beat(time_limit=20, game_over=True))
     state = solo(premise="x", turn=TARGET_TURNS, minutes=0, arc=ARC, act=3, timed_mode=True)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert state.game_over and state.current_time_limit == 0
 
 
@@ -233,7 +233,7 @@ def test_start_plans_arc_before_opening():
 def test_milestone_advances_act():
     engine, _ = make_engine(beat(milestone_reached=True))
     state = solo(premise="x", turn=8, minutes=0, arc=ARC, act=0, act_turns=MIN_ACT_TURNS - 1)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert (state.act, state.act_turns) == (1, 0)
 
 
@@ -241,7 +241,7 @@ def test_milestone_too_early_in_an_act_is_ignored():
     """The act hasn't run MIN_ACT_TURNS turns yet: the AI saying it's reached doesn't advance, and the prompt tells it to build up first."""
     engine, gemini = make_engine(beat(milestone_reached=True))
     state = solo(premise="x", turn=2, minutes=0, arc=ARC, act=0, act_turns=1)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert (state.act, state.act_turns) == (0, 2)
     assert "這回合不要達成里程碑" in gemini.prompts[-1]
 
@@ -250,13 +250,13 @@ def test_early_ending_is_rewritten_then_ignored():
     """An ending written too early: first have the AI rewrite once; if the rewrite still ends, ignore it and the story goes on."""
     engine, gemini = make_engine(beat(game_over=True, narration="全劇終"), beat(narration="新的發展", choices=["追上去"]))
     state = solo(premise="x", turn=5, minutes=0, arc=ARC, act=1)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert not state.game_over and state.current_narration == "新的發展"
     assert "結局限制" in gemini.prompts[0] and "太早結束了故事" in gemini.prompts[1]
 
     engine, _ = make_engine(beat(game_over=True), beat(game_over=True, choices=["繼續"]))
     state = solo(premise="x", turn=5, minutes=0, arc=ARC, act=1)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert not state.game_over and hero(state).choices == ["繼續"]
 
 
@@ -264,7 +264,7 @@ def test_ending_needs_the_final_act_and_enough_turns():
     for turn, act, allowed in ((MIN_ENDING_TURN - 1, 3, True), (MIN_ENDING_TURN - 2, 3, False), (25, 2, False), (TARGET_TURNS - 1, 1, True)):
         engine, gemini = make_engine(beat(game_over=True), beat(game_over=True))
         state = solo(premise="x", turn=turn, minutes=0, arc=ARC, act=act)
-        engine.act(state, {HERO: "a"})
+        engine.play_turn(state, {HERO: "a"})
         assert state.game_over is allowed, (turn, act)
         assert len(gemini.prompts) == (1 if allowed else 2)  # When it can't end, the AI is asked to rewrite once
 
@@ -274,28 +274,28 @@ def test_death_ends_the_story_at_any_time():
     lethal = [cond("失血", "重"), cond("骨折", "重")]
     engine, _ = make_engine(beat(conditions_changed=lethal), beat(narration="主角倒下了。", game_over=True))
     state = solo(premise="x", turn=3, minutes=0, arc=ARC, act=0)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert state.game_over
 
 
 def test_final_act_does_not_advance_further():
     engine, _ = make_engine(beat(milestone_reached=True))
     state = solo(premise="x", turn=5, minutes=0, arc=ARC, act=3)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert state.act == 3
 
 
 def test_pacing_reminder_when_act_drags_on():
     engine, gemini = make_engine(beat())
     state = solo(premise="x", turn=5, minutes=0, arc=ARC, act=0, act_turns=ACT_TURNS)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert "節奏提醒" in gemini.prompts[-1]
 
 
 def test_wrap_up_reminder_after_target_length():
     engine, gemini = make_engine(beat())
     state = solo(premise="x", turn=TARGET_TURNS, minutes=0, arc=ARC, act=3)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert "超過預定的" in gemini.prompts[-1]
 
 
@@ -304,7 +304,7 @@ def test_twist_is_foreshadowed_then_revealed_in_the_third_act():
     prompts = {}
     for act in range(4):
         engine, gemini = make_engine(beat())
-        engine.act(solo(premise="x", turn=8, minutes=0, arc=ARC, act=act), {HERO: "a"})
+        engine.play_turn(solo(premise="x", turn=8, minutes=0, arc=ARC, act=act), {HERO: "a"})
         prompts[act] = gemini.prompts[-1]
     for act in (0, 1):
         assert "在那之前不要說破" in prompts[act] and "- 鑰匙上刻著你的生日" in prompts[act]
@@ -315,7 +315,7 @@ def test_twist_is_foreshadowed_then_revealed_in_the_third_act():
 def test_old_save_gets_arc_and_jumps_to_matching_act():
     engine, gemini = make_engine(beat())
     state = solo(premise="舊存檔", turn=109, minutes=0, summary="主角把證據交給媒體")
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert state.arc == ARC and state.act == 3
     assert "已經進行了 109 回合" in gemini.prompts[0]
 
@@ -326,7 +326,7 @@ def test_old_save_gets_arc_and_jumps_to_matching_act():
 def test_prompt_includes_the_history_and_no_duplicate_action():
     engine, gemini = make_engine(beat())
     state = solo(premise="x", turn=10, minutes=0, current_narration="上一段劇情", recent=[Turn(narration="最近的回合", action="近行動")])
-    engine.act(state, {HERO: "推開門"})
+    engine.play_turn(state, {HERO: "推開門"})
     prompt = gemini.prompts[-1]
     assert "最近的回合" in prompt and "上一段劇情" in prompt
     assert prompt.count("推開門") == 1
@@ -377,7 +377,7 @@ def test_prompt_keeps_changing_sections_after_the_history():
         premise="燈塔", turn=3, minutes=0, arc=ARC, summary="早期的摘要", key_events=["找到鑰匙"],
         current_narration="上一段", recent=[Turn(narration="第一段", action="開門")],
     )
-    engine.act(state, {HERO: "往上爬"})
+    engine.play_turn(state, {HERO: "往上爬"})
     prompt = gemini.prompts[-1]
     order = ["# 故事前提", "# 先前劇情摘要", "# 劇情紀錄", "# 重大事件", "# 故事進度", "# 遊戲狀態", "# 本回合每位角色的行動"]
     positions = [prompt.index(title) for title in order]
@@ -389,7 +389,7 @@ def test_turn_log_is_written(isolated):
     engine.log_path = isolated / "log.jsonl"
     state = solo(premise="x")
     engine.start(state)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     lines = engine.log_path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2 and "擦傷(light)" in lines[-1]
 
@@ -413,7 +413,7 @@ def test_turn_log_records_each_ai_call_with_time_and_tokens(isolated):
     engine.log_path = isolated / "log.jsonl"
     state = solo(premise="x")
     engine.start(state)
-    engine.act(state, {HERO: "a"})  # The AI wrote the ending too early: have it rewrite once
+    engine.play_turn(state, {HERO: "a"})  # The AI wrote the ending too early: have it rewrite once
     opening, turn = [json.loads(line) for line in engine.log_path.read_text(encoding="utf-8").splitlines()]
     assert [c["kind"] for c in opening["calls"]] == ["arc", "turn"]
     assert [c["kind"] for c in turn["calls"]] == ["turn", "rewrite"]
@@ -469,7 +469,7 @@ def test_draft_follows_the_narration_as_it_streams():
 
     gemini.models.generate_content_stream = watching
     state = solo(premise="x", turn=1, minutes=0, arc=ARC)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     shown = [d for d in drafts if d]
     assert len(shown) > 3 and all(b.startswith(a) for a, b in pairwise(shown))  # Keeps growing
     assert shown[-1] == state.current_narration
@@ -487,7 +487,7 @@ def test_early_ending_stops_before_any_narration_is_shown():
 
     gemini.models.generate_content_stream = watching
     state = solo(premise="x", turn=5, minutes=0, arc=ARC, act=1)
-    engine.act(state, {HERO: "a"})
+    engine.play_turn(state, {HERO: "a"})
     assert "全劇終" not in "".join(drafts)  # game_over comes before the narration: stop and rewrite before any narration appears
     assert state.current_narration == "新的發展"
 
@@ -511,7 +511,7 @@ def test_timeout_after_retries_becomes_a_normal_error():
 
     gemini.models.generate_content = timeout
     with pytest.raises(RuntimeError, match="太久沒有回應"):
-        engine.act(solo(premise="x", arc=ARC), {HERO: "a"})
+        engine.play_turn(solo(premise="x", arc=ARC), {HERO: "a"})
     assert engine.calls[0]["kind"] == "turn" and "timed out" in engine.calls[0]["error"]
 
 
@@ -526,7 +526,7 @@ def test_gemini_refusing_becomes_ai_failed_and_keeps_the_key_error():
 
     gemini.models.generate_content = refuse
     with pytest.raises(AIFailed) as caught:
-        engine.act(solo(premise="x", arc=ARC), {HERO: "a"})
+        engine.play_turn(solo(premise="x", arc=ARC), {HERO: "a"})
     assert is_key_error(caught.value)
 
 

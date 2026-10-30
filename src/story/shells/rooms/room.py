@@ -131,7 +131,7 @@ class Room:
         if kind == "send":
             self._spawn(self._on_send_message(name, message))
         elif kind == "ready":
-            self.countdown.read(name, self.online)
+            self.countdown.finished_reading(name, self.online)
 
     async def close(self) -> None:
         self.countdown.stop()
@@ -275,9 +275,9 @@ class Room:
             reply = await self.runner.call(lambda: core.send_as(name, text))
             await self._route(reply, only=name)
             return
-        await self._act(name, text)
+        await self._take_turn(name, text)
 
-    async def _act(self, name: str, text: str) -> None:
+    async def _take_turn(self, name: str, text: str) -> None:
         core = self.active_core
         resolving = core.waiting() == [name]
         await self._route(await self.runner.call(lambda: core.send_as(name, text), busy=resolving), only=name)
@@ -289,7 +289,7 @@ class Room:
             waiting = self.core.waiting()
             if not waiting or any(self.members[n].online for n in waiting if n in self.members):
                 return
-            await self._act(waiting[0], AWAY)  # The core decides the text for the AI
+            await self._take_turn(waiting[0], AWAY)  # The core decides the text for the AI
 
     # ---------- Replies ----------
 
