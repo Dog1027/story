@@ -40,16 +40,15 @@ def render_page() -> str:
     return re.sub(r"\{\{([a-z_]+)\}\}", lambda m: html.escape(texts[m.group(1)]), page)
 
 
-PAGE = render_page()
-
 
 def make_app(lobby: Lobby) -> web.Application:
     """Build the web server: every tab connects to lobby. The lobby closes with the server."""
     app = web.Application()
+    page = render_page()  # Built once per server, not on import
     sessions = 0  # Tabs online now
 
     async def index(request: web.Request) -> web.Response:
-        return web.Response(text=PAGE, content_type="text/html")
+        return web.Response(text=page, content_type="text/html")
 
     async def no_stale_files(request: web.Request, response: web.StreamResponse) -> None:
         # The page, JS and CSS always ask the server for updates first (no download if unchanged).

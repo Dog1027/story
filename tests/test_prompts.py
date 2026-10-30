@@ -92,9 +92,37 @@ def test_every_ui_text_used_in_the_code_exists():
 
 
 def test_web_page_is_filled_with_the_language_texts():
-    from story.shells.web.server import PAGE
+    from story.shells.web.server import render_page
 
-    assert "{{" not in PAGE and 'lang="zh-Hant"' in PAGE and "const T = {" in PAGE
+    page = render_page()
+    assert "{{" not in page and 'lang="zh-Hant"' in page and "const T = {" in page
+
+
+def test_english_runs_end_to_end_in_its_own_process(tmp_path):
+    """The language is fixed when story is first imported, so the tests run in Chinese. A separate process imports everything in English
+    and builds real prompts and the page, so the English texts are actually used, not only checked for the same section names."""
+    import os
+    import subprocess
+    import sys
+
+    script = """
+from story.games.adventure.prompting import PromptBuilder
+from story.games.adventure.samples import sample_state
+from story.shells.web.server import render_page
+from story.core.team import CONTINUE_CHOICES
+state = sample_state(2, "")
+prompt = PromptBuilder({}).turn(state, {c.name: "look around" for c in state.characters})
+page = render_page()
+assert 'lang="en"' in page and "{{" not in page, page[:200]
+import re
+assert not re.search(r"\\{[a-z_]+\\}", prompt), prompt
+assert "look around" in prompt and "Instructions" in prompt
+print(CONTINUE_CHOICES[0])
+"""
+    env = os.environ | {"STORY_LANG": "en", "HOME": str(tmp_path), "GEMINI_API_KEY": "", "GOOGLE_API_KEY": ""}
+    result = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().isascii()  # English choices, not the Chinese ones
 
 
 def test_every_language_has_the_same_files_and_sections():
