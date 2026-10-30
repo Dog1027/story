@@ -18,9 +18,9 @@ from story.games.adventure.rules import (
     MIN_ENDING_TURN,
     MIN_TIME_LIMIT,
     TARGET_TURNS,
-    apply_condition_changes,
     body_level,
     body_score,
+    change_conditions,
 )
 
 
@@ -441,7 +441,7 @@ def test_overall_level_words_are_not_conditions():
 
     state = solo(premise="x")
     changes = [ConditionChange(**cond(name, "重")) for name in ("良好", "重傷", "右臂撕裂傷")]
-    apply_condition_changes(hero(state), changes, [], 0)
+    change_conditions(hero(state), changes)
     assert [c.name for c in hero(state).conditions] == ["右臂撕裂傷"]
 
 

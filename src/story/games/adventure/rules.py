@@ -6,7 +6,7 @@ All pure functions that only read and write the game state (models.py); they nev
 from typing import Literal, cast, get_args
 
 from story.core import prompts
-from story.games.adventure.models import VOCAB, Character, Condition, ConditionKind, GameState, Level, Severity, TimeOfDay, TimeSpan, Turn, code
+from story.games.adventure.models import VOCAB, Character, Condition, ConditionChange, ConditionKind, GameState, Level, Severity, TimeOfDay, TimeSpan, Turn, code
 
 TARGET_TURNS = 30  # The planned story length (turns); past it, the AI is only reminded to wrap up, never forced to end
 ACT_TURNS = TARGET_TURNS // 4  # Expected turns per act; staying too long reminds the AI to move on
@@ -104,23 +104,27 @@ def advance_clock(state: GameState, time_passed: str, start_time_of_day: str) ->
 # ---------- Applying the changes the AI proposes ----------
 
 
-def apply_condition_changes(who: Character, changed: list, removed_names: list[str], elapsed: int) -> None:
-    # Let existing conditions recover with time first, then apply what the AI reported
-    remaining = []
+def heal_over_time(who: Character, elapsed: int) -> None:
+    """Every turn, before what the AI reports: conditions recover with the time that passed; fully healed ones go away."""
     for c in who.conditions:
         c.minutes += elapsed
-        heal = HEAL_TIME[c.kind]
-        while c.severity in heal and c.minutes >= heal[c.severity]:
-            # Leftover time carries into the next level, e.g. "several days" may heal a moderate wound all the way
-            c.minutes -= heal[c.severity]
-            if c.severity == "light":
-                break
-            c.severity = SEVERITY_ORDER[SEVERITY_ORDER.index(c.severity) - 1]
-        else:
-            remaining.append(c)  # The loop didn't break on a light condition healing, so the condition is still there
-    who.conditions = remaining
+    who.conditions = [c for c in who.conditions if not _healed(c)]
 
-    # Removal: mind conditions and light body conditions can be removed outright; moderate and severe body ones only drop a level, so the AI can't erase a severe wound in one line
+
+def _healed(c: Condition) -> bool:
+    """Lower the condition a level for each healing time it has waited; True if it healed completely."""
+    heal = HEAL_TIME[c.kind]
+    while c.severity in heal and c.minutes >= heal[c.severity]:
+        c.minutes -= heal[c.severity]  # Leftover time carries into the next level, e.g. "several days" may heal a moderate wound all the way
+        if c.severity == "light":
+            return True
+        c.severity = SEVERITY_ORDER[SEVERITY_ORDER.index(c.severity) - 1]
+    return False
+
+
+def remove_conditions(who: Character, removed_names: list[str]) -> None:
+    """Conditions the AI says are gone: mind conditions and light body conditions are removed outright; moderate and severe body ones
+    only drop a level, so the AI can't erase a severe wound in one line."""
     removed = {name.strip() for name in removed_names}
     remaining = []
     for c in who.conditions:
@@ -131,7 +135,10 @@ def apply_condition_changes(who: Character, changed: list, removed_names: list[s
         remaining.append(c)
     who.conditions = remaining  # Names that don't exist are simply ignored
 
-    for change in changed:  # The category and severity the AI reports are this language's words; convert to codes
+
+def change_conditions(who: Character, changed: list[ConditionChange]) -> None:
+    """New or changed conditions the AI reports. The category and severity are this language's words; they are converted to codes."""
+    for change in changed:
         name = prompts.clip(change.name.strip(), MAX_CONDITION_LEN)
         if not name or name in VOCAB.table["level"].values():  # Words like "fine" or "badly hurt" judge the overall condition; they aren't wounds
             continue

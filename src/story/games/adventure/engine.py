@@ -15,14 +15,16 @@ from story.games.adventure.rules import (
     ACT_TURNS,
     DEATH_SCORE,
     advance_clock,
-    apply_condition_changes,
     apply_items,
     apply_story_progress,
     body_score,
+    change_conditions,
     clamp_time_limit,
     ending_allowed,
+    heal_over_time,
     needs_compaction,
     parts_to_compact,
+    remove_conditions,
 )
 from story.games.adventure.text import UI
 
@@ -161,12 +163,13 @@ class Engine(AICaller):
         for c in state.characters:
             if not c.alive:
                 continue
+            heal_over_time(c, elapsed)  # Time passes even for a character the AI left out
             u = updates.get(c.name)
-            if u is None:  # The AI left this character out: time still passes, and choices are empty (the player can act freely)
-                apply_condition_changes(c, [], [], elapsed)
+            if u is None:  # The AI left this character out: choices are empty (the player can act freely)
                 c.choices = []
                 continue
-            apply_condition_changes(c, u.conditions_changed, u.conditions_removed, elapsed)
+            remove_conditions(c, u.conditions_removed)
+            change_conditions(c, u.conditions_changed)
             apply_items(c, u.items_gained, u.items_lost)
             c.choices = u.choices[:4]
             if body_score(c) >= DEATH_SCORE:
