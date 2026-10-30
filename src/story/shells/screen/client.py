@@ -15,7 +15,7 @@ Rule of thumb: changes the game's outcome or facts → the core; changes the ord
 import asyncio
 from collections.abc import Callable
 
-from story.core import Ending, InputMode, Reply, Status, pick_choice
+from story.core import HOST_PHASES, Ending, InputMode, Reply, Status, pick_choice
 from story.shells.connection import Connection
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 from story.shells.screen.premise import PremiseForm
@@ -188,12 +188,12 @@ class Client:
         elif reply.notice and reply.phase in ("playing", "ending", "ended") and not reply.narration:
             self.view.notify(reply.notice)
 
-        if reply.phase in ("ask_continue", "setup", "confirm_restart") and reply.choices:
+        if reply.form is not None:
+            await self.ask_premise(reply)
+        elif reply.phase in HOST_PHASES and reply.choices:
             # The core's question and two options: continue/new game, confirm/cancel, or turtle soup's bank/AI puzzle
             yes = await self.view.ask_confirm(reply.notice, *reply.choices)
             await self.send("1" if yes else "2")
-        elif reply.phase == "setup":
-            await self.ask_premise(reply)
         elif reply.phase in ("playing", "ending"):
             await self.show_turn(reply)  # The turn that ended the story; the room goes on to write the epilogue
         elif reply.phase == "ended":
@@ -202,15 +202,13 @@ class Client:
     async def ask_premise(self, reply: Reply) -> None:
         if reply.error == "api":
             return  # Writing the opening failed: the error is already shown; stay put, and players can try again with /restart
-        answer = await self.view.ask_premise(PremiseForm(reply, self.ask_room))
+        form = PremiseForm(reply, self.ask_room)
+        answer = await self.view.ask_premise(form)
         if answer is None:
             return
-        premise, want_timed, genre = answer
-        commands = [f"/genre {genre}"]  # The mode and genre chosen in the premise dialog: no need to show the reply
-        if want_timed != reply.timed:
-            commands.insert(0, f"/timed {'on' if want_timed else 'off'}")
-        for command in commands:
-            await self.deliver(command, form=True)
+        premise, want_timed, _ = answer
+        for command in form.setup_commands(want_timed):
+            await self.deliver(command, form=True)  # The mode and genre chosen in the dialog: no need to show the reply
         self.clear_story(premise)
         await self.send(premise)
 

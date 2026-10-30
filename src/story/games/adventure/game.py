@@ -13,7 +13,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from story.core.reply import Ending, Reply, Status, Tone, join, pick_choice
+from story.core.reply import Ending, Reply, SetupForm, Status, Tone, join, pick_choice
 from story.core.team import FAILURES, PLAY_AGAIN_CHOICES, ReplayFields, StatusFields, TeamGame
 from story.games.adventure.engine import Engine
 from story.games.adventure.models import Character, GameState, word
@@ -124,14 +124,8 @@ class AdventureCore(TeamGame[GameState]):
         self._phase = "setup"
         if not (self.suggested or self.drawn or self.last_premise):  # The first new story: draw an opening at random
             self.drawn = self._draw_premise()
-        return self._reply(
-            premise_default=self._default_premise(),
-            genre=self.genre,
-            genres=self._genre_menu(),
-            suggestion=suggestion,
-            notice=notice,
-            error=error,
-        )
+        form = SetupForm(default=self._default_premise(), genre=self.genre, genres=self._genre_menu(), suggestion=suggestion)
+        return self._reply(form=form, notice=notice, error=error)
 
     def _new_state(self, premise: str) -> GameState:
         self.pending = {}

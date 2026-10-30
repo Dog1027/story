@@ -42,7 +42,7 @@ def test_a_broken_save_is_moved_aside_and_the_team_starts_over(engine, isolated)
 def test_first_reply_asks_for_premise(core):
     reply = core.start()
     assert reply.phase == "setup"
-    assert reply.premise_default == DEFAULT_PREMISE
+    assert reply.form.default == DEFAULT_PREMISE
 
 
 def test_blank_premise_uses_default(core):
@@ -56,7 +56,7 @@ def test_blank_premise_uses_default(core):
 def test_suggestion_becomes_the_default(core):
     core.start()
     reply = core.send("/suggest")
-    assert reply.suggestion == reply.premise_default == "你是月球礦坑的夜班工程師。"
+    assert reply.form.suggestion == reply.form.default == "你是月球礦坑的夜班工程師。"
     core.send("")
     assert core.state.premise == "你是月球礦坑的夜班工程師。"
 
@@ -192,7 +192,7 @@ def test_restart_asks_for_confirmation(core):
     assert reply.phase == "playing" and reply.choices == ["往上爬", "檢查鑰匙"]
     core.send("/restart")
     reply = core.send("1")
-    assert reply.phase == "setup" and reply.premise_default == DEFAULT_PREMISE
+    assert reply.phase == "setup" and reply.form.default == DEFAULT_PREMISE
 
 
 def test_ending_epilogue_and_play_again(core):
@@ -237,7 +237,7 @@ def test_new_game_from_continue_prompt_reuses_premise(engine, isolated):
     core.send("自訂的前提")
     reply = AdventureCore("test", [HERO], engine=FakeEngine(), save_path=isolated / "save.json")
     reply.start()
-    assert reply.send("2").premise_default == "自訂的前提"
+    assert reply.send("2").form.default == "自訂的前提"
 
 
 def test_progress_tells_what_the_opening_is_doing(isolated):

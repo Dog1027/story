@@ -36,7 +36,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
-from story.core import MAX_PLAYERS, Reply, TeamGame, pick_choice
+from story.core import HOST_PHASES, MAX_PLAYERS, Reply, TeamGame, pick_choice
 from story.shells.connection import Connection
 from story.shells.rooms.countdown import Countdown
 from story.shells.rooms.runner import CoreRunner
@@ -233,8 +233,8 @@ class Room:
                 await self._safe_write(self.members[name], {"type": "premise", "reply": reply.to_dict()})
         else:
             starting = self.core.phase == "setup"  # Starting a game: calls the AI
-            if starting:  # A written premise is shown to everyone first; answers to options (turtle soup's puzzle source) aren't, and the scenario waits until the puzzle is drawn
-                premise = "" if self.host_reply and self.host_reply.choices else text
+            if starting:  # What the host wrote in a setup form is shown to everyone first; answers to choices (turtle soup's puzzle source) aren't
+                premise = "" if self.host_reply and self.host_reply.form is None else text
                 await self._broadcast({"type": "new_story", "premise": premise})
             await self._route(await self.runner.call(lambda: self.core.send(text), busy=starting))
 
@@ -280,7 +280,7 @@ class Room:
     async def _route(self, reply: Reply, only: str = "") -> None:
         """Send the core's reply to whoever should get it: everyone when there's new narration, otherwise only `only` (the sender)."""
         phase = reply.phase
-        if phase in ("ask_continue", "setup", "confirm_restart"):
+        if phase in HOST_PHASES:
             self.host_reply = reply
             self.countdown.stop()
             await self._send_reply(self.host, reply)

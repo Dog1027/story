@@ -30,7 +30,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 | `core/` | `team.py`：`TeamGame`，每種玩法共用的流程（隊伍、接續存檔、收集每個人的行動、重來、再玩一次）。`reply.py`：`Reply`，每種玩法回給外殼的同一種回覆。`ai.py`：呼叫 Gemini。`saves.py`、`prompts.py`（讀文字檔）、`vocab.py`（遊戲詞彙）、`evals.py`（評估的共用部分） |
 | `games/adventure/` | `game.py`：`AdventureCore`。`engine.py` 串起 `rules.py`（規則，純函式）、`prompting.py`（組提示詞）與 AI 呼叫。`models.py` 是存檔與 AI 回傳的格式。`genres/` 是題材包。`samples.py` 是範例故事，`preview.py`（`just prompts`）與 `evals.py`（`just eval` 的情境）共用 |
 | `games/soup/` | `game.py`：`SoupCore`。`judge.py` 是 AI 裁判與出題，`puzzles/` 是題庫，`evals.py` 是 `just eval soup` 的情境 |
-| `shells/` | `rooms/`（伺服器這一端）：`lobby.py`、`room.py`，大廳與房間，房間持有一局的核心，用 `runner.py` 在背景執行緒呼叫它並告訴大家進度，用 `countdown.py` 計時；不知道有哪些玩法。`screen/`（每個瀏覽器分頁一份）：`client.py` 是什麼時候顯示什麼的流程，`view.py` 是介面要實作的方法（`View`），`premise.py` 是新故事對話框的規則；不知道房間的存在。兩邊只透過 `connection.py` 溝通。`web/`：網頁伺服器（`server.py`）與瀏覽器頁面（`static/`）；`web/hosting.py` 是唯一把 `GAMES` 裡的玩法、API key、共用的次數限制與存檔位置交給大廳的地方。`setup.py`：第一次啟動時問語言與 API key |
+| `shells/` | `rooms/`（伺服器這一端）：`lobby.py`、`room.py`，大廳與房間，房間持有一局的核心，用 `runner.py` 在背景執行緒呼叫它並告訴大家進度，用 `countdown.py` 計時；不知道有哪些玩法。`screen/`（每個瀏覽器分頁一份）：`client.py` 是什麼時候顯示什麼的流程，`view.py` 是介面要實作的方法（`View`），`premise.py` 是開局表單對話框的規則；不知道房間的存在。兩邊只透過 `connection.py` 溝通。`web/`：網頁伺服器（`server.py`）與瀏覽器頁面（`static/`）；`web/hosting.py` 是唯一把 `GAMES` 裡的玩法、API key、共用的次數限制與存檔位置交給大廳的地方。`setup.py`：第一次啟動時問語言與 API key |
 
 這些規則有測試把關（`tests/test_shells.py`）：核心 import 玩法、玩法互相 import、外殼用了內部模組、`rooms/` 與 `screen/` 互相 import（或 `rooms/` import 玩法），測試都會失敗。
 
@@ -49,7 +49,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 
 外殼只讀 `Reply` 的欄位，不知道現在玩的是哪一種：
 
-- `phase` 決定流程：`ask_continue`（找到存檔）→ `setup`（開局：有 `choices` 時跳選擇框，沒有時是冒險的故事前提表單）→ `playing` → `ending` → `ended`。`confirm_restart` 是確認重來
+- `phase` 決定流程：`ask_continue`（找到存檔）→ `setup`（開局：玩法送來 `form`（`SetupForm`：預設文字、題材選單、建議，例如冒險的故事前提）時是自由輸入的表單，否則從 `choices` 選一個）→ `playing` → `ending` → `ended`。`confirm_restart` 是確認重來。`ask_continue`、`setup`、`confirm_restart` 是 `HOST_PHASES`：只有房主回答
 - `narration`、`choices`：劇情與選項；有 `inputs` 時（海龜湯的提問、猜湯底），選項是切換輸入的方式
 - `characters`：狀態列，要顯示的字與警告都由玩法給
 - `ending`：結局、尾聲（海龜湯是湯底）、旅程紀錄

@@ -25,6 +25,12 @@ def started(isolated, **kw) -> tuple[SoupCore, object]:
     return core, core.send("1")  # Draw a puzzle from the bank
 
 
+def test_setting_up_is_a_choice_not_a_form(isolated):
+    """Turtle soup asks where the puzzle comes from with two choices; only games with a free-text setup send Reply.form."""
+    reply = soup(isolated).start()
+    assert reply.phase == "setup" and reply.form is None and len(reply.choices) == 2
+
+
 def test_one_player_asks_then_solves_it(isolated):
     core, reply = started(isolated)
     assert reply.phase == "playing" and "【空號】" in reply.narration and "他每晚撥同一個空號。" in reply.narration

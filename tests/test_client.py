@@ -7,7 +7,7 @@ import pytest
 from conftest import FakeEngine, until
 
 import story.shells.screen.client as client_module
-from story.core import Reply, Status
+from story.core import Reply, SetupForm, Status
 from story.core.ai import AIFailed
 from story.games import AdventureCore
 from story.games.adventure.game import GENRE_AUTO, GENRE_NONE
@@ -265,12 +265,12 @@ def premise_form(**replies):
         return replies[commands[-1].split()[0]]
 
     menu = [(GENRE_AUTO, "自動", "AI 挑"), (GENRE_NONE, "不套用", "照一般的方式"), ("武俠", "題材：武俠", "江湖"), ("克蘇魯", "題材：克蘇魯", "不可名狀")]
-    reply = Reply(phase="setup", premise_default="燈塔", genre="", genres=menu)  # The game gives the menu
+    reply = Reply(phase="setup", form=SetupForm(default="燈塔", genres=menu))  # The game gives the menu
     return PremiseForm(reply, request), sent
 
 
 async def test_premise_form_keeps_what_the_player_typed():
-    form, sent = premise_form(**{"/genre": Reply(phase="setup", premise_default="鏢局"), "/random": Reply(phase="setup", premise_default="客棧")})
+    form, sent = premise_form(**{"/genre": Reply(phase="setup", form=SetupForm(default="鏢局")), "/random": Reply(phase="setup", form=SetupForm(default="客棧"))})
     assert form.genre == GENRE_AUTO and [v for _, v in form.genre_options()][:3] == [GENRE_AUTO, GENRE_NONE, "武俠"]
     assert form.genre_hint("武俠") == "江湖"
     assert await form.change_genre("武俠", "燈塔") == "鏢局"  # Untouched: switch to the new genre's opening
@@ -281,8 +281,15 @@ async def test_premise_form_keeps_what_the_player_typed():
     assert form.finish(" 一個 \n人 ", False) == ("一個 人", False, "武俠")
 
 
+def test_premise_form_builds_the_commands_that_apply_its_choices():
+    """Before starting: the mode only if it changed, then the genre picked in the dialog."""
+    form, _ = premise_form()
+    assert form.setup_commands(True) == ["/timed on", f"/genre {GENRE_AUTO}"]
+    assert form.setup_commands(False) == [f"/genre {GENRE_AUTO}"]
+
+
 async def test_premise_form_drops_results_overtaken_by_a_newer_action():
-    form, _ = premise_form(**{"/genre": Reply(phase="setup", premise_default="新的")})
+    form, _ = premise_form(**{"/genre": Reply(phase="setup", form=SetupForm(default="新的"))})
     first = asyncio.create_task(form.change_genre("武俠", ""))
     second = asyncio.create_task(form.change_genre("克蘇魯", ""))
     assert await first is None and await second == "新的"

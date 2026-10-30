@@ -4,7 +4,7 @@ Games are in story.games and shells in story.shells; shells should only use name
 from story.core.ai import new_client
 from story.core.prompts import Texts
 from story.core.ratelimit import RateLimit
-from story.core.reply import MAX_PLAYERS, ChangeGroups, Ending, InputMode, Reply, Status, pick_choice
+from story.core.reply import HOST_PHASES, MAX_PLAYERS, ChangeGroups, Ending, InputMode, Reply, SetupForm, Status, pick_choice
 from story.core.team import GameMaker, TeamGame
 
-__all__ = ["MAX_PLAYERS", "ChangeGroups", "Ending", "GameMaker", "InputMode", "RateLimit", "Reply", "Status", "TeamGame", "Texts", "pick_choice", "new_client"]
+__all__ = ["HOST_PHASES", "MAX_PLAYERS", "ChangeGroups", "Ending", "GameMaker", "InputMode", "RateLimit", "Reply", "SetupForm", "Status", "TeamGame", "Texts", "pick_choice", "new_client"]

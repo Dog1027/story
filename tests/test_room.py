@@ -328,7 +328,7 @@ async def test_host_genre_choice_reaches_the_core(isolated):
         host, guest = await gather(lobby, "阿明", "小華")
         await host.send("1")
         premise_reply = await host.reply()
-        assert premise_reply.genres[-1] == ["武俠", "題材：武俠", "江湖恩怨"]  # Through JSON, tuples become lists
+        assert premise_reply.form.genres[-1] == ["武俠", "題材：武俠", "江湖恩怨"]  # Through JSON, tuples become lists
         await host.send("/genre 武俠")  # Choices in the premise dialog: no reply needed
         await host.send("鏢局")
         await guest.reply(lambda r: bool(r.narration))

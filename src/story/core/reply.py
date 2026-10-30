@@ -1,4 +1,4 @@
-"""What the core sends back to the shells: Reply and the Status, Ending and InputMode inside it. Every game uses the same reply,
+"""What the core sends back to the shells: Reply and the Status, Ending, InputMode and SetupForm inside it. Every game uses the same reply,
 so shells don't need to know which game is being played."""
 
 from dataclasses import asdict, dataclass, field
@@ -8,12 +8,13 @@ from story.core.prompts import UI  # Text shown to players (story/core/ui/<lang>
 
 Phase = Literal[
     "ask_continue",  # Found a save; asking whether to continue (like confirm_restart: choices are the two options, notice is the question)
-    "setup",  # New game: with choices, pick one (games other than the adventure, e.g. how turtle soup gets its puzzle); without, the story premise form (the adventure)
+    "setup",  # New game: with form, a free-text setup form (Reply.form); without, pick one of choices
     "playing",  # In a game
     "confirm_restart",  # Confirming whether to give up the current progress
     "ending",  # Just ended; the next input wraps up the ending (the adventure has the AI write an epilogue)
     "ended",  # The ending is ready; can play again
 ]
+HOST_PHASES: tuple[Phase, ...] = ("ask_continue", "setup", "confirm_restart")  # Answered only by the host, through a dialog
 
 MAX_PLAYERS = 4
 
@@ -66,6 +67,17 @@ class InputMode:
 
 
 @dataclass
+class SetupForm:
+    """A free-text form for starting a new game (the adventure's story premise), declared by the game in Reply.form.
+    The shells' setup dialog (shells/screen/premise.py) draws it and sends the game /genre, /timed, /random and /suggest."""
+
+    default: str = ""  # Used when the text box is left blank
+    genre: str = ""  # The current pick, one of the values in genres
+    genres: list[tuple[str, str, str]] = field(default_factory=list)  # The menu: (value, text shown, description); no menu when empty
+    suggestion: str = ""  # What /suggest came up with
+
+
+@dataclass
 class Reply:
     phase: Phase
     turn: int = 0  # The current turn; 0 before the game starts
@@ -80,10 +92,7 @@ class Reply:
     history: list[tuple[str, str]] = field(default_factory=list)  # resumed: earlier narration, per turn (narration, the actions taken after it, one per line per player)
     history_trimmed: bool = False  # resumed: older narration was compacted into a summary, so history starts partway
     info: tuple[str, str] | None = None  # Content to show separately: (title, body), e.g. memory or help
-    premise_default: str = ""  # The story premise form: the premise used if left blank
-    genre: str = ""  # The story premise form: the genre a new game will use (one of the values in genres)
-    genres: list[tuple[str, str, str]] = field(default_factory=list)  # The story premise form: the genre menu (value, text shown, description); no menu when empty
-    suggestion: str = ""  # The story premise form: the premise /suggest came up with
+    form: SetupForm | None = None  # setup: a free-text form the game declares; None means pick one of choices
     ending: Ending | None = None  # ended: the epilogue and journey record
     error: Literal["api"] | None = None  # Calling the AI failed (notice says why): stays in the same phase and can be retried
     actor: str = ""  # The player who sent the input (the subject of send_as and view; the only player when alone): their name while they haven't acted this turn, and choices are theirs
@@ -99,6 +108,8 @@ class Reply:
         data = dict(data)
         if data.get("ending"):
             data["ending"] = Ending(**data["ending"])
+        if data.get("form"):
+            data["form"] = SetupForm(**data["form"])
         data["characters"] = [Status(**s) for s in data.get("characters", [])]
         data["inputs"] = [InputMode(**m) for m in data.get("inputs", [])]
         return cls(**data)

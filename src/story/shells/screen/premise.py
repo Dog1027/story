@@ -1,21 +1,22 @@
-"""The new story dialog (the adventure's premise form): its rules live here, so the interface only draws it."""
+"""The setup form dialog (a game's Reply.form, e.g. the adventure's story premise): its rules live here, so the interface only draws it."""
 
 import asyncio
 from collections.abc import Awaitable, Callable
 
-from story.core import Reply
+from story.core import Reply, SetupForm
 
 
 class PremiseForm:
-    """The rules of the new story dialog: the interface only draws it, passes the player's actions here, and updates the text box from what comes back.
+    """The rules of the setup form dialog: the interface only draws it, passes the player's actions here, and updates the text box from what comes back.
     None means leave the text box as is (the player edited it, or a later action has superseded this result)."""
 
     def __init__(self, reply: Reply, request: Callable[..., Awaitable[Reply]]):
-        self.default = reply.premise_default  # The current default opening: used when the text box is blank or untouched
+        form = reply.form or SetupForm()
+        self.default = form.default  # The current default opening: used when the text box is blank or untouched
         self.timed = reply.timed
-        self.genres = [(value, label) for value, label, _ in reply.genres]  # The genre menu: empty without genre packs, and then the interface doesn't show it
-        self.hints = {value: hint for value, _, hint in reply.genres}
-        self.genre = reply.genre if not self.genres or reply.genre in self.hints else self.genres[0][0]
+        self.genres = [(value, label) for value, label, _ in form.genres]  # The genre menu: empty without genre packs, and then the interface doesn't show it
+        self.hints = {value: hint for value, _, hint in form.genres}
+        self.genre = form.genre if not self.genres or form.genre in self.hints else self.genres[0][0]
         self.request = request  # Sends commands to the core; see Client.ask_room()
         self.asking = asyncio.Lock()  # One at a time: the core can't handle two requests at once
         self.latest = 0  # The number of the latest action
@@ -32,19 +33,23 @@ class PremiseForm:
         """Change the genre: the randomly drawn opening switches to the new genre's too (not if the player edited the text box). text is the text box's current content."""
         self.genre = choice
         reply = await self._ask(f"/genre {choice}")
-        return None if reply is None or reply.error else self._new_default(reply.premise_default, text)
+        return None if reply is None or reply.error or reply.form is None else self._new_default(reply.form.default, text)
 
     async def reroll(self, text: str) -> str | None:
         """Another one: redraw from the genre packs' opening ideas without waiting for the AI. Pressing it always replaces the text box."""
         reply = await self._ask(f"/genre {self.genre}", "/random")
-        return None if reply is None or reply.error else self._new_default(reply.premise_default, text, replace=True)
+        return None if reply is None or reply.error or reply.form is None else self._new_default(reply.form.default, text, replace=True)
 
     async def suggest(self, text: str) -> str:
         """Suggest one: have the AI think of an opening, always replacing the text box. Raises RuntimeError on failure (the interface just shows a notice; starting a game isn't interrupted)."""
         reply = await self._ask(f"/genre {self.genre}", "/suggest", latest_only=False)
-        if reply.error:
+        if reply.error or reply.form is None:
             raise RuntimeError(reply.notice)
-        return self._new_default(reply.suggestion, text, replace=True)
+        return self._new_default(reply.form.suggestion, text, replace=True)
+
+    def setup_commands(self, timed: bool) -> list[str]:
+        """The commands that apply the dialog's choices before starting: the mode (only if it changed) and the genre."""
+        return ([f"/timed {'on' if timed else 'off'}"] if timed != self.timed else []) + [f"/genre {self.genre}"]
 
     def finish(self, text: str, timed: bool) -> tuple[str, bool, str]:
         """Start pressed: (premise, timed or not, genre). A blank text box uses the default opening."""

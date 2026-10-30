@@ -121,10 +121,10 @@ class GenreEngine(FakeEngine):
 def test_genre_command_and_new_story_fields(isolated):
     core = AdventureCore("test", [HERO], engine=GenreEngine(), save_path=isolated / "save.json")
     reply = core.start()
-    assert reply.genre == GENRE_AUTO and [v for v, _, _ in reply.genres] == [GENRE_AUTO, GENRE_NONE, "武俠"]
-    assert reply.genres[2] == ("武俠", "題材：武俠", "江湖恩怨")  # The genre menu: value, text shown, description
+    assert reply.form.genre == GENRE_AUTO and [v for v, _, _ in reply.form.genres] == [GENRE_AUTO, GENRE_NONE, "武俠"]
+    assert reply.form.genres[2] == ("武俠", "題材：武俠", "江湖恩怨")  # The genre menu: value, text shown, description
     assert "沒有「太空」這個題材" in core.send("/genre 太空").notice
-    assert core.send("/genre 武俠").genre == "武俠"
+    assert core.send("/genre 武俠").form.genre == "武俠"
     core.send("鏢局的故事")
     assert core.state.genre == "武俠" and not core.state.genre_pending
 
@@ -160,19 +160,19 @@ class PackEngine(FakeEngine):
 def test_first_new_story_draws_a_premise_from_the_packs(isolated):
     core = AdventureCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     reply = core.start()
-    assert reply.premise_default in ("你是鏢師。", "你是捕快。", "你收到舅舅的包裹。", DEFAULT_PREMISE)
+    assert reply.form.default in ("你是鏢師。", "你是捕快。", "你收到舅舅的包裹。", DEFAULT_PREMISE)
     core.send("")  # Blank: start with the drawn one
-    assert core.state.premise == reply.premise_default
+    assert core.state.premise == reply.form.default
 
 
 def test_random_draws_a_different_premise_and_genre_change_redraws(isolated):
     core = AdventureCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     core.start()
     reply = core.send("/genre 武俠")
-    assert reply.premise_default in ("你是鏢師。", "你是捕快。")  # Changing the genre: the drawn opening changes with it
-    other = core.send("/random").premise_default
-    assert other in ("你是鏢師。", "你是捕快。") and other != reply.premise_default  # Another one: never draws the same one
-    assert core.send("/genre 克蘇魯").premise_default == "你收到舅舅的包裹。"
+    assert reply.form.default in ("你是鏢師。", "你是捕快。")  # Changing the genre: the drawn opening changes with it
+    other = core.send("/random").form.default
+    assert other in ("你是鏢師。", "你是捕快。") and other != reply.form.default  # Another one: never draws the same one
+    assert core.send("/genre 克蘇魯").form.default == "你收到舅舅的包裹。"
 
 
 def test_play_again_keeps_the_last_premise_unless_rerolled(isolated):
@@ -181,15 +181,15 @@ def test_play_again_keeps_the_last_premise_unless_rerolled(isolated):
     core.send("自己寫的前提")
     core.send("/restart")
     reply = core.send("1")
-    assert reply.premise_default == "自己寫的前提"  # Play again: keeps the last game's premise
-    assert core.send("/genre 武俠").premise_default == "自己寫的前提"  # Changing the genre doesn't replace it either
-    assert core.send("/random").premise_default in ("你是鏢師。", "你是捕快。")
+    assert reply.form.default == "自己寫的前提"  # Play again: keeps the last game's premise
+    assert core.send("/genre 武俠").form.default == "自己寫的前提"  # Changing the genre doesn't replace it either
+    assert core.send("/random").form.default in ("你是鏢師。", "你是捕快。")
 
 
 def test_ai_suggestion_wins_over_drawn_premise(isolated):
     core = AdventureCore("test", [HERO], engine=PackEngine(), save_path=isolated / "save.json")
     core.start()
-    assert core.send("/suggest").premise_default == "你是月球礦坑的夜班工程師。"
+    assert core.send("/suggest").form.default == "你是月球礦坑的夜班工程師。"
 
 
 def test_every_language_has_valid_genre_packs():
