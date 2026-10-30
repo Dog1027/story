@@ -64,3 +64,11 @@ def test_no_questions_when_not_in_a_terminal(monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)  # E.g. just start in the background
     setup.run()
     assert settings.load() == {}
+
+
+def test_a_broken_config_raises_an_error_naming_the_file(isolated):
+    import pytest
+
+    (isolated / "config.toml").write_text("language = \n")
+    with pytest.raises(settings.InvalidConfig, match="config.toml"):
+        settings.load()

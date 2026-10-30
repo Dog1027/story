@@ -35,7 +35,9 @@ def past_text(state: SoupState) -> str:
 
 def quoted(quote: str, guess: str) -> bool:
     """Whether the text the judge quotes really comes from this guess (allowing different punctuation, spacing, or a few characters off). A key point without a real quote doesn't count."""
-    squash = lambda text: "".join(ch for ch in text if ch.isalnum()).lower()  # noqa: E731
+    def squash(text: str) -> str:
+        return "".join(ch for ch in text if ch.isalnum()).lower()
+
     quote, guess = squash(quote), squash(guess)
     if not quote:
         return False

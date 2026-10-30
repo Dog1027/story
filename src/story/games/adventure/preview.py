@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 from story.games.adventure.engine import Engine
 from story.games.adventure.genres import load_genres
-from story.games.adventure.models import SCHEMA
+from story.games.adventure.models import SCHEMA, GameState
 from story.games.adventure.prompting import SYSTEM_PROMPT
 from story.games.adventure.rules import ACT_TURNS, MIN_ACT_TURNS, TARGET_TURNS
 from story.games.adventure.samples import HISTORY, SAMPLE, sample_actions, sample_state
@@ -24,7 +24,9 @@ from story.games.adventure.samples import HISTORY, SAMPLE, sample_actions, sampl
 
 def scenarios(engine: Engine, players: int, genre: str) -> dict[str, tuple[str, str]]:
     """{code: (description, prompt)}"""
-    state = lambda **fields: sample_state(players, genre, **fields)  # noqa: E731
+    def state(**fields) -> GameState:
+        return sample_state(players, genre, **fields)
+
     build, action = engine.build, sample_actions(players)
     opening = state(turn=0, minutes=None, recent=[], key_events=[], flags=[], act=0, act_turns=0)
     dying = state(current_narration=SAMPLE["fall" if players == 1 else "fall_named"])

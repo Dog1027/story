@@ -18,19 +18,26 @@ from pathlib import Path
 CONFIG_DIR = Path.home() / ".config" / "story"
 # The project folder (where pyproject.toml is): saves/ and eval_results/ go here, whatever folder the program is started from
 DATA_DIR = Path(__file__).resolve().parents[2]
-CONFIG_PATH = CONFIG_DIR / "config.toml"
 KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
-OLD_FILES = {"api_key": "api_key"}  # Each setting used to have its own file; migrate() moves them into config.toml
+
+
+class InvalidConfig(Exception):
+    """config.toml exists but can't be read as TOML; the message says where and why, for the person who edited it."""
+
+
+def config_path() -> Path:
+    """Where config.toml is: computed each time, so redirecting CONFIG_DIR (e.g. in tests) moves it too."""
+    return CONFIG_DIR / "config.toml"
 
 
 def load() -> dict:
     """Read the config, flattened to {"section.name": value}; empty if there is none. Only reads: importing the core reads the language through here."""
     try:
-        data = _flatten(tomllib.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+        data = _flatten(tomllib.loads(config_path().read_text(encoding="utf-8")))
     except FileNotFoundError:
         data = {}
     except tomllib.TOMLDecodeError as e:
-        raise SystemExit(f"{CONFIG_PATH} is not valid TOML: {e}") from e
+        raise InvalidConfig(f"{config_path()} is not valid TOML: {e}") from e
     return data
 
 
@@ -61,19 +68,15 @@ def api_key() -> str | None:
 
 
 def migrate() -> None:
-    """Move settings from the old one-file-per-setting layout into config.toml (setup.run() calls this on launch)."""
-    data, changed = load(), False
-    for key, name in OLD_FILES.items():
-        old = CONFIG_DIR / name
-        if not old.is_file():
-            continue
-        value = old.read_text(encoding="utf-8").strip()
-        if value and key not in data:
-            data[key] = value
-        old.unlink()
-        changed = True
-    if changed:
-        _write(data)
+    """Move the API key from the old layout (its own file, ~/.config/story/api_key) into config.toml (setup.run() calls this on launch)."""
+    old = CONFIG_DIR / "api_key"
+    if not old.is_file():
+        return
+    data = load()
+    if (value := old.read_text(encoding="utf-8").strip()) and "api_key" not in data:
+        data["api_key"] = value
+    old.unlink()
+    _write(data)
 
 
 def _flatten(table: dict, prefix: str = "") -> dict:
@@ -89,7 +92,9 @@ def _flatten(table: dict, prefix: str = "") -> dict:
 def _write(data: dict) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     # Settings without a section come first; "section.name" goes under its own [section]. Values are all strings: a JSON string is also valid TOML
-    line = lambda key, value: f"{key} = {json.dumps(value, ensure_ascii=False)}\n"  # noqa: E731
+    def line(key: str, value: str) -> str:
+        return f"{key} = {json.dumps(value, ensure_ascii=False)}\n"
+
     sections: dict[str, dict] = {}
     for key, value in data.items():
         section, _, name = key.rpartition(".")
@@ -98,7 +103,8 @@ def _write(data: dict) -> None:
     for section, values in sections.items():
         text += ("\n" if text else "") + f"[{section}]\n" + "".join(line(k, v) for k, v in values.items())
     # It holds the API key: only the owner can read it, set when the file is created so no one can read it mid-write
-    fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    os.chmod(CONFIG_PATH, 0o600)
+    path = config_path()
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.chmod(path, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text)

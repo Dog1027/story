@@ -61,8 +61,12 @@ def change_groups(before: Snapshot, who: Character) -> ChangeGroups:
     old_conds, old_items = before
     new_conds, new_items = snapshot(who)
     rank, w = SEVERITY_ORDER.index, lambda v: word("severity", v)
-    added = lambda n, v: UI["condition"].format(name=n, severity=w(v))  # noqa: E731
-    moved = lambda n, v: UI["condition_change"].format(name=n, old=w(old_conds[n]), new=w(v))  # noqa: E731
+    def added(n: str, v: str) -> str:
+        return UI["condition"].format(name=n, severity=w(v))
+
+    def moved(n: str, v: str) -> str:
+        return UI["condition_change"].format(name=n, old=w(old_conds[n]), new=w(v))
+
     groups: ChangeGroups = [
         (UI["change_new"], [(added(n, v), v) for n, v in new_conds.items() if n not in old_conds]),
         (UI["change_worse"], [(moved(n, v), "bad") for n, v in new_conds.items()

@@ -109,7 +109,9 @@ def test_every_language_has_the_same_files_and_sections():
                 ours, theirs = prompts.sections(f.stem, base), prompts.sections(f.stem, lang)
                 assert ours.keys() == theirs.keys(), (lang.name, f.name, ours.keys() ^ theirs.keys())
                 for key in ours:
-                    variables = lambda text: set(re.findall(r"\{(\w+)[:}]", text))  # noqa: E731
+                    def variables(text: str) -> set[str]:
+                        return set(re.findall(r"\{(\w+)[:}]", text))
+
                     assert variables(ours[key]) == variables(theirs[key]), (lang.name, f.name, key)
     for samples in text_folders("samples"):  # Samples (just prompts, just eval): one per language, with the same sections
         base = prompts.sections("zh-TW", samples).keys()

@@ -23,7 +23,6 @@ def isolated(tmp_path, monkeypatch):
     for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr("story.settings.CONFIG_DIR", tmp_path)  # Can't see your config (config.toml), genre packs or puzzles
-    monkeypatch.setattr("story.settings.CONFIG_PATH", tmp_path / "config.toml")
     monkeypatch.setattr("story.settings.DATA_DIR", tmp_path)  # saves/ and eval_results/ go here, never the real ones
     return tmp_path
 
