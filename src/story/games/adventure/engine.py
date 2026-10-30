@@ -9,7 +9,7 @@ from google.genai import types
 
 from story.core.ai import MODEL, AICaller, AIFailed, GeminiClient, StopStream, partial_bool, partial_string
 from story.games.adventure.genres import Genre, load_genres
-from story.games.adventure.models import Epilogue, GameState, GenrePick, StoryArc, StoryBeat, Turn
+from story.games.adventure.models import AdventureState, Epilogue, GenrePick, StoryArc, StoryBeat, Turn
 from story.games.adventure.prompting import MEMORY, SYSTEM_PROMPT, TURN, PromptBuilder, clock_text, format_actions
 from story.games.adventure.rules import (
     ACT_TURNS,
@@ -35,7 +35,7 @@ class EndingTooEarly(StopStream):
     reason = "early_ending"
 
 
-class Engine(AICaller):
+class AdventureEngine(AICaller):
     def __init__(
         self,
         api_key: str | None = None,
@@ -49,7 +49,7 @@ class Engine(AICaller):
 
     # ---------- Public interface ----------
 
-    def start(self, state: GameState) -> None:
+    def start(self, state: AdventureState) -> None:
         """Plan the hidden story outline first, then write the opening (with the "auto" genre, pick a genre before everything else).
         This calls the AI several times and takes longer than a normal turn, so progress tells the shells how far along it is."""
         try:
@@ -63,7 +63,7 @@ class Engine(AICaller):
         finally:
             self.progress, self.draft = "", ""
 
-    def pick_genre(self, state: GameState) -> None:
+    def pick_genre(self, state: AdventureState) -> None:
         """The players chose "auto": give the AI the genre catalog and have it pick one for the premise. Pick first so the outline can use the genre's guide and twist ideas."""
         response = self.generate(
             "genre",
@@ -78,7 +78,7 @@ class Engine(AICaller):
         picked = response.parsed.genre.strip() if isinstance(response.parsed, GenrePick) else ""
         state.genre, state.genre_pending = (picked if picked in self.genres else ""), False  # Not in the catalog (or blank): no genre
 
-    def plan_arc(self, state: GameState) -> None:
+    def plan_arc(self, state: AdventureState) -> None:
         """Have the AI plan the story outline. If its answer can't be used, the game goes on without one and a later turn makes one from the story so far,
         picking which act to continue from by the turn number. Raises AIFailed if the AI can't be reached."""
         response = self.generate(
@@ -97,7 +97,7 @@ class Engine(AICaller):
         state.arc.acts = state.arc.acts[:4]
         state.act, state.act_turns = min(3, state.turn // ACT_TURNS), 0  # A late outline: estimate the current act from the turn number
 
-    def play_turn(self, state: GameState, actions: dict[str, str]) -> None:
+    def play_turn(self, state: AdventureState, actions: dict[str, str]) -> None:
         """Every character has acted ({name: action}): advance a turn."""
         if state.arc is None:
             self.plan_arc(state)
@@ -120,7 +120,7 @@ class Engine(AICaller):
             raise AIFailed(UI["no_suggestion"])
         return text
 
-    def write_epilogue(self, state: GameState) -> None:
+    def write_epilogue(self, state: AdventureState) -> None:
         """After the story ends, have the AI look back over the whole journey and write the epilogue and the ending's title."""
         response = self.generate(
             "epilogue",
@@ -135,7 +135,7 @@ class Engine(AICaller):
 
     # ---------- A turn ----------
 
-    def _next_beat(self, state: GameState, actions: dict[str, str] | None) -> StoryBeat:
+    def _next_beat(self, state: AdventureState, actions: dict[str, str] | None) -> StoryBeat:
         """Have the AI write this turn. If it writes the ending too early, have it rewrite once; if the rewrite still ends, _apply() ignores the ending."""
         prompt = self.build.turn(state, actions)
         try:
@@ -145,14 +145,14 @@ class Engine(AICaller):
             self.draft = ""
             return self.stream_beat(prompt + "\n\n" + TURN["early_ending_retry"], kind="rewrite")
 
-    def _advance(self, state: GameState, actions: dict[str, str] | None) -> None:
+    def _advance(self, state: AdventureState, actions: dict[str, str] | None) -> None:
         beat = self._next_beat(state, actions)
         newly_dead = self._apply(state, beat)
         self._log_turn(state, actions, beat)
         if newly_dead:
             self._write_deaths(state, newly_dead)
 
-    def _apply(self, state: GameState, beat: StoryBeat) -> list[str]:
+    def _apply(self, state: AdventureState, beat: StoryBeat) -> list[str]:
         """The AI can only propose changes; the program decides how much to accept, applying the rules to each character. Returns the characters who died of wounds this turn."""
         elapsed, is_opening_turn = advance_clock(state, beat.time_passed, beat.start_time_of_day)
         may_end = ending_allowed(state, state.turn)  # Checked before advancing the act: the turn that enters the last act can't end yet
@@ -182,7 +182,7 @@ class Engine(AICaller):
         state.current_time_limit = clamp_time_limit(state, beat.time_limit)
         return newly_dead
 
-    def _write_deaths(self, state: GameState, names: list[str]) -> None:
+    def _write_deaths(self, state: AdventureState, names: list[str]) -> None:
         """The program found a character died of their wounds: have the AI write a short scene of them falling, after this turn's narration."""
         prefix = state.current_narration + "\n\n"
 
@@ -199,7 +199,7 @@ class Engine(AICaller):
         if text := text.strip():
             state.current_narration += "\n\n" + text
 
-    def _log_turn(self, state: GameState, actions: dict[str, str] | None, beat: StoryBeat) -> None:
+    def _log_turn(self, state: AdventureState, actions: dict[str, str] | None, beat: StoryBeat) -> None:
         """Log the changes the AI proposed this turn and what the program applied, to look into "why did that happen" later."""
         self.write_log({
             "turn": state.turn,
@@ -234,12 +234,12 @@ class Engine(AICaller):
 
     # ---------- Memory compaction ----------
 
-    def needs_compaction(self, state: GameState) -> bool:
+    def needs_compaction(self, state: AdventureState) -> bool:
         """Whether compact_memory() has anything to do. Part of the engine's interface to the game, so the game never reaches into rules.py
         and the test engines can stand in for it."""
         return needs_compaction(state)
 
-    def compact_memory(self, state: GameState) -> None:
+    def compact_memory(self, state: AdventureState) -> None:
         """When the story log gets too long, fold the oldest turns (down to half), older key events and facts into the long-term summary.
         The core calls this in the background while players read, only when needs_compaction(). Rare: a 30-turn story is only about 7,000–8,000 characters."""
         turns, old_events, old_flags = parts_to_compact(state)

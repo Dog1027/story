@@ -1,6 +1,6 @@
 """Calling Gemini: build the client, send requests, pull out the narration while streaming, and record each call's time and token usage.
 
-Each game's AI-calling class inherits AICaller (the adventure's Engine, turtle soup's SoupJudge) and calls the AI with generate() and stream();
+Each game's AI-calling class inherits AICaller (the adventure's AdventureEngine, turtle soup's SoupJudge) and calls the AI with generate() and stream();
 this module knows nothing about game rules or what the prompts say.
 """
 

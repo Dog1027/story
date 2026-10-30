@@ -47,7 +47,7 @@ class SoupCore(TeamGame[SoupState]):
         client: GeminiClient | None = None,
         puzzles: list[Puzzle] | None = None,
     ):
-        self.judge = judge or SoupJudge(api_key, client, log_path)
+        self.judge = judge or SoupJudge(api_key=api_key, client=client, log_path=log_path)
         super().__init__(players, save_path, ai=self.judge)
         self.puzzles = load_puzzles()[0] if puzzles is None else puzzles
         self.played: set[str] = set()  # Puzzles this room has played: drawing from the bank prefers unplayed ones, and the AI avoids them

@@ -8,15 +8,15 @@ from conftest import ARC, FakeGroupEngine, InvalidKeyError, cond, make_engine, p
 from story.core.ai import AIFailed
 from story.core.saves import load
 from story.games import AdventureCore
-from story.games.adventure.models import Character, GameState
+from story.games.adventure.models import AdventureState, Character
 from story.games.adventure.prompting import AWAY_ACTION, TIMEOUT_ACTION
 from story.games.adventure.records import ending_record
 
 NAMES = ["阿明", "小華"]
 
 
-def group_state(**kwargs) -> GameState:
-    return GameState(premise="兩個人被困在燈塔。", characters=[Character(name=n) for n in NAMES], **kwargs)
+def group_state(**kwargs) -> AdventureState:
+    return AdventureState(premise="兩個人被困在燈塔。", characters=[Character(name=n) for n in NAMES], **kwargs)
 
 
 def by_name(state):
@@ -129,7 +129,7 @@ def test_epilogue_looks_back_on_every_character():
 def test_one_character_gets_no_focus_and_wrong_names_still_count():
     """Only one character: no "focus", the AI is reminded to use 「你」 ("you"), and changes count for them even when the AI gets the name wrong."""
     engine, gemini = make_engine(pbeat(upd("別的名字", items_gained=["油燈"], choices=["點燈"])))
-    state = GameState(premise="一個人在燈塔。", characters=[Character(name="阿明")])
+    state = AdventureState(premise="一個人在燈塔。", characters=[Character(name="阿明")])
     engine.start(state)
     assert "# 焦點" not in gemini.prompts[-1]
     assert "# 人稱" in gemini.prompts[-1] and "「阿明」" in gemini.prompts[-1]
@@ -252,7 +252,7 @@ def test_resume_team_save(engine, isolated):
     first.send("")
     act(first, "1")
     act(first, "1")
-    assert load(isolated / "team.json", GameState).turn == 2
+    assert load(isolated / "team.json", AdventureState).turn == 2
 
     same = AdventureCore("test", NAMES, save_path=isolated / "team.json", log_path=isolated / "team.log.jsonl", engine=FakeGroupEngine())
     assert same.start().phase == "ask_continue"
@@ -336,7 +336,7 @@ def test_reply_survives_json_round_trip(core):
 
 
 def test_group_core_with_real_engine(isolated):
-    """AdventureCore with a real Engine (only Gemini is fake), played from the opening until someone falls."""
+    """AdventureCore with a real AdventureEngine (only Gemini is fake), played from the opening until someone falls."""
     lethal = [cond("失血", "重"), cond("骨折", "重")]
     engine, gemini = make_engine(
         pbeat(upd("阿明", choices=["推門", "點燈"]), upd("小華", choices=["守門", "搜索"]), narration="兩人醒來。"),
@@ -353,4 +353,4 @@ def test_group_core_with_real_engine(isolated):
     assert core.waiting() == ["小華"] and reply.choices == ["逃走"]  # Ming has fallen; only Hua is left
     assert [(s.name, s.alive) for s in reply.characters] == [("阿明", False), ("小華", True)]
     assert ("小華", [("獲得", [("鑰匙", "plain")])]) in reply.changes
-    assert load(isolated / "team.json", GameState).characters[0].alive is False
+    assert load(isolated / "team.json", AdventureState).characters[0].alive is False

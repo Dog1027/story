@@ -15,9 +15,9 @@ from pydantic import BaseModel, Field
 from story.core import prompts
 from story.core.ai import MODEL, AICaller, GeminiClient
 from story.core.evals import Scenario, Trial
-from story.games.adventure.engine import Engine
+from story.games.adventure.engine import AdventureEngine
 from story.games.adventure.genres import Genre, load_genres
-from story.games.adventure.models import SCHEMA, Character, GameState
+from story.games.adventure.models import SCHEMA, AdventureState, Character
 from story.games.adventure.rules import ACT_TURNS, body_level, body_score
 from story.games.adventure.samples import ARC, PREMISE, SAMPLE, conditions, listed, sample_actions, sample_state
 from story.games.adventure.text import TEXT
@@ -43,11 +43,11 @@ class Verdict(BaseModel):
 
 
 class AdventureTrial(Trial):
-    """One run of an adventure scenario: a real Engine, plus the judge and the checks every scenario needs."""
+    """One run of an adventure scenario: a real AdventureEngine, plus the judge and the checks every scenario needs."""
 
     def __init__(self, client: GeminiClient, log_path: Path, genres: dict[str, Genre]):
         super().__init__(client, log_path)
-        self.engine = Engine(client=client, genres=genres, log_path=log_path)
+        self.engine = AdventureEngine(client=client, genres=genres, log_path=log_path)
         self.judge_ai = AICaller(client=client)  # The judge's calls go through AICaller like every other, but aren't written into the game's log
 
     def judge(self, name: str, section: str, expect: bool = True, **values) -> None:
@@ -69,7 +69,7 @@ class AdventureTrial(Trial):
         else:
             self.check(name, False, "the judge returned no result")
 
-    def basics(self, state: GameState, may_end: bool = False) -> None:
+    def basics(self, state: AdventureState, may_end: bool = False) -> None:
         """What every scenario must meet: length, number of choices, and the story not having ended."""
         length = prompts.text_length(state.current_narration)
         low, high = NARRATION_LEN
@@ -81,7 +81,7 @@ class AdventureTrial(Trial):
             self.check("the story hasn't ended", not state.game_over)
 
     def tried_ending(self) -> bool:
-        """The AI started writing an ending and the program stopped it and asked for a rewrite (see Engine._next_beat)."""
+        """The AI started writing an ending and the program stopped it and asked for a rewrite (see AdventureEngine._next_beat)."""
         if not self.log_path.exists():
             return False
         records = [json.loads(line) for line in self.log_path.read_text(encoding="utf-8").splitlines()]
@@ -104,8 +104,8 @@ def first_action() -> str:
     return next(iter(sample_actions(1).values()))
 
 
-def opening(t: AdventureTrial) -> GameState:
-    state = GameState(premise=PREMISE, characters=[hero()])
+def opening(t: AdventureTrial) -> AdventureState:
+    state = AdventureState(premise=PREMISE, characters=[hero()])
     t.engine.start(state)
     arc = state.arc
     t.check("the outline has a hidden truth and clues", arc is not None and arc.twist and arc.clues)
@@ -115,7 +115,7 @@ def opening(t: AdventureTrial) -> GameState:
     return state
 
 
-def early(t: AdventureTrial) -> GameState:
+def early(t: AdventureTrial) -> AdventureState:
     state = sample_state(1, "", act=1, act_turns=3, turn=12, current_narration=SAMPLE["early_narration"])
     action = SAMPLE["early_action"]
     t.engine.play_turn(state, mine(action))
@@ -126,7 +126,7 @@ def early(t: AdventureTrial) -> GameState:
     return state
 
 
-def reveal(t: AdventureTrial) -> GameState:
+def reveal(t: AdventureTrial) -> AdventureState:
     state = sample_state(1, "", act=2, act_turns=ACT_TURNS, turn=18, current_narration=SAMPLE["reveal_narration"])
     t.engine.play_turn(state, mine(SAMPLE["reveal_action"]))
     t.basics(state)
@@ -135,7 +135,7 @@ def reveal(t: AdventureTrial) -> GameState:
     return state
 
 
-def agency(t: AdventureTrial) -> GameState:
+def agency(t: AdventureTrial) -> AdventureState:
     state = sample_state(1, "")
     action = first_action()
     t.engine.play_turn(state, mine(action))
@@ -144,7 +144,7 @@ def agency(t: AdventureTrial) -> GameState:
     return state
 
 
-def reckless(t: AdventureTrial) -> GameState:
+def reckless(t: AdventureTrial) -> AdventureState:
     state = sample_state(1, "", current_narration=SAMPLE["armed"])
     before = body_score(state.characters[0])
     t.engine.play_turn(state, mine(SAMPLE["reckless_action"]))
@@ -154,7 +154,7 @@ def reckless(t: AdventureTrial) -> GameState:
     return state
 
 
-def dying(t: AdventureTrial) -> GameState:
+def dying(t: AdventureTrial) -> AdventureState:
     state = sample_state(1, "", current_narration=SAMPLE["armed"])
     state.characters[0].conditions = conditions("dying_wounds")
     t.engine.play_turn(state, mine(SAMPLE["dying_action"]))
@@ -163,9 +163,9 @@ def dying(t: AdventureTrial) -> GameState:
     return state
 
 
-def tone(genre: Genre) -> Callable[[AdventureTrial], GameState]:
-    def run(t: AdventureTrial) -> GameState:
-        state = GameState(premise=genre.premises[0] if genre.premises else PREMISE, characters=[hero()], genre=genre.name)
+def tone(genre: Genre) -> Callable[[AdventureTrial], AdventureState]:
+    def run(t: AdventureTrial) -> AdventureState:
+        state = AdventureState(premise=genre.premises[0] if genre.premises else PREMISE, characters=[hero()], genre=genre.name)
         t.engine.start(state)
         t.basics(state)
         t.judge("the style fits the genre", "tone", genre=genre.name, guide=genre.guide, narration=state.current_narration)
@@ -194,7 +194,7 @@ def calibration(genres: dict[str, Genre]) -> Callable[[AdventureTrial], None]:
     return run
 
 
-def keep(scenario: Callable[[AdventureTrial], GameState | None]) -> Callable[[AdventureTrial], None]:
+def keep(scenario: Callable[[AdventureTrial], AdventureState | None]) -> Callable[[AdventureTrial], None]:
     """Save the narration and choices afterwards, to compare before and after a prompt change (scenarios that only check the judge write none)."""
 
     def run(t: AdventureTrial) -> None:

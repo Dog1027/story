@@ -6,7 +6,7 @@ from conftest import HERO, FakeEngine, InvalidKeyError
 from story.core.ai import AIFailed
 from story.core.saves import load
 from story.games import AdventureCore
-from story.games.adventure.models import GameState
+from story.games.adventure.models import AdventureState
 from story.games.adventure.prompting import TIMEOUT_ACTION
 from story.games.adventure.records import DEFAULT_PREMISE
 
@@ -151,7 +151,7 @@ def test_unknown_command_and_empty_input_while_playing(core):
 def test_each_turn_is_saved(core, isolated):
     new_game(core)
     core.send("1")
-    assert load(isolated / "save.json", GameState).turn == 2
+    assert load(isolated / "save.json", AdventureState).turn == 2
 
 
 def test_compaction_runs_in_background_and_is_awaited(core, engine):

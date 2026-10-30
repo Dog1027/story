@@ -1,4 +1,4 @@
-"""The engine's game rules: feed a real Engine fake Gemini replies and check that the program guards correctly."""
+"""The engine's game rules: feed a real AdventureEngine fake Gemini replies and check that the program guards correctly."""
 
 from itertools import pairwise
 

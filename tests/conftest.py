@@ -10,8 +10,8 @@ import pytest
 os.environ["STORY_LANG"] = "zh-TW"
 
 from story.core.ai import AIFailed
-from story.games.adventure.engine import Engine
-from story.games.adventure.models import Character, Condition, GameState, GenrePick, StoryArc, StoryBeat, Turn
+from story.games.adventure.engine import AdventureEngine
+from story.games.adventure.models import AdventureState, Character, Condition, GenrePick, StoryArc, StoryBeat, Turn
 from story.games.adventure.prompting import SYSTEM_PROMPT, format_actions
 from story.games.soup.models import Puzzle
 
@@ -58,13 +58,13 @@ def pbeat(*updates, **fields) -> StoryBeat:
     return StoryBeat(**{**base, **fields})
 
 
-def solo(**fields) -> GameState:
+def solo(**fields) -> AdventureState:
     """A solo game state: one character named HERO. The character's fields (conditions, inventory) go straight in the arguments."""
     character = Character(name=HERO, **{k: fields.pop(k) for k in ("conditions", "inventory") if k in fields})
-    return GameState(**{"premise": "x", **fields, "characters": [character]})
+    return AdventureState(**{"premise": "x", **fields, "characters": [character]})
 
 
-def hero(state: GameState) -> Character:
+def hero(state: AdventureState) -> Character:
     return state.characters[0]
 
 
@@ -131,11 +131,11 @@ class FakeGemini:
         return SimpleNamespace(text=self.summary)  # Compacting the memory
 
 
-def make_engine(*beats, genres=None, **kwargs) -> tuple[Engine, FakeGemini]:
-    """Builds a real Engine on a fake Gemini, so the engine's rules really run.
+def make_engine(*beats, genres=None, **kwargs) -> tuple[AdventureEngine, FakeGemini]:
+    """Builds a real AdventureEngine on a fake Gemini, so the engine's rules really run.
     No genre packs by default (so results are fixed); pass genres to test genres."""
     gemini = FakeGemini(beats, **kwargs)
-    return Engine(client=gemini, genres=genres or {}), gemini
+    return AdventureEngine(client=gemini, genres=genres or {}), gemini
 
 
 # ---------- Fake engines for the core and shells (no rules; change the state directly) ----------
@@ -167,7 +167,7 @@ class Watched:
 
 
 class FakeEngine(Watched):
-    """Stands in for Engine so core and shell tests can control each turn exactly. A solo lighthouse story."""
+    """Stands in for AdventureEngine so core and shell tests can control each turn exactly. A solo lighthouse story."""
 
     genres: dict = {}  # Subclasses can swap in their own genre packs
 
@@ -212,7 +212,7 @@ class FakeEngine(Watched):
 
 
 class FakeGroupEngine(Watched):
-    """Stands in for Engine to control each turn exactly. A lighthouse story for Ming and Hua (just Ming when alone)."""
+    """Stands in for AdventureEngine to control each turn exactly. A lighthouse story for Ming and Hua (just Ming when alone)."""
 
     genres: dict = {}
 

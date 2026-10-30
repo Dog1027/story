@@ -6,7 +6,7 @@ All pure functions that only read and write the game state (models.py); they nev
 from typing import Literal, cast, get_args
 
 from story.core import prompts
-from story.games.adventure.models import VOCAB, Character, Condition, ConditionChange, ConditionKind, GameState, Level, Severity, TimeOfDay, TimeSpan, Turn, code
+from story.games.adventure.models import VOCAB, AdventureState, Character, Condition, ConditionChange, ConditionKind, Level, Severity, TimeOfDay, TimeSpan, Turn, code
 
 TARGET_TURNS = 30  # The planned story length (turns); past it, the AI is only reminded to wrap up, never forced to end
 ACT_TURNS = TARGET_TURNS // 4  # Expected turns per act; staying too long reminds the AI to move on
@@ -89,7 +89,7 @@ def time_of_day(minutes: int) -> TimeOfDay:
     return next((name for start, name in reversed(TIME_OF_DAY_RANGES) if hour >= start), "late_night")
 
 
-def advance_clock(state: GameState, time_passed: str, start_time_of_day: str) -> tuple[int, bool]:
+def advance_clock(state: AdventureState, time_passed: str, start_time_of_day: str) -> tuple[int, bool]:
     """Advance the turn and the in-game clock (both arguments are words the AI returned). Returns (minutes passed, whether this is the opening)."""
     state.turn += 1
     is_opening_turn = state.turn == 1
@@ -164,7 +164,7 @@ def apply_items(who: Character, gained: list[str], lost: list[str]) -> None:
     who.inventory.extend(gained)
 
 
-def apply_story_progress(state: GameState, flags: list[str], key_event: str, milestone_reached: bool, is_opening_turn: bool) -> None:
+def apply_story_progress(state: AdventureState, flags: list[str], key_event: str, milestone_reached: bool, is_opening_turn: bool) -> None:
     for flag in flags:
         if flag not in state.flags:
             state.flags.append(flag)
@@ -177,7 +177,7 @@ def apply_story_progress(state: GameState, flags: list[str], key_event: str, mil
             state.act, state.act_turns = state.act + 1, 0
 
 
-def ending_allowed(state: GameState, turn: int) -> bool:
+def ending_allowed(state: AdventureState, turn: int) -> bool:
     """Whether the story can end on turn `turn`: in the last act and at least MIN_ENDING_TURN; always allowed past the planned length.
     Only covers endings the AI declares; death from wounds is decided separately by the program and isn't limited."""
     if turn >= TARGET_TURNS:
@@ -186,7 +186,7 @@ def ending_allowed(state: GameState, turn: int) -> bool:
     return final and turn >= MIN_ENDING_TURN
 
 
-def clamp_time_limit(state: GameState, given: int) -> int:
+def clamp_time_limit(state: AdventureState, given: int) -> int:
     """The program decides whether there's a time limit: outside timed mode, the LLM's seconds are ignored; in timed mode, they're clamped to a sensible range."""
     limit = given if state.timed_mode and not state.game_over else 0
     return 0 if limit <= 0 else max(MIN_TIME_LIMIT, min(MAX_TIME_LIMIT, limit))
@@ -199,11 +199,11 @@ def history_size(turns: list[Turn]) -> int:
     return sum(prompts.text_length(t.narration) + prompts.text_length(t.action) for t in turns)
 
 
-def needs_compaction(state: GameState) -> bool:
+def needs_compaction(state: AdventureState) -> bool:
     return history_size(state.recent) > HISTORY_BUDGET or len(state.key_events) > KEEP_EVENTS * 2 or len(state.flags) > KEEP_FLAGS * 2
 
 
-def parts_to_compact(state: GameState) -> tuple[list[Turn], list[str], list[str]]:
+def parts_to_compact(state: AdventureState) -> tuple[list[Turn], list[str], list[str]]:
     """What this compaction folds into the summary: the oldest turns, older key events, older facts."""
     return oldest_turns_to_compact(state.recent), state.key_events[:-KEEP_EVENTS], state.flags[:-KEEP_FLAGS]
 

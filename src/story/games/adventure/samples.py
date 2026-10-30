@@ -7,7 +7,7 @@ The text is in samples/<lang>.md, one per language with the same sections.
 from pathlib import Path
 
 from story.core import prompts
-from story.games.adventure.models import Act, Character, Condition, GameState, StoryArc, Turn
+from story.games.adventure.models import Act, AdventureState, Character, Condition, StoryArc, Turn
 
 SAMPLES_DIR = Path(__file__).resolve().parent / "samples"
 SAMPLE = prompts.sections(prompts.LANGUAGE, SAMPLES_DIR)  # This language's sample story (samples/<lang>.md)
@@ -37,13 +37,13 @@ HISTORY = [Turn(narration=narration, action=action) for narration, action in ite
 PREMISE = SAMPLE["premise"]
 
 
-def sample_state(players: int, genre: str, **fields) -> GameState:
+def sample_state(players: int, genre: str, **fields) -> AdventureState:
     """Turn 8 of the sample story (act two); players is how many characters are on the team. The first character carries the sample wounds."""
     characters = [Character(name=name, inventory=[item]) for name, item in items("players")[:players]]
     characters[0].conditions = conditions("wounds")
     if players == 1:
         characters[0].inventory = listed("inventory")
-    state = GameState(
+    state = AdventureState(
         premise=PREMISE,
         characters=characters,
         genre=genre,

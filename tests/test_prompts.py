@@ -6,7 +6,7 @@ from pathlib import Path
 from conftest import ARC, HERO, beat, make_engine, solo
 
 from story.core import prompts
-from story.games.adventure.models import GameState
+from story.games.adventure.models import AdventureState
 from story.games.adventure.rules import ACT_TURNS
 from story.games.adventure.text import TEXT
 
@@ -60,7 +60,7 @@ def test_epilogue_prompt_is_story_content_plus_its_own_instruction():
     from story.games.adventure.models import Character
 
     engine, gemini = make_engine(pbeat(upd("阿明"), upd("小華")))
-    state = GameState(premise="燈塔", turn=25, minutes=600, arc=ARC, act=3, current_narration="最後一段",
+    state = AdventureState(premise="燈塔", turn=25, minutes=600, arc=ARC, act=3, current_narration="最後一段",
                       characters=[Character(name="阿明"), Character(name="小華")])
     engine.write_epilogue(state)
     prompt = gemini.prompts[-1]

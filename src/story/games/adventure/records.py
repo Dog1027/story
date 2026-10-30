@@ -3,7 +3,7 @@
 from collections import Counter
 
 from story.core.reply import ChangeGroups
-from story.games.adventure.models import Character, GameState, word
+from story.games.adventure.models import AdventureState, Character, word
 from story.games.adventure.prompting import PREMISE
 from story.games.adventure.rules import DAY, SEVERITY_ORDER
 from story.games.adventure.text import UI
@@ -13,7 +13,7 @@ join = UI["list_sep"].join
 DEFAULT_PREMISE = PREMISE["default"]  # The premise used when there's no genre pack to draw from and the player typed nothing
 
 
-def memory_text(state: GameState) -> str:
+def memory_text(state: AdventureState) -> str:
     events = "\n".join(UI["memory_event"].format(event=e) for e in state.key_events) or UI["memory_no_events"]
     if state.solo:
         bags = UI["memory_bag"].format(items=join(state.characters[0].inventory) or UI["memory_empty_bag"])
@@ -28,7 +28,7 @@ def memory_text(state: GameState) -> str:
     )
 
 
-def ending_record(state: GameState) -> str:
+def ending_record(state: AdventureState) -> str:
     """The journey record at the ending. The in-game time is only revealed here."""
     days = (state.minutes or 0) // DAY + 1
     record = UI["record"].format(turns=state.turn, days=days) + "\n"

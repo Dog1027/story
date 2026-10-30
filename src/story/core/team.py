@@ -99,7 +99,7 @@ class TeamGame[S: TeamSave]:
     away_action: str  # Stands in for a player who is away (the room sends /away when someone disconnects)
 
     def __init__(self, players: list[str], save_path: Path, ai: AIProgress | None = None):
-        """ai: the game's AI-calling object (the adventure's Engine, turtle soup's SoupJudge), whose progress and draft the shells see; None for a game without one."""
+        """ai: the game's AI-calling object (the adventure's AdventureEngine, turtle soup's SoupJudge), whose progress and draft the shells see; None for a game without one."""
         names = [n.strip() for n in players if n.strip()]
         if not 1 <= len(names) <= MAX_PLAYERS or len(set(names)) != len(names):
             raise ValueError(UI["team_size"].format(min=1, max=MAX_PLAYERS))

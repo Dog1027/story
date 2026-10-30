@@ -36,7 +36,7 @@ class Run:
 
 
 class Trial:
-    """One run of a scenario: records the check results and what to save. Each game subclasses it to add its own tools (e.g. the adventure's Engine and judge)."""
+    """One run of a scenario: records the check results and what to save. Each game subclasses it to add its own tools (e.g. the adventure's AdventureEngine and judge)."""
 
     def __init__(self, client: GeminiClient, log_path: Path):
         self.client = client

@@ -9,7 +9,7 @@ import random
 
 from story.core import prompts
 from story.games.adventure.genres import Genre
-from story.games.adventure.models import Character, Condition, GameState, StoryArc, Turn, word
+from story.games.adventure.models import AdventureState, Character, Condition, StoryArc, Turn, word
 from story.games.adventure.rules import (
     ACT_TURNS,
     DAY,
@@ -57,7 +57,7 @@ def clock_text(minutes: int) -> str:
     return CONTEXT["clock"].format(day=day, period=word("time_of_day", time_of_day(minutes)), hour=hour, minute=minute)
 
 
-def time_text(state: GameState) -> str:
+def time_text(state: AdventureState) -> str:
     return STATUS_EMPTY["time_unknown"] if state.minutes is None else clock_text(state.minutes)
 
 
@@ -101,22 +101,22 @@ class PromptBuilder:
     def __init__(self, genres: dict[str, Genre]):
         self.genres = genres  # Genre packs (genres.py)
 
-    def turn(self, state: GameState, actions: dict[str, str] | None) -> str:
+    def turn(self, state: AdventureState, actions: dict[str, str] | None) -> str:
         """This turn: the story content plus this turn's instructions (the opening when actions is None). Every call is stateless; all memory comes from here."""
         return "\n\n".join(self.context(state, actions is not None) + self.instructions(state, actions))
 
-    def death(self, state: GameState, names: list[str]) -> str:
+    def death(self, state: AdventureState, names: list[str]) -> str:
         """The program found a character died of their wounds: have the AI write a short scene of them falling."""
         return "\n\n".join(self.context(state) + [TURN["death"].format(narration=state.current_narration, who=names_text(names))])
 
-    def epilogue(self, state: GameState) -> str:
+    def epilogue(self, state: AdventureState) -> str:
         return "\n\n".join(self.context(state) + [TURN["epilogue"].format(narration=state.current_narration)])
 
-    def pick_genre(self, state: GameState) -> str:
+    def pick_genre(self, state: AdventureState) -> str:
         catalog = "\n".join(PLAN["catalog_entry"].format(name=g.name, description=g.description) for g in self.genres.values())
         return PLAN["pick_genre"].format(premise=state.premise, catalog=catalog)
 
-    def arc(self, state: GameState) -> str:
+    def arc(self, state: AdventureState) -> str:
         if state.turn == 0:
             situation = PLAN["arc_new"]
         else:  # Planning failed before the opening, so make one now: continue from the story so far
@@ -147,7 +147,7 @@ class PromptBuilder:
             parts.append(PREMISE["avoid"].format(avoid=avoid))
         return "\n".join(parts)
 
-    def compaction(self, state: GameState) -> str:
+    def compaction(self, state: AdventureState) -> str:
         """When the story log gets too long: fold the oldest turns, older key events and facts into the long-term summary."""
         turns, old_events, old_flags = parts_to_compact(state)
         old = old_events + old_flags
@@ -161,7 +161,7 @@ class PromptBuilder:
 
     # ---------- Building blocks ----------
 
-    def context(self, state: GameState, acting: bool = False) -> list[str]:
+    def context(self, state: AdventureState, acting: bool = False) -> list[str]:
         """The story content (everything but the instructions). The epilogue and the falling scene use it too, each with its own instructions.
         acting: players acted this turn; the last turn's actions are listed separately in the instructions, so the story log doesn't repeat them."""
         mode = TURN["mode_timed"].format(min=MIN_TIME_LIMIT, max=MAX_TIME_LIMIT) if state.timed_mode else TURN["mode_normal"]
@@ -187,7 +187,7 @@ class PromptBuilder:
         sections.append(self.status(state))
         return sections
 
-    def status(self, state: GameState) -> str:
+    def status(self, state: AdventureState) -> str:
         key = STATUS_KEYS
         status = {
             key["turn"]: state.turn,
@@ -197,7 +197,7 @@ class PromptBuilder:
         }
         return CONTEXT["status"].format(json=json.dumps(status, ensure_ascii=False, separators=(",", ":")))
 
-    def instructions(self, state: GameState, actions: dict[str, str] | None) -> list[str]:
+    def instructions(self, state: AdventureState, actions: dict[str, str] | None) -> list[str]:
         sections = []
         alive = [c.name for c in state.characters if c.alive]
         if len(alive) > 1:  # The program rotates the focus so the AI doesn't keep making the same person the lead
@@ -205,7 +205,7 @@ class PromptBuilder:
         sections.append(TURN["opening"] if actions is None else TURN["action"].format(actions=format_actions(actions)))
         return sections
 
-    def progress(self, state: GameState) -> str:
+    def progress(self, state: AdventureState) -> str:
         """The hidden story outline and pacing reminders. For the AI only."""
         arc = state.arc
         if arc is None:

@@ -16,8 +16,8 @@ from typing import Literal
 from story.core.ai import AIFailed, GeminiClient
 from story.core.reply import Ending, Reply, SetupForm, Status, Tone, join, pick_choice
 from story.core.team import PLAY_AGAIN_CHOICES, ReplayFields, StatusFields, TeamGame
-from story.games.adventure.engine import Engine
-from story.games.adventure.models import Character, GameState, word
+from story.games.adventure.engine import AdventureEngine
+from story.games.adventure.models import AdventureState, Character, word
 from story.games.adventure.prompting import AWAY_ACTION, TIMEOUT_ACTION, TURN
 from story.games.adventure.records import DEFAULT_PREMISE, Snapshot, change_groups, ending_record, memory_text, snapshot
 from story.games.adventure.rules import condition_list, warning_level
@@ -32,14 +32,14 @@ def genre_label(choice: str) -> str:
     return {GENRE_AUTO: UI["genre_auto"], GENRE_NONE: UI["genre_none"]}.get(choice, choice)
 
 
-class AdventureCore(TeamGame[GameState]):
+class AdventureCore(TeamGame[AdventureState]):
     """One adventure: a team of one to four characters, each played by one player (one when playing alone).
     The AI writes a turn only once every living character has acted. The shared flow is in TeamGame."""
 
     title = UI["title"]
     busy_label = UI["busy_label"]
     description = UI["description"]
-    state_class = GameState
+    state_class = AdventureState
     timeout_action = TIMEOUT_ACTION
     away_action = AWAY_ACTION
 
@@ -50,11 +50,11 @@ class AdventureCore(TeamGame[GameState]):
         *,
         save_path: Path,
         log_path: Path | None = None,
-        engine: Engine | None = None,
+        engine: AdventureEngine | None = None,
         client: GeminiClient | None = None,
     ):
         """client: a Gemini client to share (e.g. one limited by RateLimit); without one, a client is made from api_key."""
-        self.engine = engine or Engine(api_key=api_key, client=client, log_path=log_path)
+        self.engine = engine or AdventureEngine(api_key=api_key, client=client, log_path=log_path)
         super().__init__(players, save_path, ai=self.engine)
         self.timed = False  # The mode for new games, kept from the last game
         self.genre = GENRE_AUTO  # The genre choice for new games, kept from the last game
@@ -119,10 +119,10 @@ class AdventureCore(TeamGame[GameState]):
         form = SetupForm(default=self._default_premise(), genre=self.genre, genres=self._genre_menu(), suggestion=suggestion)
         return self._reply(form=form, notice=notice, error=error)
 
-    def _new_state(self, premise: str) -> GameState:
+    def _new_state(self, premise: str) -> AdventureState:
         self.pending = {}
         characters = [Character(name=n) for n in self._players]
-        return GameState(premise=premise, characters=characters, timed_mode=self.timed, **self._genre_fields())
+        return AdventureState(premise=premise, characters=characters, timed_mode=self.timed, **self._genre_fields())
 
     def _genre_fields(self) -> dict[str, str | bool]:
         """The new game's genre fields: a chosen genre applies directly; with "auto", the AI picks from the catalog when planning the outline."""

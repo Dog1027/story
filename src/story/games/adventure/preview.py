@@ -14,17 +14,17 @@ import random
 import sys
 from types import SimpleNamespace
 
-from story.games.adventure.engine import Engine
+from story.games.adventure.engine import AdventureEngine
 from story.games.adventure.genres import load_genres
-from story.games.adventure.models import SCHEMA, GameState
+from story.games.adventure.models import SCHEMA, AdventureState
 from story.games.adventure.prompting import SYSTEM_PROMPT
 from story.games.adventure.rules import ACT_TURNS, MIN_ACT_TURNS, TARGET_TURNS
 from story.games.adventure.samples import HISTORY, SAMPLE, sample_actions, sample_state
 
 
-def scenarios(engine: Engine, players: int, genre: str) -> dict[str, tuple[str, str]]:
+def scenarios(engine: AdventureEngine, players: int, genre: str) -> dict[str, tuple[str, str]]:
     """{code: (description, prompt)}"""
-    def state(**fields) -> GameState:
+    def state(**fields) -> AdventureState:
         return sample_state(players, genre, **fields)
 
     build, action = engine.build, sample_actions(players)
@@ -65,7 +65,7 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(f"No genre pack named {genre!r}. Available: {', '.join(genres)}")
     names = [a for a in args if not a.startswith("--") and a != genre]
     random.seed(0)  # The random twist ideas and suggested genre are the same every time, to compare before and after a change
-    engine = Engine(client=SimpleNamespace(), genres=genres)
+    engine = AdventureEngine(client=SimpleNamespace(), genres=genres)
     found = scenarios(engine, players, genre)
     unknown = [n for n in names if n not in found]
     if unknown:

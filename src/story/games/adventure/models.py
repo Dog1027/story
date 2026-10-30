@@ -1,4 +1,4 @@
-"""The adventure's data: the state the program controls (GameState) and the format the LLM returns (StoryBeat)."""
+"""The adventure's data: the state the program controls (AdventureState) and the format the LLM returns (StoryBeat)."""
 
 from typing import Literal
 
@@ -108,7 +108,7 @@ class Character(BaseModel):
     alive: bool = True
 
 
-class GameState(BaseModel):
+class AdventureState(BaseModel):
     """Everything the program remembers. A save is this serialized to JSON."""
 
     premise: str

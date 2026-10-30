@@ -34,7 +34,7 @@ def save(state: Saveable, path: Path) -> None:
 
 
 def load[S: Saveable](path: Path, kind: type[S]) -> S | None:
-    """Read a save; None if there is none. kind is the save format (GameState for the adventure, SoupState for turtle soup).
+    """Read a save; None if there is none. kind is the save format (AdventureState for the adventure, SoupState for turtle soup).
     A save that can't be read (broken, or from an older format) counts as none: it's renamed to *.broken so nothing is lost, and the team can start over."""
     if not path.exists():
         return None
