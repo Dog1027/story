@@ -35,7 +35,7 @@ class Client:
         self.view = view
         self.connect = connect  # Opens a connection to the lobby (the web server passes lobby.connect); this side never sees the lobby itself
         self.token = token  # An ID the browser remembers: when the same browser connects again, the new connection replaces the old one (see rooms/lobby.py)
-        self.room: Connection | None = None  # The connection to the lobby (and rooms)
+        self.conn: Connection | None = None  # The connection to the lobby (and rooms); None until run() connects
         self.replaced = False
         self.my_name = ""
         self.actor = ""  # Your own name while you haven't acted this turn; empty once you have
@@ -55,24 +55,26 @@ class Client:
     @property
     def ready(self) -> bool:
         """Can take the player's input: still connected (sending after a disconnect raises ConnectionError) and not waiting on the AI."""
-        return self.room is not None and self.room.open and not self.busy
+        return self.conn is not None and self.conn.open and not self.busy
 
     async def run(self) -> None:
-        self.room = self.connect()
+        if self.connect is None:
+            raise RuntimeError("Client.run() needs connect (only unit tests that drive the client by hand leave it out)")
+        self.conn = self.connect()
         name = await self.ask_name()
         if name is None:
             self.view.exit()
             return
         self.my_name = name
-        inbox = asyncio.create_task(self.show_queued())
+        showing = asyncio.create_task(self.show_inbox_forever())
         try:
             await self.listen()
         finally:
-            inbox.cancel()
+            showing.cancel()
 
     def close(self) -> None:
-        if self.room:
-            self.room.close()
+        if self.conn:
+            self.conn.close()
 
     async def ask_name(self) -> str | None:
         """Ask for a name and take its seat in the lobby, asking again with the reason when it can't be used."""
@@ -132,7 +134,7 @@ class Client:
 
     async def deliver(self, text: str, form: bool = False, answer: bool = False) -> None:
         """Pass a line of input to the room; the reply will be pushed back by the room. form marks an action in the new game dialog: it gets a reply only with answer."""
-        await self.room.send({"type": "send", "text": text[:MAX_INPUT_LEN], "form": form, "answer": answer})
+        await self.conn.send({"type": "send", "text": text[:MAX_INPUT_LEN], "form": form, "answer": answer})
 
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
@@ -171,6 +173,7 @@ class Client:
         """Decide what happens next from the reply's phase."""
         if reply.phase != "playing":
             self.waiting = []  # This game's actions are over (the ending, back to the premise…): the hint no longer says "waiting for X"
+            self.view.stop_timer()
         if self.draft and not reply.narration:  # Streaming failed midway and the turn didn't advance: take back the half-written narration
             self.discard_draft()
         if reply.timed != self.timed:
@@ -179,8 +182,6 @@ class Client:
         self.actor = reply.actor
         if reply.inputs != self.inputs or reply.narration:  # A new turn: back to the first mode (ask)
             self.inputs, self.input_mode = list(reply.inputs), 0
-        if reply.phase != "playing":
-            self.view.stop_timer()
         if reply.info:
             self.view.show_info(*reply.info)
         if reply.error == "api":
@@ -189,7 +190,7 @@ class Client:
             self.view.notify(reply.notice)
 
         if reply.form is not None:
-            await self.ask_premise(reply)
+            await self.show_setup_form(reply)
         elif reply.phase in HOST_PHASES and reply.choices:
             # The core's question and two options: continue/new game, confirm/cancel, or turtle soup's bank/AI puzzle
             yes = await self.view.ask_confirm(reply.notice, *reply.choices)
@@ -199,7 +200,8 @@ class Client:
         elif reply.phase == "ended":
             await self.show_ending(reply.ending)
 
-    async def ask_premise(self, reply: Reply) -> None:
+    async def show_setup_form(self, reply: Reply) -> None:
+        """The game asked for its setup form (Reply.form): let the view draw it, apply its choices, then send what the host wrote."""
         if reply.error == "api":
             return  # Writing the opening failed: the error is already shown; stay put, and players can try again with /restart
         form = PremiseForm(reply, self.ask_room)
@@ -236,7 +238,7 @@ class Client:
             self.set_choices(reply.choices)
         self.set_status(reply.turn, reply.characters)
         if reply.narration and reply.time_limit:
-            await self.room.send({"type": "ready"})  # The room starts the countdown once everyone has read it
+            await self.conn.send({"type": "ready"})  # The room starts the countdown once everyone has read it
 
     def show_history(self, reply: Reply) -> None:
         """Loading or reconnecting: first show all earlier narration and everyone's actions at once, then the current passage."""
@@ -300,15 +302,15 @@ class Client:
 
     async def claim_seat(self, name: str) -> str:
         """Ask the lobby for this name: an empty string on success, otherwise why it can't be used."""
-        await self.room.send({"type": "join", "name": name, "token": self.token})
-        answer = await self.room.receive()
+        await self.conn.send({"type": "join", "name": name, "token": self.token})
+        answer = await self.conn.receive()
         if answer is None:
             return UI["room_lost"]
         return answer.get("reason", "") if answer["type"] == "rejected" else ""
 
     async def listen(self) -> None:
         """Receive messages pushed by the room. Simple ones are handled directly; replies, lobby screens and others that must wait for the previous one to finish showing are queued in inbox and handled in order."""
-        while (message := await self.room.receive()) is not None:
+        while (message := await self.conn.receive()) is not None:
             kind = message["type"]
             if kind == "busy":
                 self.progress = message.get("progress", "")
@@ -348,8 +350,8 @@ class Client:
         self.waiting = names
         self.refresh_hint()
 
-    async def show_queued(self) -> None:
-        """Show queued replies and lobby screens one at a time, each once the last has finished showing."""
+    async def show_inbox_forever(self) -> None:
+        """Runs for as long as the client does: show queued replies and lobby screens one at a time, each once the last has finished showing."""
         while True:
             message = await self.inbox.get()
             kind = message["type"]

@@ -320,14 +320,14 @@ async def test_room_hint_stops_waiting_once_the_story_ends():
 async def test_long_input_is_cut_before_it_reaches_the_room():
     """Whatever a browser sends, at most MAX_INPUT_LEN characters go on to the core (and into prompts on the host's key)."""
     client = Client(RecordingView(), connect=None)
-    client.room, server = Connection.pair()
+    client.conn, server = Connection.pair()
     await client.send("長" * (client_module.MAX_INPUT_LEN + 50))
     assert len((await server.receive())["text"]) == client_module.MAX_INPUT_LEN
 
 
 async def test_client_stops_taking_input_when_the_connection_closes():
     client = Client(RecordingView(), connect=None)
-    client.room, server = Connection.pair()
+    client.conn, server = Connection.pair()
     assert client.ready
     server.close()
     assert not client.ready  # Sending again would raise ConnectionError
@@ -335,7 +335,7 @@ async def test_client_stops_taking_input_when_the_connection_closes():
 
 async def test_premise_dialog_request_fails_instead_of_waiting_forever_when_the_room_is_gone():
     client = Client(RecordingView(), connect=None)
-    client.room, server = Connection.pair()
+    client.conn, server = Connection.pair()
     request = asyncio.create_task(client.ask_room("/genre 武俠", "/random"))
     await asyncio.sleep(0)
     server.close()

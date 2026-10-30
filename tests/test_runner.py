@@ -18,7 +18,7 @@ def make_runner():
 
 async def test_without_a_core_there_is_nothing_to_report():
     runner, _ = make_runner()
-    assert runner.progress() == "" and runner.label() == ""
+    assert runner.progress == "" and runner.label == ""
 
 
 async def test_a_quiet_call_broadcasts_nothing():
@@ -30,9 +30,9 @@ async def test_queuing_for_the_call_limit_is_the_progress():
     runner, _ = make_runner()
     runner.attach(SimpleNamespace(progress="寫開場", draft="", busy_label="L", watch=lambda cb: None))
     runner.set_queued(True)
-    assert runner.progress() == UI["queued"] and runner.label() == "L"
+    assert runner.progress == UI["queued"] and runner.label == "L"
     runner.set_queued(False)
-    assert runner.progress() == "寫開場"
+    assert runner.progress == "寫開場"
 
 
 async def test_news_after_the_call_ended_is_dropped():
