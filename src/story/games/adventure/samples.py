@@ -52,9 +52,9 @@ def sample_state(players: int, genre: str, **fields) -> AdventureState:
         arc=ARC,
         act=1,
         act_turns=3,
-        recent=list(HISTORY),
+        story_log=list(HISTORY),
         key_events=listed("key_events"),
-        flags=listed("flags"),
+        facts=listed("facts"),
         current_narration=SAMPLE["narration"],
     )
     for key, value in fields.items():

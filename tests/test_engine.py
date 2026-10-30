@@ -210,8 +210,8 @@ def test_cannot_lose_items_you_do_not_have():
 
 
 def test_flags_are_not_duplicated_and_empty_events_are_skipped():
-    state, *_ = play(beat(flags_set=["與守門人結仇"], key_event=""), beat(flags_set=["與守門人結仇"], key_event="找到地下室"))
-    assert state.flags == ["與守門人結仇"]
+    state, *_ = play(beat(facts_set=["與守門人結仇"], key_event=""), beat(facts_set=["與守門人結仇"], key_event="找到地下室"))
+    assert state.facts == ["與守門人結仇"]
     assert state.key_events == ["找到地下室"]
 
 
@@ -325,7 +325,7 @@ def test_old_save_gets_arc_and_jumps_to_matching_act():
 
 def test_prompt_includes_the_history_and_no_duplicate_action():
     engine, gemini = make_engine(beat())
-    state = solo(premise="x", turn=10, minutes=0, current_narration="上一段劇情", recent=[Turn(narration="最近的回合", action="近行動")])
+    state = solo(premise="x", turn=10, minutes=0, current_narration="上一段劇情", story_log=[Turn(narration="最近的回合", action="近行動")])
     engine.play_turn(state, {HERO: "推開門"})
     prompt = gemini.prompts[-1]
     assert "最近的回合" in prompt and "上一段劇情" in prompt
@@ -337,22 +337,22 @@ def test_compaction_folds_old_events_and_flags_into_summary():
     turns = [Turn(narration=f"第{i}回合", action="a") for i in range(4)]
     state = solo(
         premise="x",
-        recent=list(turns),
+        story_log=list(turns),
         key_events=[f"事件{i}" for i in range(16)],
-        flags=[f"事實{i}" for i in range(30)],
+        facts=[f"事實{i}" for i in range(30)],
     )
     assert engine.needs_compaction(state)
     engine.compact_memory(state)
     assert state.summary == "壓縮後的摘要"
-    assert state.recent == turns  # The story log isn't over budget: everything is kept verbatim
+    assert state.story_log == turns  # The story log isn't over budget: everything is kept verbatim
     assert state.key_events == [f"事件{i}" for i in range(10, 16)]
-    assert state.flags == [f"事實{i}" for i in range(18, 30)]
+    assert state.facts == [f"事實{i}" for i in range(18, 30)]
     assert "事件0" in gemini.prompts[-1] and "事件15" not in gemini.prompts[-1]
 
 
 def test_every_turn_is_kept_in_the_history():
     state, *_ = play(*[beat() for _ in range(7)])
-    assert len(state.recent) == 6  # All 6 turns after the opening are kept verbatim
+    assert len(state.story_log) == 6  # All 6 turns after the opening are kept verbatim
 
 
 def test_history_over_budget_compacts_the_oldest_half(monkeypatch):
@@ -361,11 +361,11 @@ def test_history_over_budget_compacts_the_oldest_half(monkeypatch):
     monkeypatch.setattr(rules, "HISTORY_BUDGET", 100)
     engine, gemini = make_engine(summary="早期劇情的摘要")
     turns = [Turn(narration=f"第{i}回合" + "字" * 16, action="a") for i in range(6)]  # 21 characters a turn, 126 in total
-    state = solo(premise="x", recent=list(turns))
+    state = solo(premise="x", story_log=list(turns))
     assert engine.needs_compaction(state)
     engine.compact_memory(state)
     assert state.summary == "早期劇情的摘要"
-    assert state.recent == turns[-2:]  # Compacted to within half the budget (42 characters)
+    assert state.story_log == turns[-2:]  # Compacted to within half the budget (42 characters)
     assert "第0回合" in gemini.prompts[-1] and "第5回合" not in gemini.prompts[-1]
     assert not engine.needs_compaction(state)
 
@@ -375,7 +375,7 @@ def test_prompt_keeps_changing_sections_after_the_history():
     engine, gemini = make_engine(beat())
     state = solo(
         premise="燈塔", turn=3, minutes=0, arc=ARC, summary="早期的摘要", key_events=["找到鑰匙"],
-        current_narration="上一段", recent=[Turn(narration="第一段", action="開門")],
+        current_narration="上一段", story_log=[Turn(narration="第一段", action="開門")],
     )
     engine.play_turn(state, {HERO: "往上爬"})
     prompt = gemini.prompts[-1]

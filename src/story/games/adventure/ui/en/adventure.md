@@ -134,12 +134,12 @@ Send an empty line   Use the default premise
 In timed mode the countdown is up to the shell, which sends /timeout when time runs out.
 
 ## memory
-<!-- Variables: {bags} (one line per person, see memory_bag, memory_named_bag), {flags}, {events} (one line per event, see memory_event), {summary}, {turns} -->
+<!-- Variables: {bags} (one line per person, see memory_bag, memory_named_bag), {facts}, {events} (one line per event, see memory_event), {summary}, {turns} -->
 [Inventory]
 {bags}
 
 [Established facts]
-  {flags}
+  {facts}
 
 [Key events]
 {events}
@@ -164,7 +164,7 @@ In timed mode the countdown is up to the shell, which sends /timeout when time r
 ## memory_empty_bag
 empty
 
-## memory_no_flags
+## memory_no_facts
 none
 
 ## memory_no_events

@@ -21,10 +21,10 @@ def memory_text(state: AdventureState) -> str:
         bags = "\n".join(UI["memory_named_bag"].format(name=c.name, items=join(c.inventory) or UI["memory_empty_bag"]) for c in state.characters)
     return UI["memory"].format(
         bags=bags,
-        flags=join(state.flags) or UI["memory_no_flags"],
+        facts=join(state.facts) or UI["memory_no_facts"],
         events=events,
         summary=state.summary or UI["memory_no_summary"],
-        turns=len(state.recent),
+        turns=len(state.story_log),
     )
 
 

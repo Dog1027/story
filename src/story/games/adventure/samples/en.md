@@ -37,7 +37,7 @@ The keeper never disappeared; he has been hiding in a secret chamber beneath the
 ## key_events
 - Found the keeper's journal
 
-## flags
+## facts
 - The lighthouse door was locked from the outside
 
 ## narration

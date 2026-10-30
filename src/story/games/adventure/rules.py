@@ -15,7 +15,7 @@ MIN_ENDING_TURN = 20  # The earliest turn an ending the AI declares is accepted 
 MIN_TIME_LIMIT, MAX_TIME_LIMIT = 8, 60  # Reaction time range in timed mode (seconds)
 MAX_CONDITION_LEN = 12  # Most characters (words in English) for one condition, so the LLM doesn't write a whole sentence
 HISTORY_BUDGET = 20_000  # Most characters (words in English) the story log keeps verbatim; past it, the oldest part is compacted into the summary, down to half at once
-KEEP_EVENTS, KEEP_FLAGS = 6, 12  # How many recent key events and established facts to keep verbatim; older ones are folded into the summary when compacting
+KEEP_EVENTS, KEEP_FACTS = 6, 12  # How many recent key events and established facts to keep verbatim; older ones are folded into the summary when compacting
 
 # Body: the LLM only decides each condition's severity; the program computes the total and life or death
 SEVERITY_POINTS = {"light": 1, "moderate": 2, "severe": 4}
@@ -164,10 +164,10 @@ def apply_items(who: Character, gained: list[str], lost: list[str]) -> None:
     who.inventory.extend(gained)
 
 
-def apply_story_progress(state: AdventureState, flags: list[str], key_event: str, milestone_reached: bool, is_opening_turn: bool) -> None:
-    for flag in flags:
-        if flag not in state.flags:
-            state.flags.append(flag)
+def apply_story_progress(state: AdventureState, facts: list[str], key_event: str, milestone_reached: bool, is_opening_turn: bool) -> None:
+    for fact in facts:
+        if fact not in state.facts:
+            state.facts.append(fact)
     if key_event.strip():
         state.key_events.append(key_event.strip())
     if state.arc is not None and not is_opening_turn:
@@ -200,12 +200,12 @@ def history_size(turns: list[Turn]) -> int:
 
 
 def needs_compaction(state: AdventureState) -> bool:
-    return history_size(state.recent) > HISTORY_BUDGET or len(state.key_events) > KEEP_EVENTS * 2 or len(state.flags) > KEEP_FLAGS * 2
+    return history_size(state.story_log) > HISTORY_BUDGET or len(state.key_events) > KEEP_EVENTS * 2 or len(state.facts) > KEEP_FACTS * 2
 
 
 def parts_to_compact(state: AdventureState) -> tuple[list[Turn], list[str], list[str]]:
     """What this compaction folds into the summary: the oldest turns, older key events, older facts."""
-    return oldest_turns_to_compact(state.recent), state.key_events[:-KEEP_EVENTS], state.flags[:-KEEP_FLAGS]
+    return oldest_turns_to_compact(state.story_log), state.key_events[:-KEEP_EVENTS], state.facts[:-KEEP_FACTS]
 
 
 def oldest_turns_to_compact(turns: list[Turn]) -> list[Turn]:

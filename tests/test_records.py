@@ -13,6 +13,21 @@ def test_save_and_load_roundtrip(isolated):
     assert load(isolated / "s.json", AdventureState) == state
 
 
+def test_saves_from_before_the_rename_still_load(isolated):
+    """flags and recent were renamed facts and story_log: old saves load into the new fields, and are written back with the new names."""
+    import json
+
+    old = solo(turn=2).model_dump(mode="json")
+    old.pop("facts"), old.pop("story_log")
+    old |= {"flags": ["與守門人結仇"], "recent": [{"narration": "第一段", "action": "開門"}]}
+    (isolated / "old.json").write_text(json.dumps(old, ensure_ascii=False), encoding="utf-8")
+    state = load(isolated / "old.json", AdventureState)
+    assert state.facts == ["與守門人結仇"] and state.story_log[0].narration == "第一段"
+    save(state, isolated / "old.json")
+    written = json.loads((isolated / "old.json").read_text(encoding="utf-8"))
+    assert "facts" in written and "story_log" in written and "flags" not in written
+
+
 def test_load_missing_file_returns_none(isolated):
     assert load(isolated / "nope.json", AdventureState) is None
 

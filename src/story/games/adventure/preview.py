@@ -28,10 +28,10 @@ def scenarios(engine: AdventureEngine, players: int, genre: str) -> dict[str, tu
         return sample_state(players, genre, **fields)
 
     build, action = engine.build, sample_actions(players)
-    opening = state(turn=0, minutes=None, recent=[], key_events=[], flags=[], act=0, act_turns=0)
+    opening = state(turn=0, minutes=None, story_log=[], key_events=[], facts=[], act=0, act_turns=0)
     dying = state(current_narration=SAMPLE["fall" if players == 1 else "fall_named"])
     events = [f"{SAMPLE['event']} {i}" for i in range(10)]
-    long_story = state(turn=40, recent=HISTORY * 40, key_events=events, summary=SAMPLE["summary"])
+    long_story = state(turn=40, story_log=HISTORY * 40, key_events=events, summary=SAMPLE["summary"])
     return {
         "system": ("Writing and game rules (the system prompt, sent every time narration is written)", SYSTEM_PROMPT),
         "schema": ("Field descriptions for the response format (sent with the format)", "\n".join(f"{key}: {text}" for key, text in SCHEMA.items())),

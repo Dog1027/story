@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from story.core.vocab import Vocab
 from story.games.adventure.text import TEXT
@@ -59,7 +59,7 @@ class StoryBeat(BaseModel):
     start_time_of_day: words("time_of_day") = Field(description=SCHEMA["StoryBeat.start_time_of_day"])
     time_limit: int = Field(description=SCHEMA["StoryBeat.time_limit"])
     milestone_reached: bool = Field(description=SCHEMA["StoryBeat.milestone_reached"])
-    flags_set: list[str] = Field(description=SCHEMA["StoryBeat.flags_set"])
+    facts_set: list[str] = Field(description=SCHEMA["StoryBeat.facts_set"])
     key_event: str = Field(description=SCHEMA["StoryBeat.key_event"])
 
 
@@ -121,12 +121,12 @@ class AdventureState(BaseModel):
     act: int = 0  # The current act (0-3)
     act_turns: int = 0  # Turns spent in the current act so far
     minutes: int | None = None  # The in-game clock: minutes since day 1, 0:00; None means not decided yet (before the opening). For the AI only, never shown to players
-    flags: list[str] = Field(default_factory=list)
+    facts: list[str] = Field(default_factory=list, validation_alias=AliasChoices("facts", "flags"))  # Established facts (saves before 2026-10 call it flags)
 
     # Layered memory
     summary: str = ""  # Long-term: a compacted summary of earlier story
     key_events: list[str] = Field(default_factory=list)  # Long-term: the list of key events
-    recent: list[Turn] = Field(default_factory=list)  # The story log: each turn verbatim, append only; only the oldest are compacted into the summary when it gets too long
+    story_log: list[Turn] = Field(default_factory=list, validation_alias=AliasChoices("story_log", "recent"))  # (Older saves: recent.) The story log: each turn verbatim, append only; only the oldest are compacted into the summary when it gets too long
 
     # The current screen (so it can be shown again after loading)
     current_narration: str = ""

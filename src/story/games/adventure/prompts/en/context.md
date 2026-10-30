@@ -63,7 +63,7 @@ body: Body
 mind: Mind
 overall: Overall
 inventory: Inventory
-flags: Established facts
+facts: Established facts
 characters: Characters
 name: Name
 state: State
@@ -74,7 +74,7 @@ time_unknown: unknown
 body: unhurt
 mind: steady
 inventory: (empty)
-flags: (none)
+facts: (none)
 dead: dead
 
 ## condition

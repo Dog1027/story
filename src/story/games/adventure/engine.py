@@ -101,7 +101,7 @@ class AdventureEngine(AICaller):
         """Every character has acted ({name: action}): advance a turn."""
         if state.arc is None:
             self.plan_arc(state)
-        state.recent.append(Turn(narration=state.current_narration, action=format_actions(actions)))  # Append only
+        state.story_log.append(Turn(narration=state.current_narration, action=format_actions(actions)))  # Append only
         try:
             self._advance(state, actions)
         finally:
@@ -175,7 +175,7 @@ class AdventureEngine(AICaller):
             if body_score(c) >= DEATH_SCORE:
                 c.alive, c.choices = False, []
                 newly_dead.append(c.name)
-        apply_story_progress(state, beat.flags_set, beat.key_event, beat.milestone_reached, is_opening_turn)
+        apply_story_progress(state, beat.facts_set, beat.key_event, beat.milestone_reached, is_opening_turn)
 
         state.current_narration = beat.narration
         state.game_over = (beat.game_over and may_end) or not any(c.alive for c in state.characters)
@@ -242,7 +242,7 @@ class AdventureEngine(AICaller):
     def compact_memory(self, state: AdventureState) -> None:
         """When the story log gets too long, fold the oldest turns (down to half), older key events and facts into the long-term summary.
         The core calls this in the background while players read, only when needs_compaction(). Rare: a 30-turn story is only about 7,000–8,000 characters."""
-        turns, old_events, old_flags = parts_to_compact(state)
+        turns, old_events, old_facts = parts_to_compact(state)
         response = self.generate(
             "compaction",
             model=MODEL,
@@ -254,6 +254,6 @@ class AdventureEngine(AICaller):
             return  # On failure keep things as they are and retry next time
         # Remove only what was folded into the summary this time (no new turns arrive during compaction, but counting is safer)
         state.summary = text
-        del state.recent[: len(turns)]
+        del state.story_log[: len(turns)]
         del state.key_events[: len(old_events)]
-        del state.flags[: len(old_flags)]
+        del state.facts[: len(old_facts)]

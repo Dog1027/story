@@ -229,7 +229,7 @@ class AdventureCore(TeamGame[AdventureState]):
         """Earlier narration (the story log's original text): (narration, the actions taken after it). With one character, actions have no name in front, as usual."""
         s = self.game
         prefix = TURN["action_entry"].format(name=s.characters[0].name, action="") if s.solo else ""
-        return [(t.narration, t.action.removeprefix(prefix)) for t in s.recent]
+        return [(t.narration, t.action.removeprefix(prefix)) for t in s.story_log]
 
     def _help(self) -> str:
         return UI["help"]

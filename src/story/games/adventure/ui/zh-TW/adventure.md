@@ -134,12 +134,12 @@ AI 沒有想出開頭，請再試一次。
 限時模式的倒數由外殼負責，時間到時送出 /timeout。
 
 ## memory
-<!-- 變數：{bags}（每個人一行，見 memory_bag、memory_named_bag）、{flags}、{events}（每個事件一行，見 memory_event）、{summary}、{turns} -->
+<!-- 變數：{bags}（每個人一行，見 memory_bag、memory_named_bag）、{facts}、{events}（每個事件一行，見 memory_event）、{summary}、{turns} -->
 [背包]
 {bags}
 
 [已確立的事實]
-  {flags}
+  {facts}
 
 [重大事件]
 {events}
@@ -164,7 +164,7 @@ AI 沒有想出開頭，請再試一次。
 ## memory_empty_bag
 空
 
-## memory_no_flags
+## memory_no_facts
 無
 
 ## memory_no_events

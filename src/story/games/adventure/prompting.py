@@ -149,8 +149,8 @@ class PromptBuilder:
 
     def compaction(self, state: AdventureState) -> str:
         """When the story log gets too long: fold the oldest turns, older key events and facts into the long-term summary."""
-        turns, old_events, old_flags = parts_to_compact(state)
-        old = old_events + old_flags
+        turns, old_events, old_facts = parts_to_compact(state)
+        old = old_events + old_facts
         parts = [MEMORY["summary"].format(summary=state.summary or MEMORY["summary_none"])]
         if turns:
             parts.append(MEMORY["turns"].format(entries="\n\n".join(history_entry(t) for t in turns)))
@@ -173,7 +173,7 @@ class PromptBuilder:
             sections.append(CONTEXT["genre_guide"].format(name=genre.name, guide=genre.guide))
         if state.summary:
             sections.append(CONTEXT["summary"].format(summary=state.summary))
-        if turns := state.recent:
+        if turns := state.story_log:
             entries = [history_entry(t) for t in turns]
             if acting:
                 entries[-1] = CONTEXT["history_last"].format(narration=turns[-1].narration)
@@ -192,7 +192,7 @@ class PromptBuilder:
         status = {
             key["turn"]: state.turn,
             key["time"]: time_text(state),
-            key["flags"]: state.flags or [STATUS_EMPTY["flags"]],
+            key["facts"]: state.facts or [STATUS_EMPTY["facts"]],
             key["characters"]: [character_facts(c) for c in state.characters],
         }
         return CONTEXT["status"].format(json=json.dumps(status, ensure_ascii=False, separators=(",", ":")))

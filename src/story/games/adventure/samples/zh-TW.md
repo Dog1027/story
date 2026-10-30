@@ -37,7 +37,7 @@
 ## key_events
 - 發現守夜人的日誌
 
-## flags
+## facts
 - 燈塔的門被人從外面鎖上
 
 ## narration

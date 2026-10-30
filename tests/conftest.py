@@ -53,7 +53,7 @@ def pbeat(*updates, **fields) -> StoryBeat:
     """An AI reply for several characters. Build updates with upd()."""
     base = dict(
         narration="大家各自行動。", character_updates=list(updates), time_passed="片刻", start_time_of_day="傍晚",
-        time_limit=0, milestone_reached=False, flags_set=[], key_event="", game_over=False,
+        time_limit=0, milestone_reached=False, facts_set=[], key_event="", game_over=False,
     )
     return StoryBeat(**{**base, **fields})
 
@@ -195,7 +195,7 @@ class FakeEngine(Watched):
         if self.fail_with:
             state.turn += 99  # Simulates failing halfway through changes
             raise self.fail_with
-        state.recent.append(Turn(narration=state.current_narration, action=format_actions(actions)))  # Records the story log like the real engine
+        state.story_log.append(Turn(narration=state.current_narration, action=format_actions(actions)))  # Records the story log like the real engine
         me, action = state.characters[0], next(iter(actions.values()))
         state.turn += 1
         state.current_narration = f"你選擇了「{action}」。"
@@ -237,7 +237,7 @@ class FakeGroupEngine(Watched):
             state.turn += 99
             raise self.fail_with
         self.rounds.append(dict(actions))
-        state.recent.append(Turn(narration=state.current_narration, action=format_actions(actions)))
+        state.story_log.append(Turn(narration=state.current_narration, action=format_actions(actions)))
         state.turn += 1
         state.current_narration = "；".join(f"{k}{v}" for k, v in actions.items())
         if state.turn == 2:

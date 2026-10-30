@@ -63,7 +63,7 @@ body: 身體狀況
 mind: 精神狀況
 overall: 整體
 inventory: 背包
-flags: 已確立的事實
+facts: 已確立的事實
 characters: 角色
 name: 名字
 state: 狀態
@@ -74,7 +74,7 @@ time_unknown: 尚未確定
 body: 良好
 mind: 平穩
 inventory: （空）
-flags: （無）
+facts: （無）
 dead: 已死亡
 
 ## condition

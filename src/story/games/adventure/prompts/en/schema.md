@@ -58,7 +58,7 @@ In timed mode, the seconds to react when things are urgent; otherwise 0
 ## StoryBeat.milestone_reached
 Whether this turn reached the current act's milestone in "Story progress"
 
-## StoryBeat.flags_set
+## StoryBeat.facts_set
 Newly established long-term facts, e.g. "made an enemy of the gatekeeper"; usually empty
 
 ## StoryBeat.key_event

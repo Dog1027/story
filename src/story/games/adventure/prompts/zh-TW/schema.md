@@ -58,7 +58,7 @@ AI 回傳格式的欄位說明：跟著回傳格式一起送給 AI，告訴它�
 ## StoryBeat.milestone_reached
 本回合是否達成了「故事進度」中目前這一幕的里程碑
 
-## StoryBeat.flags_set
+## StoryBeat.facts_set
 新確立的長期事實，例如「與守門人結仇」；通常為空
 
 ## StoryBeat.key_event
