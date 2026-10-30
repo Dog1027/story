@@ -39,14 +39,14 @@ Rooms could also offer "Detective". Before the opening the AI writes a case; pla
 
 The hardest part is getting the AI to write a sound, fair case. The lesson from turtle soup puzzles: flash-lite's often contradict themselves, so they need a stronger model to write them and a strict check afterwards.
 
-### 4. The reply format: fields only one game uses
+### 4. The reply format: what games declare to the shells
 
-The shells only read `Reply`'s fields, so whenever a game needs the shells to show something new, `Reply` gets a field. Some already belong to only one game:
+The shells only read `Reply`'s fields, so whenever a game needs the shells to show something new, `Reply` changes. Two pieces are declared by a game rather than shared by all of them:
 
-- The adventure: `premise_default`, `suggestion`, `genre`, `genres` (the new story dialog); the shells also have `PremiseForm` and the web's premise dialog just for it
-- Turtle soup: `inputs` (ask, guess, give up)
+- `form` (`SetupForm`): a free-text setup form with a default text, a menu and a suggestion; the adventure's story premise uses it, and the shells draw it with `PremiseForm`. The fields and the commands it sends (`/genre`, `/timed`, `/random`, `/suggest`) still follow the adventure
+- `inputs` (`InputMode`): input modes instead of actions (turtle soup's ask, guess, give up)
 
-With two games this is simplest; with more, `Reply` turns into a pile of fields each used by one game. If the detective game also needs its own setup form or input modes, turn them into a generic description then: for example, describe a setup form as "fields, buttons, menus" that the game fills in, have the shells draw one generic form, and move the adventure's premise dialog onto it too. Not now, so the abstraction isn't shaped by a single example.
+If the detective game needs a different setup form or its own input modes, generalize then: for example, let `SetupForm` describe its fields and buttons and the commands they send, so the shells draw any game's form. Not now, so the abstraction isn't shaped by a single example.
 
 ## Other open items
 
