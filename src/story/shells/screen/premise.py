@@ -50,7 +50,8 @@ class PremiseForm:
         reply = await self._ask(f"/genre {self.genre}", "/suggest", latest_only=False)
         if reply is None or reply.form is None:  # Not latest_only, so never superseded; no form means the game gave no suggestion
             raise PremiseFailed(reply.notice if reply else "")
-        return self._new_default(reply.form.suggestion, text, replace=True)
+        self._new_default(reply.form.suggestion, text, replace=True)
+        return reply.form.suggestion
 
     def setup_commands(self, timed: bool) -> list[str]:
         """The commands that apply the dialog's choices before starting: the mode (only if it changed) and the genre."""

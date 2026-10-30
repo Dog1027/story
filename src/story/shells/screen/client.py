@@ -16,7 +16,8 @@ import asyncio
 from collections.abc import Callable
 
 from story.core import HOST_PHASES, Ending, InputMode, Reply, Status, pick_choice
-from story.shells.connection import Connection
+from story.shells.connection import PlayerEnd
+from story.shells.messages import LobbyScreen, SendMessage, ServerMessage
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 from story.shells.screen.premise import PremiseForm
 from story.shells.screen.view import View, status_line
@@ -31,11 +32,11 @@ class Client:
 
     It has no core of its own: input goes to the room; replies, progress and narration being written are pushed back by the room, then handed to View according to the reply's phase."""
 
-    def __init__(self, view: View, connect: Callable[[], Connection] | None, token: str = ""):
+    def __init__(self, view: View, connect: Callable[[], PlayerEnd] | None, token: str = ""):
         self.view = view
         self.connect = connect  # Opens a connection to the lobby (the web server passes lobby.connect); this side never sees the lobby itself
         self.token = token  # An ID the browser remembers: when the same browser connects again, the new connection replaces the old one (see rooms/lobby.py)
-        self.conn: Connection | None = None  # The connection to the lobby (and rooms); None until run() connects
+        self.conn: PlayerEnd | None = None  # The connection to the lobby (and rooms); None until run() connects
         self.replaced = False
         self.my_name = ""
         self.actor = ""  # Your own name while you haven't acted this turn; empty once you have
@@ -49,7 +50,7 @@ class Client:
         self.waiting: list[str] = []  # Who hasn't acted this turn
         self.progress = ""  # Progress pushed by the room (e.g. "planning the story outline")
         self.busy_label = ""  # What the game calls the wait, pushed by the room with it (e.g. "writing the story")
-        self.inbox: asyncio.Queue[dict] = asyncio.Queue()  # Messages pushed by the room, handled in order
+        self.inbox: asyncio.Queue[ServerMessage] = asyncio.Queue()  # Messages pushed by the room, handled in order
         self.answers: dict[int, asyncio.Future[Reply]] = {}  # Setup form requests waiting for the room's reply, by request id (see ask_room)
         self.next_request = 0
 
@@ -136,7 +137,7 @@ class Client:
     async def deliver(self, text: str, form: bool = False, answer: int | None = None) -> None:
         """Pass a line of input to the room; the reply will be pushed back by the room. form marks an action in the new game dialog:
         it gets a reply only with answer, a request id the reply comes back with."""
-        message = {"type": "send", "text": text[:MAX_INPUT_LEN], "form": form}
+        message: SendMessage = {"type": "send", "text": text[:MAX_INPUT_LEN], "form": form}
         if answer is not None:
             message["answer"] = answer
         await self.conn.send(message)
@@ -316,28 +317,27 @@ class Client:
     async def listen(self) -> None:
         """Receive messages pushed by the room. Simple ones are handled directly; replies, lobby screens and others that must wait for the previous one to finish showing are queued in inbox and handled in order."""
         while (message := await self.conn.receive()) is not None:
-            kind = message["type"]
-            if kind == "busy":
+            if message["type"] == "busy":
                 self.progress = message.get("progress", "")
                 self.busy_label = message.get("label", "") or self.busy_label
                 self.set_busy(message["on"])
                 if message["on"]:
                     self.view.show_busy()  # The room sends busy again whenever the progress changes
-            elif kind == "draft":  # Narration the AI is writing, forwarded by the room
+            elif message["type"] == "draft":  # Narration the AI is writing, forwarded by the room
                 self.follow_draft(message["text"])
-            elif kind == "timer":
+            elif message["type"] == "timer":
                 self.view.start_timer(message["seconds"])
-            elif kind == "waiting":
+            elif message["type"] == "waiting":
                 self.update_waiting(message["names"])
-            elif kind == "notice":
+            elif message["type"] == "notice":
                 self.view.notify(message["text"])
-            elif kind == "replaced":  # The same browser came in from elsewhere: this one ends
+            elif message["type"] == "replaced":  # The same browser came in from elsewhere: this one ends
                 self.replaced = True
                 self.view.notify(UI["session_replaced"], lasting=True)
                 self.view.exit()
-            elif kind == "new_story":  # Clear at once without queuing, so the "writing the story" right after isn't cleared too
-                self.clear_story(message.get("premise", ""))
-            elif kind == "premise":
+            elif message["type"] == "new_story":  # Clear at once without queuing, so the "writing the story" right after isn't cleared too
+                self.clear_story(message["premise"])
+            elif message["type"] == "premise":
                 if (waiting := self.answers.pop(message["id"], None)) and not waiting.done():
                     waiting.set_result(Reply.from_dict(message["reply"]))
             else:
@@ -362,10 +362,9 @@ class Client:
         """Runs for as long as the client does: show queued replies and lobby screens one at a time, each once the last has finished showing."""
         while True:
             message = await self.inbox.get()
-            kind = message["type"]
-            if kind == "reply":
+            if message["type"] == "reply":
                 await self.show_reply(Reply.from_dict(message["reply"]))
-            elif kind == "lobby":
+            elif message["type"] == "lobby":
                 self.show_lobby(message)
 
     async def ask_room(self, *commands: str) -> Reply:
@@ -381,9 +380,9 @@ class Client:
         finally:
             self.answers.pop(request, None)
 
-    def show_lobby(self, screen: dict) -> None:
+    def show_lobby(self, screen: LobbyScreen) -> None:
         """The lobby or a room's waiting screen (the content is up to the lobby and room). Clear the screen first right after arriving or leaving a room."""
-        if screen.get("clear"):
+        if screen["clear"]:
             self.clear_story()
         self.view.show_lobby({k: v for k, v in screen.items() if k not in ("type", "clear", "hint")})
         self.actor, self.waiting = "", []

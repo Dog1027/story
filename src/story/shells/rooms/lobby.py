@@ -9,7 +9,7 @@ and takes the same seat without waiting for the old one to drop; anyone with a d
 
 The lobby doesn't know which games exist or how a game's core is built: the web server passes both in (see story.shells.web.hosting).
 
-Messages are dicts that can be converted to JSON.
+Messages are dicts that can be converted to JSON; their types are in shells/messages.py.
 Player → lobby
   {"type": "join", "name": "Ming", "token": "..."}   The first message; token is an ID the browser remembers (may be empty)
   {"type": "send", "text": "1"}           In the lobby: pick a room; in a room: passed to the room (see room.py)
@@ -29,9 +29,11 @@ Lobby → player
 """
 
 import asyncio
+from typing import Literal
 
 from story.core import MAX_PLAYERS, pick_choice
-from story.shells.connection import Connection
+from story.shells.connection import Connection, PlayerEnd, ServerEnd
+from story.shells.messages import LobbyScreen, Person, PlayerMessage, RoomCard, ServerMessage
 from story.shells.players import InvalidName, check_name
 from story.shells.rooms.room import GameChoice, MakeCore, Room
 from story.shells.text import UI
@@ -45,16 +47,16 @@ class Lobby:
         The web server decides both (story.shells.web.hosting): the lobby itself doesn't know which games exist."""
         self.games = games
         self.make_core = make_core
-        self.people: dict[str, Connection] = {}  # People online (the lobby's end of each connection)
+        self.people: dict[str, ServerEnd] = {}  # People online (the lobby's end of each connection)
         self.where: dict[str, Room | None] = {}  # Which room each person is in; None is the lobby
         self.tokens: dict[str, str] = {}  # Each person's browser ID: the same browser connecting again replaces the old connection
         self.rooms: list[Room] = []  # In the order they were opened
         self.options: dict[str, list[Room | None]] = {}  # The options each person sees in the lobby: None is "open a new room"
-        self.shown: dict[str, dict] = {}  # The last lobby screen each person got (not resent if unchanged)
+        self.shown: dict[str, LobbyScreen] = {}  # The last lobby screen each person got (not resent if unchanged)
         self.lock = asyncio.Lock()  # Handle comings and goings one at a time
-        self.links: dict[Connection, asyncio.Task] = {}
+        self.links: dict[ServerEnd, asyncio.Task] = {}
 
-    def connect(self) -> Connection:
+    def connect(self) -> PlayerEnd:
         """A player connects: returns the player's end; the lobby's end is handled by serve()."""
         player_end, lobby_end = Connection.pair()
         self.links[lobby_end] = asyncio.create_task(self.serve(lobby_end))
@@ -70,7 +72,7 @@ class Lobby:
 
     # ---------- Connections ----------
 
-    async def serve(self, conn: Connection) -> None:
+    async def serve(self, conn: ServerEnd) -> None:
         """One player's connection, from entering a name until it ends."""
         name = None
         try:
@@ -87,7 +89,7 @@ class Lobby:
             conn.close()
             self.links.pop(conn, None)
 
-    async def _join(self, conn: Connection) -> str | None:
+    async def _join(self, conn: ServerEnd) -> str | None:
         """Take a name for this connection, letting the player try another until one can be used; None if they leave first.
         Then put them where they belong: their seat (same browser again), their room (back mid-game), or the lobby."""
         while True:
@@ -133,7 +135,7 @@ class Lobby:
 
     # ---------- Input ----------
 
-    async def _on_message(self, name: str, message: dict) -> None:
+    async def _on_message(self, name: str, message: PlayerMessage) -> None:
         room = self.where.get(name)
         text = str(message.get("text", "")).strip()
         if room is None:
@@ -198,8 +200,8 @@ class Lobby:
                 labels.append(UI["room_entry"].format(host=room.host, count=len(room.online), max=MAX_PLAYERS))
         return labels
 
-    def _room_card(self, room: Room, choice: str) -> dict:
-        state = "playing" if room.playing else "full" if len(room.online) >= MAX_PLAYERS else "open"
+    def _room_card(self, room: Room, choice: str) -> RoomCard:
+        state: Literal["open", "full", "playing"] = "playing" if room.playing else "full" if len(room.online) >= MAX_PLAYERS else "open"
         return {
             "title": UI["room_title"].format(host=room.host), "host": room.host, "members": room.online,
             "state": state, "game": room.game_title if room.playing else "", "choice": choice,
@@ -211,26 +213,26 @@ class Lobby:
         in_lobby = [n for n, room in self.where.items() if room is None]
         options = [None, *joinable]  # Option 1 opens a new room; the rest are rooms that can be joined
         rooms = [self._room_card(r, str(options.index(r) + 1) if r in joinable else "") for r in self.rooms]
-        people = [{"name": n, "room": room.host if room else "", "playing": bool(room and room.playing)} for n, room in self.where.items()]
+        people: list[Person] = [{"name": n, "room": room.host if room else "", "playing": bool(room and room.playing)} for n, room in self.where.items()]
         for name in in_lobby:
             self.options[name] = options
-            screen = {
+            screen: LobbyScreen = {
                 "type": "lobby", "view": "lobby", "title": UI["lobby_title"], "you": name,
-                "choices": self._labels(options), "hint": UI["rooms_hint"],
+                "choices": self._labels(options), "hint": UI["rooms_hint"], "clear": False,
                 "rooms": rooms, "people": people, "max_rooms": MAX_ROOMS, "seats": MAX_PLAYERS,
             }
             if self.shown.get(name) == screen and name != clear_for:
                 continue
             self.shown[name] = screen
-            await self._send(name, screen | {"clear": name == clear_for})
+            await self._send(name, {**screen, "clear": name == clear_for})
 
     async def _notice(self, name: str, text: str) -> None:
         await self._send(name, {"type": "notice", "text": text})
 
-    async def _send(self, name: str, message: dict) -> None:
+    async def _send(self, name: str, message: ServerMessage) -> None:
         if name in self.people:
             await self._send_to(self.people[name], message)
 
     @staticmethod
-    async def _send_to(conn: Connection, message: dict) -> None:
+    async def _send_to(conn: ServerEnd, message: ServerMessage) -> None:
         await conn.send_if_open(message)  # If they already disconnected, that's handled when serve() ends

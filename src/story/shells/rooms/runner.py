@@ -6,11 +6,12 @@ from collections.abc import Awaitable, Callable
 
 from story.core import Reply, TeamGame
 from story.shells.connection import BackgroundTasks
+from story.shells.messages import BusyMessage, ServerMessage
 from story.shells.text import UI
 
 
 class CoreRunner:
-    def __init__(self, broadcast: Callable[[dict], Awaitable[None]]):
+    def __init__(self, broadcast: Callable[[ServerMessage], Awaitable[None]]):
         """broadcast(message) sends a message to everyone in the room."""
         self.broadcast = broadcast
         self.core: TeamGame | None = None
@@ -37,7 +38,7 @@ class CoreRunner:
         """What the waiting screen calls the wait: the game's own words ("writing the story", "the judge is thinking")."""
         return self.core.busy_label if self.core else ""
 
-    def busy_message(self, progress: str | None = None) -> dict:
+    def busy_message(self, progress: str | None = None) -> BusyMessage:
         """The "waiting for the AI" message: with the current progress unless one is given."""
         return {"type": "busy", "on": True, "progress": self.progress if progress is None else progress, "label": self.label}
 

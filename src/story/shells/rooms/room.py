@@ -7,7 +7,7 @@ The room holds one core (a game from story.games): it passes each player's input
 The flow: waiting for players (the host picks a game) → the host answers "continue the save / what a new game asks" → playing (everyone acts on their own; the turn advances when all have)
 → the ending → back to the waiting screen. The host is the first person in; when the host leaves, the next person online takes over.
 
-Messages are dicts that can be converted to JSON, sent over a Connection (connection.py).
+Messages are dicts that can be converted to JSON, sent over a Connection (connection.py); their types are in shells/messages.py.
 Player → room
   {"type": "send", "text": "1"}           A player's input: an action, a command, or the host answering a dialog
   {"type": "send", "text": "/suggest", "form": true, "answer": 3}
@@ -38,7 +38,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from story.core import AWAY, HOST_PHASES, MAX_PLAYERS, RESTART, TIMEOUT, Reply, TeamGame, pick_choice
-from story.shells.connection import BackgroundTasks, Connection
+from story.shells.connection import BackgroundTasks, ServerEnd
+from story.shells.messages import GameCard, LobbyScreen, PlayerMessage, SendMessage, ServerMessage
 from story.shells.rooms.countdown import Countdown
 from story.shells.rooms.runner import CoreRunner
 from story.shells.text import UI
@@ -62,7 +63,7 @@ class GameChoice:
 
 
 class Member:
-    def __init__(self, name: str, conn: Connection):
+    def __init__(self, name: str, conn: ServerEnd):
         self.name, self.conn = name, conn
         self.online = True
         self.behind = False  # Came back while the core was busy: shown the current screen once it's done
@@ -125,13 +126,12 @@ class Room:
         """Whether this input leaves the room: /leave, or "Leave room" chosen on the waiting screen."""
         return text == "/leave" or (self.core is None and pick_choice(text, self._lobby_choices(name)) == LEAVE)
 
-    async def handle(self, name: str, message: dict) -> None:
+    async def handle(self, name: str, message: PlayerMessage) -> None:
         """Input that uses the core is handled in the background: the AI can take tens of seconds, and meanwhile this player's
         connection keeps being read (so leaving is noticed at once). The core's lock takes them one at a time, in the order they came."""
-        kind = message.get("type")
-        if kind == "send":
+        if message["type"] == "send":
             self.tasks.spawn(self._on_send_message(name, message))
-        elif kind == "ready":
+        elif message["type"] == "ready":
             self.countdown.finished_reading(name, self.online)
 
     async def close(self) -> None:
@@ -152,7 +152,7 @@ class Room:
 
     # ---------- Coming and going ----------
 
-    async def add(self, name: str, conn: Connection) -> None:
+    async def add(self, name: str, conn: ServerEnd) -> None:
         self.members[name] = Member(name, conn)
         if not self.host or not self.members[self.host].online:
             self.host = name
@@ -216,7 +216,7 @@ class Room:
 
     # ---------- Input ----------
 
-    async def _on_send_message(self, name: str, message: dict) -> None:
+    async def _on_send_message(self, name: str, message: SendMessage) -> None:
         text = str(message.get("text", "")).strip()
         async with self._using_core():
             try:
@@ -354,11 +354,12 @@ class Room:
                 if core and core.phase == "playing" and core.waiting():
                     await self._route(await self.runner.call(lambda: core.send(TIMEOUT), busy=True))
             except Exception:
-                await self._recover("", {"type": "timeout"})
+                await self._recover("", None)
 
-    async def _recover(self, name: str, message: dict) -> None:
-        """The last line of defence: something nobody expected failed while handling a message (the core already turns its own errors into replies).
-        Log the details, tell people, and put everyone's current screen back, keeping the room and the connections."""
+    async def _recover(self, name: str, message: SendMessage | None) -> None:
+        """The last line of defence: something nobody expected failed while handling a message, or the countdown's time-up (message None)
+        (the core already turns its own errors into replies). Log the details, tell people, and put everyone's current screen back, keeping the room and the connections."""
+        message = message or {"type": "send", "text": "/timeout"}
         log.exception("unexpected error in %s's room handling %r from %r", self.host, message, name)
         try:
             for member in self._online_members():
@@ -366,9 +367,9 @@ class Room:
                 if self.core is not None and self.core.phase == "playing":
                     await self._send_reply(member.name, self.core.view(member.name))
             await self._broadcast_waiting()
-            if message.get("answer") is not None and name in self.members:  # The premise dialog is waiting for this answer: give it one, or it waits forever
+            if (request := message.get("answer")) is not None and name in self.members:  # The premise dialog is waiting for this answer: give it one, or it waits forever
                 failed = Reply(phase=self.core.phase if self.core else "setup", error="api", notice=UI["room_error"])
-                await self._safe_write(self.members[name], {"type": "premise", "id": message["answer"], "reply": failed.to_dict()})
+                await self._safe_write(self.members[name], {"type": "premise", "id": request, "reply": failed.to_dict()})
             elif self.host_reply and not message.get("form") and self.core is not None and self.core.phase == self.host_reply.phase:
                 await self._send_reply(self.host, self.host_reply)  # The host's dialog closed when they answered: show it again so they can answer again
         except Exception:
@@ -379,7 +380,7 @@ class Room:
     def _online_members(self) -> list[Member]:
         return [m for m in self.members.values() if m.online]
 
-    async def _broadcast(self, message: dict, skip: str = "") -> None:
+    async def _broadcast(self, message: ServerMessage, skip: str = "") -> None:
         for member in self._online_members():
             if member.name != skip:
                 await self._safe_write(member, message)
@@ -387,7 +388,7 @@ class Room:
     def _lobby_choices(self, name: str) -> list[str]:
         return [*self.starts, LEAVE] if self.is_host(name) else [LEAVE]
 
-    def _game_menu(self) -> list[dict]:
+    def _game_menu(self) -> list[GameCard]:
         """The host's game picker: every game with its name and a line about it; choice is the option that starts it."""
         return [
             {"code": g.code, "title": g.title, "description": g.description, "choice": str(i)}
@@ -398,7 +399,7 @@ class Room:
         """The waiting screen: who's in the room; the host can start and everyone can leave. clear_for is someone who just came in, whose screen is wiped first."""
         for member in self._online_members():
             host = self.is_host(member.name)
-            await self._safe_write(member, {
+            screen: LobbyScreen = {
                 "type": "lobby",
                 "view": "room",
                 "title": UI["room_title"].format(host=self.host),
@@ -410,7 +411,8 @@ class Room:
                 "games": self._game_menu() if host else [],
                 "hint": UI["room_hint_host"] if host else UI["lobby_waiting_host"].format(host=self.host),
                 "clear": member.name == clear_for,
-            })
+            }
+            await self._safe_write(member, screen)
 
     async def _broadcast_waiting(self) -> None:
         if self.core and self.core.phase == "playing":
@@ -424,5 +426,5 @@ class Room:
             await self._safe_write(member, {"type": "notice", "text": text})
 
     @staticmethod
-    async def _safe_write(member: Member, message: dict) -> None:
+    async def _safe_write(member: Member, message: ServerMessage) -> None:
         await member.conn.send_if_open(message)  # If they already disconnected, the lobby handles their leaving

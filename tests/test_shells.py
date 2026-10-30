@@ -55,13 +55,13 @@ def test_layers_only_depend_outward():
 
 def test_rooms_and_screens_only_meet_through_a_connection():
     """Inside the shells: the lobby and rooms (rooms/) don't know which games exist, how things are shown, or the settings; each tab's flow
-    (screen/) doesn't know about rooms. They only share connection.py, players.py and text.py. Only web/ wires them to the games and settings."""
+    (screen/) doesn't know about rooms. They only share connection.py, messages.py (the message types), players.py and text.py. Only web/ wires them to the games and settings."""
     from pathlib import Path
 
     import story.shells
 
     root = Path(story.shells.__file__).parent
-    shared = ("story.core", "story.shells.connection", "story.shells.players", "story.shells.text")
+    shared = ("story.core", "story.shells.connection", "story.shells.messages", "story.shells.players", "story.shells.text")
     allowed = {"rooms": (*shared, "story.shells.rooms"), "screen": (*shared, "story.shells.screen")}
     problems = []
     for part, ok in allowed.items():
