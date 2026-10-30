@@ -177,7 +177,7 @@ class AdventureCore(TeamGame):
         self._wait_compaction()
         before = {c.name: snapshot(c) for c in self.state.characters}
         self.engine.act(self.state, actions)
-        self.pending = {}
+        self.pending = {}  # Before building the reply: the new turn's choices go to whoever hasn't acted in it
         self._save()
         if self.state.game_over:
             self._phase = "ending"
@@ -276,5 +276,5 @@ class AdventureCore(TeamGame):
 def character_status(c: Character) -> Status:
     """One character's status for the shells to show (one item in Reply.characters)."""
     warning = warning_level(c) if c.alive else ""
-    return Status(items=condition_list(c) or [(word("level", "healthy"), "healthy")], warning=warning, name=c.name,
+    return Status(items=condition_list(c) or [(word("level", "healthy"), "good")], warning=warning, name=c.name,
                   alive=c.alive, warning_text=word("level", warning) if warning else "")

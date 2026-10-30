@@ -62,7 +62,7 @@ class Client:
 
     async def run(self) -> None:
         self.room = self.connect()
-        name = await self.ask_name(self.claim_seat)
+        name = await self.ask_name()
         if name is None:
             self.view.exit()
             return
@@ -77,11 +77,11 @@ class Client:
         if self.room:
             self.room.close()
 
-    async def ask_name(self, claim, hint: str = "") -> str | None:
-        """Ask for a name, asking again with the reason when it can't be used. claim(name) takes the name: an empty string on success, otherwise why it can't be used."""
+    async def ask_name(self) -> str | None:
+        """Ask for a name and take its seat in the lobby, asking again with the reason when it can't be used."""
         error = ""
         while True:
-            raw = await self.view.ask_name(hint, error)
+            raw = await self.view.ask_name(error)
             if raw is None:
                 return None
             try:
@@ -89,7 +89,7 @@ class Client:
             except InvalidName as e:
                 error = str(e)
                 continue
-            if not (error := await claim(name)):
+            if not (error := await self.claim_seat(name)):
                 return name
 
     async def act(self, text: str) -> None:
@@ -305,6 +305,7 @@ class Client:
     # ---------- Talking to the lobby and room ----------
 
     async def claim_seat(self, name: str) -> str:
+        """Ask the lobby for this name: an empty string on success, otherwise why it can't be used."""
         await self.room.send({"type": "join", "name": name, "token": self.token})
         answer = await self.room.receive()
         if answer is None:

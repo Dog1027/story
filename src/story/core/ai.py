@@ -9,6 +9,7 @@ import re
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import NoReturn
 
 import httpx
 from google import genai
@@ -39,7 +40,7 @@ def is_key_error(e: Exception) -> bool:
     return code in (400, 401, 403) and ("API key" in text or "API_KEY" in text)
 
 
-def raise_friendly(e: Exception) -> None:
+def raise_friendly(e: Exception) -> NoReturn:
     """Still timing out, unreachable or cut off mid-answer after the resends: turn it into an error the core handles; re-raise anything else as is."""
     if isinstance(e, httpx.TransportError):  # Timeouts, failed connections, connections reset partway through a stream…
         raise RuntimeError(UI["timeout"]) from e

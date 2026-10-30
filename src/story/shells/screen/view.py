@@ -141,8 +141,8 @@ class View:
         """Show the ending and the journey record; returns whether to play again."""
         raise NotImplementedError
 
-    async def ask_name(self, hint: str, error: str) -> str | None:
-        """Ask for a name; returns what the player typed (None if cancelled). error is why the last one couldn't be used, empty the first time; when hint is blank, the interface uses its own explanation."""
+    async def ask_name(self, error: str) -> str | None:
+        """Ask for a name; returns what the player typed (None if cancelled). error is why the last one couldn't be used, empty the first time."""
         raise NotImplementedError
 
     def exit(self) -> None:

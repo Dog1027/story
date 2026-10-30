@@ -112,7 +112,7 @@ class RecordingView(View):
         self.record("ask_ending", title)
         return self.play_again
 
-    async def ask_name(self, hint, error):
+    async def ask_name(self, error):
         return "阿明"
 
     def exit(self):

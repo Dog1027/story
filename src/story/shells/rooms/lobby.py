@@ -7,7 +7,7 @@ Someone who disconnected mid-game goes straight back to their room when they ret
 When the same browser connects again with the same name and token (a reload, or a phone coming back before the old connection dropped), the new connection replaces the old one
 and takes the same seat without waiting for the old one to drop; anyone with a different token is still refused that name. A room closes when no one in it is online (the save stays, so the same people can continue in a new room).
 
-Every room shares the host's API key, and AI calls are under one shared limit (RateLimit); calls over it queue.
+The lobby doesn't know which games exist or how a game's core is built: the web server passes both in (see story.shells.web.hosting).
 
 Messages are dicts that can be converted to JSON.
 Player → lobby
@@ -81,11 +81,16 @@ class Lobby:
                     return
                 raw, token = message.get("name", ""), str(message.get("token", ""))[:64]
                 async with self.lock:
-                    old = self._same_browser(raw, token)
-                    if old is None and (error := self._name_error(raw)):
-                        await conn.send({"type": "rejected", "reason": error})
+                    try:
+                        claimed = check_name(raw)
+                    except InvalidName as e:
+                        await conn.send({"type": "rejected", "reason": str(e)})
                         continue
-                    name = check_name(raw)
+                    old = self.people.get(claimed) if token and self.tokens.get(claimed) == token else None  # The same browser again
+                    if old is None and claimed in self.people:
+                        await conn.send({"type": "rejected", "reason": UI["room_name_taken"]})
+                        continue
+                    name = claimed
                     if old is not None:  # Replace the old connection: take the same seat without leaving, so the room doesn't close for being empty
                         await self._send_to(old, {"type": "replaced"})
                         old.close()
@@ -116,23 +121,6 @@ class Lobby:
                 await self._show_rooms()
             conn.close()
             self.links.pop(conn, None)
-
-    def _same_browser(self, raw: str, token: str) -> Connection | None:
-        """Someone with the same name and token is already online: return their old connection (to be replaced)."""
-        try:
-            name = check_name(raw)
-        except InvalidName:
-            return None
-        if token and name in self.people and self.tokens.get(name) == token:
-            return self.people[name]
-        return None
-
-    def _name_error(self, raw: str) -> str:
-        try:
-            name = check_name(raw)
-        except InvalidName as e:
-            return str(e)
-        return UI["room_name_taken"] if name in self.people else ""
 
     # ---------- Input ----------
 
@@ -188,10 +176,7 @@ class Lobby:
         if not room.online:  # No one online: close it (the save stays, so the same people can continue in a new room)
             await room.close()
             self.rooms.remove(room)
-        if back_to_lobby:
-            await self._show_rooms(clear_for=name)
-        else:
-            await self._show_rooms()
+        await self._show_rooms(clear_for=name if back_to_lobby else "")
 
     # ---------- The lobby screen ----------
 

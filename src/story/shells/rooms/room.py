@@ -111,25 +111,25 @@ class Room:
         """Whether this input leaves the room: /leave, or "Leave room" chosen on the waiting screen."""
         return text == "/leave" or (self.core is None and pick_choice(text, self._lobby_choices(name)) == LEAVE)
 
-    async def add(self, name: str, conn: Connection) -> None:
-        await self._join(name, conn)
-
-    async def remove(self, name: str) -> None:
-        await self._leave(name)
-
     async def handle(self, name: str, message: dict) -> None:
         """Input that uses the core is handled in the background: the AI can take tens of seconds, and meanwhile this player's
         connection keeps being read (so leaving is noticed at once). The core's lock takes them one at a time, in the order they came."""
-        if message.get("type") == "send":
+        kind = message.get("type")
+        if kind == "send":
             self._spawn(self._on_send_message(name, message))
-        else:
-            await self._on_message(name, message)
+        elif kind == "ready":
+            self.countdown.read(name, self.online)
 
     async def close(self) -> None:
         self.countdown.stop()
         for task in list(self.tasks):
             task.cancel()
         self.runner.close()
+
+    def _spawn(self, coroutine) -> None:
+        task = asyncio.create_task(coroutine)
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
 
     @asynccontextmanager
     async def _using_core(self):
@@ -144,7 +144,7 @@ class Room:
 
     # ---------- Coming and going ----------
 
-    async def _join(self, name: str, conn: Connection) -> None:
+    async def add(self, name: str, conn: Connection) -> None:
         self.members[name] = Member(name, conn)
         if not self.host or not self.members[self.host].online:
             self.host = name
@@ -178,7 +178,7 @@ class Room:
         else:
             await self._send_notice(name, UI["host_setting_up"])
 
-    async def _leave(self, name: str) -> None:
+    async def remove(self, name: str) -> None:
         if name not in self.members:
             return
         if self.core is None:
@@ -207,11 +207,6 @@ class Room:
 
     # ---------- Input ----------
 
-    async def _on_message(self, name: str, message: dict) -> None:
-        kind = message.get("type")
-        if kind == "ready":
-            self.countdown.read(name, self.online)
-
     async def _on_send_message(self, name: str, message: dict) -> None:
         text = str(message.get("text", "")).strip()
         async with self._using_core():
@@ -230,7 +225,7 @@ class Room:
         elif name != self.host and self.core.phase != "ending":  # Anyone may retry an ending that failed to wrap up
             await self._send_notice(name, UI["wait_host_story"].format(host=self.host))
         elif form and self.core.phase == "setup":  # Actions in the new game dialog, not pushed to anyone else
-            reply = await self._call(lambda: self.core.send(text))
+            reply = await self.runner.call(lambda: self.core.send(text))
             if answer:
                 await self._safe_write(self.members[name], {"type": "premise", "reply": reply.to_dict()})
         else:
@@ -238,7 +233,7 @@ class Room:
             if starting:  # A written premise is shown to everyone first; answers to options (turtle soup's puzzle source) aren't, and the scenario waits until the puzzle is drawn
                 premise = "" if self.host_reply and self.host_reply.choices else text
                 await self._broadcast({"type": "new_story", "premise": premise})
-            await self._route(await self._call(lambda: self.core.send(text), busy=starting))
+            await self._route(await self.runner.call(lambda: self.core.send(text), busy=starting))
 
     async def _on_lobby(self, name: str, text: str) -> None:
         if name != self.host:
@@ -251,11 +246,6 @@ class Room:
         self.runner.attach(self.core)
         await self._route(self.core.start())
 
-    def _spawn(self, coroutine) -> None:
-        task = asyncio.create_task(coroutine)
-        self.tasks.add(task)
-        task.add_done_callback(self.tasks.discard)
-
     async def _on_playing(self, name: str, text: str) -> None:
         if text == "/timeout":
             return  # The room runs the countdown; players can't call time for everyone
@@ -264,14 +254,14 @@ class Room:
             return
         if text.startswith("/") and self.core.action_for(text) is None:  # /state, /restart, or an unknown command: reply only to the sender
             # (some games' actions start with a slash too, like turtle soup's /ask: those are actions, so the last one shows everyone the wait)
-            reply = await self._call(lambda: self.core.send_as(name, text))
+            reply = await self.runner.call(lambda: self.core.send_as(name, text))
             await self._route(reply, only=name)
             return
         await self._act(name, text)
 
     async def _act(self, name: str, text: str) -> None:
         resolving = self.core.waiting() == [name]
-        await self._route(await self._call(lambda: self.core.send_as(name, text), busy=resolving), only=name)
+        await self._route(await self.runner.call(lambda: self.core.send_as(name, text), busy=resolving), only=name)
         await self._fill_offline()
 
     async def _fill_offline(self) -> None:
@@ -281,10 +271,6 @@ class Room:
         waiting = self.core.waiting()
         if waiting and not any(self.members[n].online for n in waiting if n in self.members):
             await self._act(waiting[0], "/away")  # The core decides the text for the AI
-
-    async def _call(self, fn: Callable[[], Reply], busy: bool = False) -> Reply:
-        """Call the core in a background thread (it may call the AI and take a few seconds). With busy, everyone sees "writing the story"."""
-        return await self.runner.call(fn, busy)
 
     # ---------- Replies ----------
 
@@ -322,7 +308,7 @@ class Room:
         elif phase == "ending" and not reply.error:
             # Go on to write the epilogue. If wrapping up the ending failed, don't go round again on our own: the same error would repeat
             # endlessly (and an epilogue that fails calls the AI every time); anyone can send something to try again
-            await self._route(await self._call(lambda: self.core.send(""), busy=True))
+            await self._route(await self.runner.call(lambda: self.core.send(""), busy=True))
         elif phase == "ended":
             self.core = None  # Back to the waiting screen; the same people can play again
             self.runner.attach(None)
@@ -343,7 +329,7 @@ class Room:
             self.countdown.over()  # Only now: while waiting for the core, a turn that advanced still stops (cancels) this countdown
             try:
                 if self.core and self.core.phase == "playing" and self.core.waiting():
-                    await self._route(await self._call(lambda: self.core.send("/timeout"), busy=True))
+                    await self._route(await self.runner.call(lambda: self.core.send("/timeout"), busy=True))
             except Exception:
                 await self._recover("", {"type": "timeout"})
 

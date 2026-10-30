@@ -119,9 +119,9 @@ class TeamGame:
             return handler(raw)
         except WrongUsage:
             raise
-        except Exception as e:  # A bug, or an error nobody expected: restore and let players retry instead of ending the game
+        except Exception:  # A bug, or an error nobody expected: restore and let players retry instead of ending the game
             log.exception("unexpected error in phase %s for input %r", self._phase, raw)
-            return self._recover(e)
+            return self._recover()
 
     def send_as(self, name: str, text: str) -> Reply:
         """Send input as a given player, in any order. Outside of play (premise, confirmations…), the same as send()."""
@@ -144,10 +144,8 @@ class TeamGame:
             if self._phase == "playing":
                 reply = replace(reply, **self._replay())
         if self._phase != "playing":
-            mine = replace(reply, actor="", choices=[] if reply.actor else reply.choices)
-        else:
-            mine = replace(reply, **self._screen_for(name if name in self.waiting() else None))
-        return mine
+            return replace(reply, actor="", choices=[] if reply.actor else reply.choices)
+        return replace(reply, **self._screen_for(name if name in self.waiting() else None))
 
     def waiting(self) -> list[str]:
         """The names of players who haven't acted this turn, in team order."""
@@ -237,7 +235,7 @@ class TeamGame:
             return {}
         return {"actor": actor or "", "choices": self._choices(actor) if actor else [], "time_limit": self._time_limit()}
 
-    def _recover(self, e: Exception) -> Reply:
+    def _recover(self) -> Reply:
         """An unexpected error: the state may be half changed, so restore it from the save and take back this turn's actions, like a failed AI call."""
         if self.state is not None:
             self.state = load(self.save_path, self.state_class) or self.state

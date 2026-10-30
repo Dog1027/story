@@ -192,8 +192,8 @@ class WebView(View):
     async def ask_ending(self, title: str, record: str) -> bool:
         return bool(await self.ask("ending", title=title, record=record))
 
-    async def ask_name(self, hint: str, error: str) -> str | None:
-        raw = await self.ask("name", hint=hint, error=error, max_len=MAX_NAME_LEN)
+    async def ask_name(self, error: str) -> str | None:
+        raw = await self.ask("name", error=error, max_len=MAX_NAME_LEN)
         return None if raw is None else str(raw)
 
     def exit(self) -> None:

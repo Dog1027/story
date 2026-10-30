@@ -124,7 +124,7 @@ def test_status_warns_only_when_the_next_wound_could_kill(core):
 
     new_game(core)
     fine = core.send("/state").characters[0]
-    assert fine.warning == "" and fine.items == [("良好", "healthy")]  # The word shown with no conditions also comes from the game
+    assert fine.warning == "" and fine.items == [("良好", "good")]  # The word shown with no conditions also comes from the game
     core.state.characters[0].conditions = [Condition(name="失血", kind="body", severity="severe")]
     reply = core.send("/state")
     assert reply.characters[0].warning == "serious" and reply.characters[0].warning_text == "重傷"

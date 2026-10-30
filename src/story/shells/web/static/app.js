@@ -174,7 +174,7 @@ const handlers = {
   },
   name(message) {
     // Remember the last name: on the first ask, go straight in with it; only if it can't be used (e.g. the old connection hasn't dropped yet) show the dialog, with the reason and the name filled in
-    const saved = savedName();
+    const saved = stored("story-name");
     if (saved && !message.error && !state.autoNamed) {
       state.autoNamed = true;
       answer(message.id, saved);
@@ -305,7 +305,7 @@ function renderStatus(status) {
 // Buttons send the choice's number, the same as typing it in the input box
 function renderLobby(screen) {
   renderStatus(null);
-  if (screen.you) saveName(screen.you); // Only remember a name the server accepted
+  if (screen.you) store("story-name", screen.you); // Only remember a name the server accepted
   renderChoices([]); // Also clear choices left over from the last game, invisible but still taking space: the waiting screen's buttons are in the panel
   $("app").classList.toggle("wide", screen.view === "lobby"); // The lobby has two columns side by side: the status bar and input box widen with it
   log.querySelectorAll(".lobby-panel").forEach((el) => el.remove());
@@ -430,28 +430,20 @@ function roomPanel({ title, host, you, members, seats, choices, games = [] }) {
 function gamePicker(games) {
   const box = tag("fieldset", "game-picker");
   box.append(tag("legend", "", t("pick_game")));
-  let chosen = games.find((g) => g.code === loadGame()) || games[0];
+  let chosen = games.find((g) => g.code === stored("story-game")) || games[0];
   for (const game of games) {
     const option = tag("label", "game-option");
     const radio = tag("input");
     radio.type = "radio";
     radio.name = "game";
     radio.checked = game === chosen;
-    radio.onchange = () => { chosen = game; saveGame(game.code); };
+    radio.onchange = () => { chosen = game; store("story-game", game.code); };
     const text = tag("span", "game-text");
     text.append(tag("strong", "", game.title), tag("span", "game-description", game.description));
     option.append(radio, text);
     box.append(option);
   }
   return [box, () => chosen];
-}
-
-function loadGame() {
-  try { return localStorage.getItem("story-game") || ""; } catch (e) { return ""; }
-}
-
-function saveGame(code) {
-  try { localStorage.setItem("story-game", code); } catch (e) {}
 }
 
 // ---------- Choices and input ----------
@@ -614,14 +606,6 @@ function buttons(list) {
   return row;
 }
 
-function field(type, id, placeholder) {
-  const el = tag("input");
-  el.type = type;
-  el.id = id;
-  el.placeholder = placeholder;
-  return el;
-}
-
 function infoSheet(title, body) {
   openSheet((sheet, close) => {
     sheet.append(tag("h2", "", title), tag("div", "body", body), buttons([[t("close"), () => close(), true]]));
@@ -635,13 +619,21 @@ function renameSheet() {
     sheet.append(buttons([[t("rename_no"), () => close(false), true], [t("rename_yes"), () => close(true)]]));
   }, (sure) => {
     if (!sure) return;
-    saveName(""); // Forget the name and reconnect: leaves the current room and asks for a name again
+    store("story-name", ""); // Forget the name and reconnect: leaves the current room and asks for a name again
     state.exited = true;
     location.reload();
   });
 }
 
-// The server decides whether a name can be used; if not, it asks again with the reason (error)
+// Settings remembered only in this browser (the name, the last game picked, the appearance); if storage fails (e.g. private browsing), there's nothing remembered
+function stored(key) {
+  try { return localStorage.getItem(key) || ""; } catch (e) { return ""; }
+}
+
+function store(key, value) {
+  try { if (value) localStorage.setItem(key, value); else localStorage.removeItem(key); } catch (e) {}
+}
+
 // This browser's ID: when the same browser connects again with the same name, the server lets the new connection replace the old one (without waiting for it to drop).
 // getRandomValues rather than randomUUID: a LAN http address isn't a secure context, so randomUUID isn't available
 function browserToken() {
@@ -657,28 +649,22 @@ function browserToken() {
   }
 }
 
-// The last name used is stored only in this browser (like the appearance); if reading or writing fails (e.g. private browsing), treat it as none
-function savedName() {
-  try { return localStorage.getItem("story-name") || ""; } catch (e) { return ""; }
-}
-
-function saveName(name) {
-  try { if (name) localStorage.setItem("story-name", name); else localStorage.removeItem("story-name"); } catch (e) {}
-}
-
-function nameSheet({ id, hint, error, max_len }) {
+// The server decides whether a name can be used; if not, it asks again with the reason (error)
+function nameSheet({ id, error, max_len }) {
   openSheet((sheet, close) => {
-    const name = field("text", "name-input", t("name_placeholder"));
+    const name = tag("input");
+    name.type = "text";
+    name.id = "name-input";
+    name.placeholder = t("name_placeholder");
     name.maxLength = max_len;
-    name.value = savedName();
+    name.value = stored("story-name");
     const errorLine = tag("p", "error", error || "");
     const submit = () => close(name.value);
     name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
-    sheet.append(tag("h2", "", t("name_title")), tag("p", "hint", hint || t("name_hint")), name, errorLine);
+    sheet.append(tag("h2", "", t("name_title")), tag("p", "hint", t("name_hint")), name, errorLine);
     sheet.append(buttons([[t("leave"), () => close(null)], [t("enter"), submit, true]]));
   }, (value) => answer(id, value), false);
 }
-
 
 // The rules (the genre menu, whether to replace the text box, which commands to send) are in the server's shared layer (PremiseForm): this only draws them and sends actions along with the text box content,
 // then puts in the new opening from the reply (leaving it as is when text is null)
@@ -796,7 +782,7 @@ menu.addEventListener("click", (event) => {
     const choice = button.dataset.themeChoice;
     if (choice === "system") delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = choice;
-    try { localStorage.setItem("story-theme", choice); } catch (e) {}
+    store("story-theme", choice);
     markTheme();
   }
 });

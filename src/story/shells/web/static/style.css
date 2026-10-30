@@ -149,7 +149,7 @@ button { cursor: pointer; }
 .t-light { color: var(--sev-1); }
 .t-moderate { color: var(--sev-2); }
 .t-severe, .t-bad { color: var(--sev-3); }
-.t-good, .t-healthy { color: var(--good); }
+.t-good { color: var(--good); }
 .t-muted { color: var(--muted); }
 
 /* ---------- Story area ---------- */
