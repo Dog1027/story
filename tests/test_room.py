@@ -262,8 +262,8 @@ async def test_countdown_starts_after_everyone_has_read_then_times_out(isolated)
         assert countdown.reading and not any(m["type"] == "timer" for m in host.messages)  # Hua hasn't finished reading
         await guest.conn.send({"type": "ready"})
         assert (await host.expect(lambda m: m["type"] == "timer"))["seconds"] == 1
-        await host.reply(lambda r: bool(r.narration))  # Time's up; the room advances for everyone
-        assert room_of(lobby).core.state.turn == 2
+        advanced = await host.reply(lambda r: bool(r.narration))  # Time's up; the room advances for everyone
+        assert advanced.turn == 2
     finally:
         await lobby.stop()
 
@@ -334,6 +334,10 @@ async def test_host_genre_choice_reaches_the_core(isolated):
     class GenreEngine(FakeGroupEngine):
         genres = {"武俠": Genre(name="武俠", description="江湖恩怨", guide="用古白話。")}
 
+        def start(self, state):
+            self.started_genre = state.genre  # What the core gave the engine for the new story
+            super().start(state)
+
     lobby = make_lobby(isolated, GenreEngine())
     try:
         host, guest = await gather(lobby, "阿明", "小華")
@@ -343,7 +347,7 @@ async def test_host_genre_choice_reaches_the_core(isolated):
         await host.send("/genre 武俠")  # Choices in the premise dialog: no reply needed
         await host.send("鏢局")
         await guest.reply(lambda r: bool(r.narration))
-        assert room_of(lobby).core.state.genre == "武俠"
+        assert lobby.engine.started_genre == "武俠"
     finally:
         await lobby.stop()
 
@@ -475,9 +479,9 @@ async def test_two_rooms_play_at_the_same_time(lobby):
         await player.send("1")  # Start the adventure
         await player.reply(lambda r: r.phase == "setup")
         await player.send(premise)
-    for player in (a, b):
+    for player, premise in ((a, "燈塔"), (b, "古堡")):
+        assert (await player.expect(lambda m: m["type"] == "new_story"))["premise"] == premise  # Each room started its own story
         await player.reply(lambda r: bool(r.narration))
-    assert [r.core.state.premise for r in lobby.rooms] == ["燈塔", "古堡"]
     assert [r.core.players for r in lobby.rooms] == [["阿明"], ["小華"]]
 
 
@@ -589,7 +593,7 @@ async def test_a_bug_while_wrapping_up_the_ending_is_not_retried_endlessly(lobby
     await guest.send("/give_up")
     failed = await guest.reply(lambda r: r.phase == "ending" and r.error is not None)
     assert "送出任何文字可以再試一次" in failed.notice
-    await asyncio.sleep(0.2)
+    await until(lambda: not room_of(lobby).lock.locked())  # Going round again on its own would happen before the room lets go of the core
     assert len(calls) == 1  # Not retried on its own
     await guest.send("再試一次")  # Not just the host: anyone can retry
     assert (await host.reply(lambda r: r.phase == "ended")).ending.epilogue == PUZZLE.truth
@@ -647,7 +651,7 @@ async def test_input_from_someone_who_left_right_after_is_ignored(lobby, caplog)
     await guest.send("開始吧")  # A guest typing on the waiting screen gets "wait for the host"…
     await guest.conn.send({"type": "send", "text": "/leave"})  # …but leaves before that's handled
     await host.expect(lambda m: m["type"] == "lobby" and m["members"] == ["阿明"])
-    await asyncio.sleep(0.05)
+    await until(lambda: not room_of(lobby).tasks)  # The guest's input has been handled
     assert "unexpected error" not in caplog.text
     assert not [m for m in host.messages if m["type"] == "notice" and "伺服器出了點問題" in m["text"]]
 
@@ -669,13 +673,14 @@ async def test_a_countdown_stopped_while_waiting_for_the_core_does_not_time_out(
 
     countdown = module.Countdown(announce, time_up)
     countdown.start_now(0)
-    await asyncio.sleep(0.05)
-    assert announced == [0] and countdown.remaining() == 0
+    await until(lambda: announced == [0])
+    assert countdown.remaining() == 0
+    stopped = countdown.task
     countdown.stop()  # The turn advanced meanwhile
     gate.set()
-    await asyncio.sleep(0.05)
+    await asyncio.gather(stopped, return_exceptions=True)  # Finished (cancelled) before it could act
     assert acted == []
 
     countdown.start_now(0)  # Not stopped: it acts
-    await asyncio.sleep(0.05)
-    assert acted == [True] and countdown.task is None
+    await until(lambda: acted == [True])
+    assert countdown.task is None

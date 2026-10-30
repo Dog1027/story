@@ -12,7 +12,7 @@ os.environ["STORY_LANG"] = "zh-TW"
 from story.core.ai import AIFailed
 from story.games.adventure.engine import Engine
 from story.games.adventure.models import Character, Condition, GameState, GenrePick, StoryArc, StoryBeat, Turn
-from story.games.adventure.prompting import format_actions
+from story.games.adventure.prompting import SYSTEM_PROMPT, format_actions
 from story.games.soup.models import Puzzle
 
 
@@ -94,7 +94,7 @@ ARC = StoryArc(
 
 
 class FakeGemini:
-    """A fake Gemini client: returns the queued results by the call's response_schema and records the prompts sent."""
+    """A fake Gemini client: returns the queued results by the call's response_schema (or system instruction) and records the prompts sent."""
 
     def __init__(self, beats=(), arc=ARC, summary="新的摘要", premise="AI 想的開頭", genre=""):
         self.beats = list(beats)
@@ -122,11 +122,13 @@ class FakeGemini:
             return SimpleNamespace(parsed=GenrePick(genre=self.genre))
         if schema is not None:  # Epilogue
             return SimpleNamespace(parsed=schema(title="燈塔守望者", text="多年以後，燈塔仍會亮起。"))
-        if "傷重倒下的場景" in contents:
+        # Plain-text calls, told apart by their system instruction (not by prompt wording, which the .md files may change)
+        system = getattr(config, "system_instruction", None)
+        if system is SYSTEM_PROMPT:  # Writing a character's fall
             return SimpleNamespace(text="（倒下的場景）")
-        if "故事前提" in contents and "題材" in contents:
+        if system is None:  # Suggesting a premise
             return SimpleNamespace(text=self.premise)
-        return SimpleNamespace(text=self.summary)
+        return SimpleNamespace(text=self.summary)  # Compacting the memory
 
 
 def make_engine(*beats, genres=None, **kwargs) -> tuple[Engine, FakeGemini]:
