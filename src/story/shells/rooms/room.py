@@ -5,7 +5,7 @@ calls remove() when they leave or disconnect, and passes messages inside the roo
 The room holds one core (a game from story.games): it passes each player's input to the core, then sends the reply to every player (each sees their own choices).
 
 The flow: waiting for players (the host picks a game) → the host answers "continue the save / what a new game asks" → playing (everyone acts on their own; the turn advances when all have)
-→ the ending → back to the waiting screen. The host is the first person in; when the host leaves, the next person online takes over.
+→ the ending → back to the waiting screen. The host's /restart also goes back to the waiting screen (asking first if a game is under way). The host is the first person in; when the host leaves, the next person online takes over.
 
 Messages are dicts that can be converted to JSON, sent over a Connection (connection.py); their types are in shells/messages.py.
 Player → room
@@ -232,7 +232,12 @@ class Room:
             await self._on_lobby(name, text)
             return
         core = self.core
-        if core.phase == "playing":
+        if text == RESTART and core.phase != "playing":  # Nothing to give up yet (setup, continuing a save, the ending): straight back to picking a game
+            if self.is_host(name):
+                await self._back_to_waiting()
+            else:
+                await self._send_notice(name, UI["host_only_restart"])
+        elif core.phase == "playing":
             await self._on_playing(name, text)
         elif not self.is_host(name) and core.phase != "ending":  # Anyone may retry an ending that failed to wrap up
             await self._send_notice(name, UI["wait_host_story"].format(host=self.host))
@@ -245,7 +250,12 @@ class Room:
             if starting:  # What the host wrote in a setup form is shown to everyone first; answers to choices (turtle soup's puzzle source) aren't
                 premise = "" if self.host_reply and self.host_reply.form is None else text
                 await self._broadcast({"type": "new_story", "premise": premise})
-            await self._route(await self.runner.call(lambda: core.send(text), busy=starting))
+            restarting = core.phase == "confirm_restart"
+            reply = await self.runner.call(lambda: core.send(text), busy=starting)
+            if restarting and reply.phase == "setup":  # The host confirmed giving up this game: back to picking one, not the same game's setup
+                await self._back_to_waiting()
+                return
+            await self._route(reply)
 
     async def _on_lobby(self, name: str, text: str) -> None:
         if not self.is_host(name):
@@ -325,8 +335,9 @@ class Room:
             await self._back_to_waiting()
 
     async def _back_to_waiting(self) -> None:
-        """The game is over: drop the core and anyone offline, and show the waiting screen; the same people can play again."""
-        self.core = None
+        """The game is over (or the host restarted): drop the core and anyone offline, and show the waiting screen; the same people can play again."""
+        self.countdown.stop()
+        self.core, self.host_reply = None, None
         self.runner.attach(None)
         for name in [m.name for m in self.members.values() if not m.online]:
             del self.members[name]

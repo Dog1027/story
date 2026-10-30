@@ -176,6 +176,47 @@ async def test_only_host_answers_dialogs_and_restarts(lobby):
     assert lobby.engine.rounds == []
 
 
+async def test_restart_goes_back_to_the_room_to_pick_a_game(lobby):
+    """Restarting mid-game asks the host first; once confirmed, everyone is back on the room's waiting screen and the host picks a game again."""
+    host, guest = await start_story(lobby)
+    await host.reply()
+    await host.send("/restart")
+    confirm = await host.reply(lambda r: r.phase == "confirm_restart")
+    assert confirm.choices
+    host.messages.clear()  # Only screens sent after the restart count
+    guest.messages.clear()
+    await host.send("1")  # Yes, give up this game
+    screen = await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["games"])
+    assert [g["code"] for g in screen["games"]] == ["adventure", "soup"]
+    await guest.expect(lambda m: is_lobby("阿明 的房間")(m) and m["members"] == ["阿明", "小華"])
+    assert room_of(lobby).core is None
+    await host.send(next(g["choice"] for g in screen["games"] if g["code"] == "soup"))  # Pick another game
+    assert (await host.reply(lambda r: r.phase == "setup")).choices == ["從題庫抽一題", "請 AI 出一題"]
+
+
+async def test_restart_before_the_game_starts_goes_straight_back(lobby):
+    """Nothing to give up yet (still on the setup form): no confirmation, straight back to picking a game."""
+    host, guest = await gather(lobby, "阿明", "小華")
+    await host.send("1")  # Start the adventure
+    await host.reply(lambda r: r.phase == "setup")
+    host.messages.clear()  # Only screens sent after the restart count
+    await host.send("/restart")
+    await host.expect(lambda m: is_lobby("阿明 的房間")(m) and m["games"])
+    assert room_of(lobby).core is None
+
+
+async def test_cancelling_a_restart_keeps_playing(lobby):
+    host, guest = await start_story(lobby)
+    await host.reply()
+    await host.send("/restart")
+    await host.reply(lambda r: r.phase == "confirm_restart")
+    await host.send("2")  # No: the dialog closes and the game goes on (the screen behind it hasn't changed, so nothing is resent)
+    await until(lambda: room_of(lobby).core is not None and room_of(lobby).core.phase == "playing")
+    await host.send("1")
+    await guest.send("1")
+    assert (await host.reply(lambda r: bool(r.narration))).turn == 2
+
+
 async def test_disconnected_players_rejoin_or_are_skipped(lobby):
     host, guest = await start_story(lobby)
     await host.reply()

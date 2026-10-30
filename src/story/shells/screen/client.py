@@ -209,7 +209,7 @@ class Client:
     async def show_setup_form(self, reply: Reply) -> None:
         """The game asked for its setup form (Reply.form): let the view draw it, apply its choices, then send what the host wrote."""
         if reply.error == "api":
-            return  # Writing the opening failed: the error is already shown; stay put, and players can try again with /restart
+            return  # Writing the opening failed: the error is already shown; stay put: the host can answer again, or restart to pick a game again
         form = PremiseForm(reply, self.ask_room)
         answer = await self.view.ask_premise(form)
         if answer is None:
