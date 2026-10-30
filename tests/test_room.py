@@ -357,9 +357,9 @@ async def test_only_commands_asking_for_an_answer_get_one(lobby):
     await host.send("1")
     await host.reply()
     await host.conn.send({"type": "send", "text": "/timed on", "form": True})  # An action in the dialog, with no reply requested
-    await host.conn.send({"type": "send", "text": "/random", "form": True, "answer": True})
+    await host.conn.send({"type": "send", "text": "/random", "form": True, "answer": 1})
     answer = await host.expect(lambda m: m["type"] == "premise")
-    assert Reply.from_dict(answer["reply"]).phase == "setup"
+    assert answer["id"] == 1 and Reply.from_dict(answer["reply"]).phase == "setup"
     assert not any(m["type"] == "premise" for m in host.messages)  # Only one reply
 
 
@@ -606,9 +606,9 @@ async def test_a_bug_answering_the_premise_dialog_does_not_leave_it_waiting(lobb
     await host.send("1")  # Start the adventure
     await host.reply(lambda r: r.phase == "setup")
     room_of(lobby).core.send = lambda text: {}["bug"]
-    await host.conn.send({"type": "send", "text": "/suggest", "form": True, "answer": True})
+    await host.conn.send({"type": "send", "text": "/suggest", "form": True, "answer": 1})
     answer = await host.expect(lambda m: m["type"] == "premise")
-    assert Reply.from_dict(answer["reply"]).error == "api"
+    assert answer["id"] == 1 and Reply.from_dict(answer["reply"]).error == "api"
 
 
 async def test_a_bug_after_the_host_answers_shows_the_dialog_again(lobby, caplog):

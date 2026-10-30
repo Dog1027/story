@@ -344,6 +344,23 @@ async def test_premise_dialog_request_fails_instead_of_waiting_forever_when_the_
         await asyncio.wait_for(request, 2)  # Without the fix it waits forever: a timeout means failure
 
 
+async def test_premise_dialog_replies_are_matched_to_their_request_by_id():
+    """Two requests in flight: each reply goes to the request with the same id, whatever order they come back in."""
+    client = Client(RecordingView(), connect=None)
+    client.conn, server = Connection.pair()
+    listening = asyncio.create_task(client.listen())
+    first = asyncio.create_task(client.ask_room("/genre 武俠"))
+    second = asyncio.create_task(client.ask_room("/random"))
+    sent = [await server.receive(), await server.receive()]
+    ids = {m["text"]: m["answer"] for m in sent}
+    for text, premise in (("/random", "客棧"), ("/genre 武俠", "鏢局")):  # Answered in the other order
+        reply = Reply(phase="setup", form=SetupForm(default=premise))
+        await server.send({"type": "premise", "id": ids[text], "reply": reply.to_dict()})
+    assert (await first).form.default == "鏢局" and (await second).form.default == "客棧"
+    server.close()
+    await listening
+
+
 async def test_input_modes_switch_what_typing_does():
     """Turtle soup: picking "guess" only switches modes (marked, with a new hint), and what's typed next is sent with /guess; "give up" needs no text and is sent at once."""
     from story.games.soup.game import INPUTS

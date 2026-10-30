@@ -10,9 +10,9 @@ The flow: waiting for players (the host picks a game) → the host answers "cont
 Messages are dicts that can be converted to JSON, sent over a Connection (connection.py).
 Player → room
   {"type": "send", "text": "1"}           A player's input: an action, a command, or the host answering a dialog
-  {"type": "send", "text": "/suggest", "form": true, "answer": true}
+  {"type": "send", "text": "/suggest", "form": true, "answer": 3}
                                           Actions in the new game dialog (e.g. the adventure's suggest one, change genre) go only to the core,
-                                          not pushed to anyone; with "answer": true, the result goes back to the host
+                                          not pushed to anyone; with "answer" (a request id), the result goes back to the host with that id
   {"type": "ready"}                       New narration finished showing (the timed countdown starts once everyone's has)
 Room → player
   {"type": "lobby", "view": "room", "title": "Ming's room", "host": "Ming", "you": "Hua", "members": [...], "seats": 4,
@@ -20,7 +20,8 @@ Room → player
                                           The waiting screen: who's in the room (members, in the order they came in), the number of seats, the options, the input box hint;
                                           games is the host's game picker (empty for everyone else), each with the option that starts it
   {"type": "reply", "reply": {...}}       The core's reply (Reply.to_dict(), with this player's choices)
-  {"type": "premise", "reply": {...}}     The result of a command while starting a new game, sent only to the host who asked with answer
+  {"type": "premise", "id": 3, "reply": {...}}
+                                          The result of a command while starting a new game, sent only to the host who asked with answer
   {"type": "new_story", "premise": "..."}  A new game starts: wipe the screen and show the premise first (answers to options aren't shown)
   {"type": "busy", "on": true, "progress": "planning the story outline", "label": "Writing the story"}
                                           Waiting for the AI (sent again when progress changes); label is the game's busy_label
@@ -219,13 +220,14 @@ class Room:
         text = str(message.get("text", "")).strip()
         async with self._using_core():
             try:
-                await self._on_send(name, text, form=bool(message.get("form")), answer=bool(message.get("answer")))
+                await self._on_send(name, text, form=bool(message.get("form")), answer=message.get("answer"))
             except Exception:
                 await self._recover(name, message)
         if self.on_change:
             await self.on_change()
 
-    async def _on_send(self, name: str, text: str, form: bool = False, answer: bool = False) -> None:
+    async def _on_send(self, name: str, text: str, form: bool = False, answer: int | None = None) -> None:
+        """answer: the id of a new game dialog request waiting for this command's result (see the messages above)."""
         if self.core is None:
             await self._on_lobby(name, text)
             return
@@ -236,8 +238,8 @@ class Room:
             await self._send_notice(name, UI["wait_host_story"].format(host=self.host))
         elif form and core.phase == "setup":  # Actions in the new game dialog, not pushed to anyone else
             reply = await self.runner.call(lambda: core.send(text))
-            if answer:
-                await self._safe_write(self.members[name], {"type": "premise", "reply": reply.to_dict()})
+            if answer is not None:
+                await self._safe_write(self.members[name], {"type": "premise", "id": answer, "reply": reply.to_dict()})
         else:
             starting = core.phase == "setup"  # Starting a game: calls the AI
             if starting:  # What the host wrote in a setup form is shown to everyone first; answers to choices (turtle soup's puzzle source) aren't
@@ -364,9 +366,9 @@ class Room:
                 if self.core is not None and self.core.phase == "playing":
                     await self._send_reply(member.name, self.core.view(member.name))
             await self._broadcast_waiting()
-            if message.get("answer") and name in self.members:  # The premise dialog is waiting for this answer: give it one, or it waits forever
+            if message.get("answer") is not None and name in self.members:  # The premise dialog is waiting for this answer: give it one, or it waits forever
                 failed = Reply(phase=self.core.phase if self.core else "setup", error="api", notice=UI["room_error"])
-                await self._safe_write(self.members[name], {"type": "premise", "reply": failed.to_dict()})
+                await self._safe_write(self.members[name], {"type": "premise", "id": message["answer"], "reply": failed.to_dict()})
             elif self.host_reply and not message.get("form") and self.core is not None and self.core.phase == self.host_reply.phase:
                 await self._send_reply(self.host, self.host_reply)  # The host's dialog closed when they answered: show it again so they can answer again
         except Exception:

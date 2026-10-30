@@ -50,7 +50,8 @@ class Client:
         self.progress = ""  # Progress pushed by the room (e.g. "planning the story outline")
         self.busy_label = ""  # What the game calls the wait, pushed by the room with it (e.g. "writing the story")
         self.inbox: asyncio.Queue[dict] = asyncio.Queue()  # Messages pushed by the room, handled in order
-        self.premise_answer: asyncio.Future | None = None  # The premise dialog is waiting for the room's reply
+        self.answers: dict[int, asyncio.Future[Reply]] = {}  # Setup form requests waiting for the room's reply, by request id (see ask_room)
+        self.next_request = 0
 
     @property
     def ready(self) -> bool:
@@ -132,9 +133,13 @@ class Client:
             self.view.show_action(echo)
         await self.deliver(text)
 
-    async def deliver(self, text: str, form: bool = False, answer: bool = False) -> None:
-        """Pass a line of input to the room; the reply will be pushed back by the room. form marks an action in the new game dialog: it gets a reply only with answer."""
-        await self.conn.send({"type": "send", "text": text[:MAX_INPUT_LEN], "form": form, "answer": answer})
+    async def deliver(self, text: str, form: bool = False, answer: int | None = None) -> None:
+        """Pass a line of input to the room; the reply will be pushed back by the room. form marks an action in the new game dialog:
+        it gets a reply only with answer, a request id the reply comes back with."""
+        message = {"type": "send", "text": text[:MAX_INPUT_LEN], "form": form}
+        if answer is not None:
+            message["answer"] = answer
+        await self.conn.send(message)
 
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
@@ -332,12 +337,15 @@ class Client:
                 self.view.exit()
             elif kind == "new_story":  # Clear at once without queuing, so the "writing the story" right after isn't cleared too
                 self.clear_story(message.get("premise", ""))
-            elif kind == "premise" and self.premise_answer:
-                self.premise_answer.set_result(Reply.from_dict(message["reply"]))
+            elif kind == "premise":
+                if (waiting := self.answers.pop(message["id"], None)) and not waiting.done():
+                    waiting.set_result(Reply.from_dict(message["reply"]))
             else:
                 self.inbox.put_nowait(message)
-        if self.premise_answer and not self.premise_answer.done():  # The premise dialog is still waiting for the room: otherwise it would wait forever
-            self.premise_answer.set_exception(ConnectionError(UI["room_disconnected"]))
+        for waiting in self.answers.values():  # Requests still waiting for the room would otherwise wait forever
+            if not waiting.done():
+                waiting.set_exception(ConnectionError(UI["room_disconnected"]))
+        self.answers.clear()
         self.set_busy(False)
         if not self.replaced:
             self.view.notify(UI["room_disconnected"], error=True, lasting=True)
@@ -361,14 +369,17 @@ class Client:
                 self.show_lobby(message)
 
     async def ask_room(self, *commands: str) -> Reply:
-        """Actions in the premise dialog (change genre, another one, suggest one): send the commands in order, asking the room to reply (answer) only to the last, so the reply received is always for that one."""
-        self.premise_answer = asyncio.get_running_loop().create_future()
-        for i, command in enumerate(commands):
-            await self.deliver(command, form=True, answer=i == len(commands) - 1)
+        """Actions in the premise dialog (change genre, another one, suggest one): send the commands in order, asking the room to reply only to the last,
+        under a new request id, so the reply that comes back is matched to this request."""
+        self.next_request += 1
+        request = self.next_request
+        waiting = self.answers[request] = asyncio.get_running_loop().create_future()
         try:
-            return await self.premise_answer
+            for i, command in enumerate(commands):
+                await self.deliver(command, form=True, answer=request if i == len(commands) - 1 else None)
+            return await waiting
         finally:
-            self.premise_answer = None
+            self.answers.pop(request, None)
 
     def show_lobby(self, screen: dict) -> None:
         """The lobby or a room's waiting screen (the content is up to the lobby and room). Clear the screen first right after arriving or leaving a room."""
