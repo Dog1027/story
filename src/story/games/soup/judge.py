@@ -64,13 +64,13 @@ class SoupJudge(AICaller):
             ),
         )
         if not isinstance(response.parsed, Judgement):
-            raise AIFailed(UI["soup_no_ruling"])
+            raise AIFailed(UI["no_ruling"])
         rulings = {r.move: r for r in response.parsed.rulings}
         total = len(state.puzzle.key_points)
         for i, move in enumerate(moves, 1):
             ruling = rulings.get(i)
             if ruling is None:
-                raise AIFailed(UI["soup_no_ruling"])  # Someone was left out: redo the turn rather than guess an answer
+                raise AIFailed(UI["no_ruling"])  # Someone was left out: redo the turn rather than guess an answer
             if move.kind == "ask":
                 move.answer = code("soup_answer", ruling.answer)
             else:
@@ -83,12 +83,12 @@ class SoupJudge(AICaller):
         prompt = SOUP["make"].format(avoid="\n".join(f"- {t}" for t in avoid) or "-")
         try:
             for _ in range(MAKE_ATTEMPTS):
-                self.progress = UI["soup_stage_make"]
+                self.progress = UI["stage_make"]
                 draft = self._write_puzzle(prompt)
                 if draft is None:
                     self.write_log({"puzzle": None, "problem": "unparsable"})
                     continue
-                self.progress = UI["soup_stage_check"]
+                self.progress = UI["stage_check"]
                 problem = self._find_problem(draft)
                 self.write_log({"puzzle": draft.title, "problem": problem})  # Log every attempt, to help tune the check
                 if not problem:
@@ -134,5 +134,5 @@ class SoupJudge(AICaller):
         )
         check = response.parsed
         if not isinstance(check, PuzzleCheck):
-            return UI["soup_no_ruling"]
+            return UI["no_ruling"]
         return "" if check.ok else (check.problem.strip() or "?")

@@ -1,5 +1,6 @@
 """Fakes and setup shared by the tests. No test connects to Gemini or touches your real saves or API key."""
 
+import asyncio
 import os
 from types import SimpleNamespace
 
@@ -25,6 +26,15 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr("story.settings.CONFIG_PATH", tmp_path / "config.toml")
     monkeypatch.setattr("story.settings.DATA_DIR", tmp_path)  # saves/ and eval_results/ go here, never the real ones
     return tmp_path
+
+
+async def until(condition, timeout: float = 3.0) -> None:
+    """Wait until condition() holds (rooms and clients push messages asynchronously)."""
+    async def wait():
+        while not condition():
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(wait(), timeout)
 
 
 # ---------- Fake AI replies ----------

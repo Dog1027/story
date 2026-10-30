@@ -4,7 +4,7 @@ import asyncio
 from itertools import pairwise
 
 import pytest
-from conftest import FakeEngine
+from conftest import FakeEngine, until
 
 import story.shells.screen.client as client_module
 from story.core import Reply, Status
@@ -120,15 +120,6 @@ class RecordingView(View):
         self.record("exit")
 
 
-async def until(condition, timeout: float = 3.0) -> None:
-    """Wait until condition() holds (the room pushes replies asynchronously)."""
-    async def wait():
-        while not condition():
-            await asyncio.sleep(0.01)
-
-    await asyncio.wait_for(wait(), timeout)
-
-
 @pytest.fixture
 async def play(isolated):
     """Connect to a real lobby (the core uses a fake engine), open your own room, start an adventure, and wait for the opening to show. Returns the Client."""
@@ -148,7 +139,7 @@ async def play(isolated):
         await until(lambda: ("show_choices", ["往上爬", "檢查鑰匙"]) in view.calls and "set_status" in view.names())
         if view.timed:
             await until(lambda: "start_timer" in view.names())
-        await asyncio.sleep(0.05)  # Also let the messages the room pushes next (who's still pending) be handled
+        await until(lambda: client.waiting)  # Also let the room's next message (who's still pending) be handled
         return client
 
     yield start

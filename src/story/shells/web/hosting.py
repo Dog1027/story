@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from story import settings
-from story.core import RateLimit, TeamGame, new_client
+from story.core import GameMaker, RateLimit, TeamGame, new_client
 from story.games import GAMES
 from story.shells.rooms.lobby import Lobby
 from story.shells.rooms.room import GameChoice
@@ -38,6 +38,7 @@ def make_lobby(api_key: str) -> Lobby:
 
     def make_core(players: list[str], on_queue: Callable[[bool], None], game: str) -> TeamGame:
         save_path, log_path = team_save(players, game)
-        return GAMES[game](api_key, players, save_path=save_path, log_path=log_path, client=limit.wrap(client, on_queue))
+        make: GameMaker = GAMES[game]
+        return make(api_key, players, save_path=save_path, log_path=log_path, client=limit.wrap(client, on_queue))
 
     return Lobby(game_choices(), make_core)

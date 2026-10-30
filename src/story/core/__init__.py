@@ -5,6 +5,6 @@ from story.core.ai import new_client
 from story.core.prompts import Texts
 from story.core.ratelimit import RateLimit
 from story.core.reply import MAX_PLAYERS, ChangeGroups, Ending, InputMode, Reply, Status, pick_choice
-from story.core.team import TeamGame
+from story.core.team import GameMaker, TeamGame
 
-__all__ = ["MAX_PLAYERS", "ChangeGroups", "Ending", "InputMode", "RateLimit", "Reply", "Status", "TeamGame", "Texts", "pick_choice", "new_client"]
+__all__ = ["MAX_PLAYERS", "ChangeGroups", "Ending", "GameMaker", "InputMode", "RateLimit", "Reply", "Status", "TeamGame", "Texts", "pick_choice", "new_client"]

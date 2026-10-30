@@ -11,6 +11,7 @@ import logging
 import random
 import threading
 from pathlib import Path
+from typing import Any
 
 from story.core.reply import Ending, Reply, Status, Tone, join, pick_choice
 from story.core.team import FAILURES, PLAY_AGAIN_CHOICES, ReplayFields, StatusFields, TeamGame
@@ -49,7 +50,7 @@ class AdventureCore(TeamGame[GameState]):
         save_path: Path,
         log_path: Path | None = None,
         engine: Engine | None = None,
-        client=None,
+        client: Any = None,
     ):
         """client: a Gemini client to share (e.g. one limited by RateLimit); without one, a client is made from api_key."""
         super().__init__(players, save_path)

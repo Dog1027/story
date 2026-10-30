@@ -11,6 +11,7 @@ The input modes (ask, guess, give up) reach the shells through Reply.inputs: cho
 
 import random
 from pathlib import Path
+from typing import Any
 
 from story.core.reply import Ending, InputMode, Reply, Status, Tone, join, pick_choice
 from story.core.team import FAILURES, PLAY_AGAIN_CHOICES, ReplayFields, ScreenFields, StatusFields, TeamGame
@@ -19,18 +20,18 @@ from story.games.soup.models import Move, Puzzle, SoupState, word
 from story.games.soup.puzzles import load_puzzles
 from story.games.soup.text import UI
 
-PUZZLE_CHOICES = [UI["soup_from_bank"], UI["soup_from_ai"]]
+PUZZLE_CHOICES = [UI["from_bank"], UI["from_ai"]]
 ASK, GUESS, GIVE_UP, AWAY = "/ask", "/guess", "/give_up", "/away"
 INPUTS = [
-    InputMode(UI["soup_ask"], ASK, UI["soup_ask_hint"]),
-    InputMode(UI["soup_guess"], GUESS, UI["soup_guess_hint"]),
-    InputMode(UI["soup_give_up"], GIVE_UP, needs_text=False, confirm=(UI["soup_give_up_confirm"], UI["soup_give_up_yes"], UI["soup_give_up_no"])),
+    InputMode(UI["ask"], ASK, UI["ask_hint"]),
+    InputMode(UI["guess"], GUESS, UI["guess_hint"]),
+    InputMode(UI["give_up"], GIVE_UP, needs_text=False, confirm=(UI["give_up_confirm"], UI["give_up_yes"], UI["give_up_no"])),
 ]
 
 
 class SoupCore(TeamGame[SoupState]):
     title = UI["title"]
-    busy_label = UI["soup_busy"]
+    busy_label = UI["busy"]
     description = UI["description"]
     state_class = SoupState
     timeout_action = away_action = AWAY  # No time limit; someone who disconnected counts as away this turn
@@ -43,7 +44,7 @@ class SoupCore(TeamGame[SoupState]):
         save_path: Path,
         log_path: Path | None = None,
         judge: SoupJudge | None = None,
-        client=None,
+        client: Any = None,
         puzzles: list[Puzzle] | None = None,
     ):
         super().__init__(players, save_path)
@@ -62,7 +63,7 @@ class SoupCore(TeamGame[SoupState]):
 
     def _new_game(self) -> Reply:
         self._phase = "setup"
-        return self._reply(choices=PUZZLE_CHOICES, notice=UI["soup_ask_puzzle"])
+        return self._reply(choices=PUZZLE_CHOICES, notice=UI["ask_puzzle"])
 
     def _on_setup(self, raw: str) -> Reply:
         picked = pick_choice(raw, PUZZLE_CHOICES)
@@ -73,13 +74,13 @@ class SoupCore(TeamGame[SoupState]):
             try:
                 puzzle = self.judge.make_puzzle(avoid=[p.title for p in self.puzzles] + sorted(self.played))
             except FAILURES as e:  # Unreachable, out of quota…: draw from the bank instead of getting stuck
-                note = UI["soup_ai_failed"].format(error=str(e)[:200])
+                note = UI["ai_failed"].format(error=str(e)[:200])
             else:
-                note = "" if puzzle else UI["soup_ai_unsound"]
+                note = "" if puzzle else UI["ai_unsound"]
         from_ai = puzzle is not None
         puzzle = puzzle or self._draw()
         if puzzle is None:
-            return self._reply(choices=PUZZLE_CHOICES, notice=UI["soup_no_puzzles"])
+            return self._reply(choices=PUZZLE_CHOICES, notice=UI["no_puzzles"])
         self.played.add(puzzle.title)
         self.state, self.pending, self._phase = SoupState(puzzle=puzzle, from_ai=from_ai, players=self._players), {}, "playing"
         self._save()
@@ -91,7 +92,7 @@ class SoupCore(TeamGame[SoupState]):
 
     def _surface(self) -> str:
         p = self.game.puzzle
-        return UI["soup_surface"].format(title=p.title, surface=p.surface, points=len(p.key_points))
+        return UI["surface"].format(title=p.title, surface=p.surface, points=len(p.key_points))
 
     # ---------- A turn ----------
 
@@ -143,42 +144,42 @@ class SoupCore(TeamGame[SoupState]):
         for m in moves:
             name = self._who(m.name)
             if m.kind == "ask":
-                lines.append(UI["soup_line_ask"].format(name=name, text=m.text, answer=word("soup_answer", m.answer)))
+                lines.append(UI["line_ask"].format(name=name, text=m.text, answer=word("soup_answer", m.answer)))
             elif m.kind == "guess":
-                hits = UI["soup_hits"].format(points=join(s.puzzle.key_points[n - 1] for n in m.points)) if m.points else ""
-                lines.append(UI["soup_line_guess"].format(name=name, text=m.text, hit=m.hit, total=total, hits=hits))
+                hits = UI["hits"].format(points=join(s.puzzle.key_points[n - 1] for n in m.points)) if m.points else ""
+                lines.append(UI["line_guess"].format(name=name, text=m.text, hit=m.hit, total=total, hits=hits))
             elif m.kind == "give_up":
-                lines.append(UI["soup_line_give_up"].format(name=name))
+                lines.append(UI["line_give_up"].format(name=name))
             else:
-                lines.append(UI["soup_line_away"].format(name=name))
+                lines.append(UI["line_away"].format(name=name))
         if last and s.winners:
-            lines.append(UI["soup_solved"].format(names=join(self._who(n) for n in s.winners)))
+            lines.append(UI["solved"].format(names=join(self._who(n) for n in s.winners)))
         elif last and s.game_over:
-            lines.append(UI["soup_all_gave_up"])
+            lines.append(UI["all_gave_up"])
         elif any(m.kind == "give_up" for m in moves):
-            lines.append(UI["soup_give_up_pending"])
+            lines.append(UI["give_up_pending"])
         return "\n\n".join(lines)
 
     def _who(self, name: str) -> str:
         """"You" when playing alone, the name with several players."""
-        return UI["soup_you"] if len(self._players) == 1 else name
+        return UI["you"] if len(self._players) == 1 else name
 
     def _on_ending(self, raw: str) -> Reply:
         s = self.game
         winners = [self._who(n) for n in s.winners]
         if not winners:
-            title = UI["soup_revealed"]
+            title = UI["revealed"]
         else:
-            title = UI["soup_won" if len(winners) == 1 else "soup_won_together"].format(names=join(winners))
+            title = UI["won" if len(winners) == 1 else "won_together"].format(names=join(winners))
         moves = [m for r in s.rounds for m in r]
-        record = UI["soup_record"].format(
+        record = UI["record"].format(
             turns=s.turn,
             questions=sum(m.kind == "ask" for m in moves),
             guesses=sum(m.kind == "guess" for m in moves),
             points="\n".join(f"- {p}" for p in s.puzzle.key_points),
         )
         self._phase = "ended"
-        return self._reply(choices=PLAY_AGAIN_CHOICES, ending=Ending(title=title, epilogue=s.puzzle.truth, record=record, reveal=UI["soup_reveal"]))
+        return self._reply(choices=PLAY_AGAIN_CHOICES, ending=Ending(title=title, epilogue=s.puzzle.truth, record=record, reveal=UI["reveal"]))
 
     # ---------- Data for TeamGame ----------
 
@@ -197,8 +198,8 @@ class SoupCore(TeamGame[SoupState]):
         characters = []
         for name in s.players:
             best = s.best(name)
-            items: list[tuple[str, Tone]] = [(UI["soup_status_questions"].format(count=s.questions(name)), "muted")]
-            items.append((UI["soup_status_best"].format(hit=best, total=total), "good" if best else "muted"))
+            items: list[tuple[str, Tone]] = [(UI["status_questions"].format(count=s.questions(name)), "muted")]
+            items.append((UI["status_best"].format(hit=best, total=total), "good" if best else "muted"))
             characters.append(Status(items=items, name=name))
         return {"turn": s.turn + 1 if not s.game_over else s.turn, "timed": False, "characters": characters}
 
@@ -208,9 +209,9 @@ class SoupCore(TeamGame[SoupState]):
         return {"narration": texts[-1], "resumed": True, "history": [(t, "") for t in texts[:-1]]}
 
     def _help(self) -> str:
-        return UI["soup_help"]
+        return UI["help"]
 
     def _memory(self) -> str:
         p = self.game.puzzle
-        rounds = "\n\n".join(UI["soup_memory_round"].format(turn=i, text=self._round_text(r)) for i, r in enumerate(self.game.rounds, 1))
-        return UI["soup_memory"].format(title=p.title, surface=p.surface, rounds=rounds or UI["soup_memory_empty"])
+        rounds = "\n\n".join(UI["memory_round"].format(turn=i, text=self._round_text(r)) for i, r in enumerate(self.game.rounds, 1))
+        return UI["memory"].format(title=p.title, surface=p.surface, rounds=rounds or UI["memory_empty"])

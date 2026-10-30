@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from conftest import PUZZLE, FakeGroupEngine, FakeJudge
+from conftest import PUZZLE, FakeGroupEngine, FakeJudge, until
 
 import story.shells.rooms.lobby as lobby_module
 from story.core import Reply
@@ -208,7 +208,7 @@ async def test_the_same_browser_takes_over_its_old_connection(lobby):
     await first.expect(lambda m: m["type"] == "replaced")
     view = await second.reply()
     assert view.resumed and view.narration and view.actor == "阿明"
-    await asyncio.sleep(0.05)  # The old connection ended
+    await until(lambda: len(lobby.links) == 1)  # The old connection ended
     assert len(lobby.rooms) == 1 and lobby.people["阿明"] is not first.conn  # The room didn't close when the old connection left
     await second.send("1")
     await second.reply(lambda r: bool(r.narration))
@@ -246,8 +246,9 @@ async def test_countdown_starts_after_everyone_has_read_then_times_out(isolated)
         await host.reply()
         await guest.reply()
         await host.conn.send({"type": "ready"})
-        await asyncio.sleep(0.1)
-        assert not any(m["type"] == "timer" for m in host.messages)  # Hua hasn't finished reading
+        countdown = lobby.rooms[0].countdown
+        await until(lambda: "阿明" in countdown.read_by)
+        assert countdown.reading and not any(m["type"] == "timer" for m in host.messages)  # Hua hasn't finished reading
         await guest.conn.send({"type": "ready"})
         assert (await host.expect(lambda m: m["type"] == "timer"))["seconds"] == 1
         await host.reply(lambda r: bool(r.narration))  # Time's up; the room advances for everyone

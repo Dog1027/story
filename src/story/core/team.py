@@ -13,7 +13,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Protocol, TypedDict
+from typing import Any, Protocol, TypedDict
 
 from google.genai import errors
 
@@ -43,6 +43,13 @@ class TeamSave(Saveable, Protocol):
 
     @property
     def premise(self) -> str: ...
+
+
+class GameMaker(Protocol):
+    """How shells build a game (each game class in story.games.GAMES): the host's key, the team, where its save and log go,
+    and optionally a Gemini client to share (e.g. one limited by RateLimit). Games may take more keyword arguments for tests."""
+
+    def __call__(self, api_key: str, players: list[str], *, save_path: Path, log_path: Path | None = None, client: Any = None) -> TeamGame: ...
 
 
 # What the hooks below return, spread into a Reply: the keys are Reply's field names
