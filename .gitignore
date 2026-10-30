@@ -22,3 +22,7 @@ server.log
 
 # just eval results
 eval_results/
+
+# desloppify state and scorecard
+.desloppify/
+scorecard.png
