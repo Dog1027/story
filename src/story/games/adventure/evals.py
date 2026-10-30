@@ -1,7 +1,7 @@
 """The adventure's eval scenarios (just eval): have the AI really write a turn in fixed scenarios, then have the program and a judge (another AI call) check whether it got it right.
 
 The sample story is shared with just prompts (samples.py, with its text in samples/<lang>.md); the judge's criteria are in prompts/<lang>/eval.md.
-How to run it is in story/evals.py; running scenarios, reporting and saving results are shared, in story/core/evals.py.
+How to run it is in story/games/evals.py; running scenarios, reporting and saving results are shared, in story/core/evals.py.
 """
 
 import json
@@ -19,8 +19,8 @@ from story.games.adventure.engine import AdventureEngine
 from story.games.adventure.genres import Genre, load_genres
 from story.games.adventure.models import SCHEMA, AdventureState, Character
 from story.games.adventure.rules import ACT_TURNS, body_level, body_score
-from story.games.adventure.samples import ARC, PREMISE, SAMPLE, conditions, listed, sample_actions, sample_state
 from story.games.adventure.text import TEXT
+from story.games.adventure.tools.samples import ARC, PREMISE, SAMPLE, conditions, listed, sample_actions, sample_state
 
 EVAL = TEXT.sections("eval")
 # The judge uses the same model as the game but thinks more. The free tier's gemini-3.5-flash allows only 5 calls a minute; with a paid plan, switching to it makes judging more reliable

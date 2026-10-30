@@ -1,7 +1,7 @@
 """What every game's evals (just eval) share: run the scenarios, tally the checks, print the report, save each run's result.
 
 Each game writes its scenarios (Scenario) in its own evals.py: have the AI really run once, then record the checks with Trial.check().
-story/evals.py gathers every game's scenarios and hands them to evaluate() here.
+story/games/evals.py gathers every game's scenarios and hands them to evaluate() here.
 """
 
 import json

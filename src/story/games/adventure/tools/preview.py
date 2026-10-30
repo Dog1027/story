@@ -19,7 +19,7 @@ from story.games.adventure.genres import load_genres
 from story.games.adventure.models import SCHEMA, AdventureState
 from story.games.adventure.prompting import SYSTEM_PROMPT
 from story.games.adventure.rules import ACT_TURNS, MIN_ACT_TURNS, TARGET_TURNS
-from story.games.adventure.samples import HISTORY, SAMPLE, sample_actions, sample_state
+from story.games.adventure.tools.samples import HISTORY, SAMPLE, sample_actions, sample_state
 
 
 def scenarios(engine: AdventureEngine, players: int, genre: str) -> dict[str, tuple[str, str]]:

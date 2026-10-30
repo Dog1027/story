@@ -5,7 +5,7 @@ import json
 import pytest
 from conftest import FakeGemini, beat, cond
 
-from story import evals
+from story.games import evals
 from story.games.adventure import evals as adventure
 
 
@@ -57,9 +57,11 @@ def test_unknown_scenario_lists_the_choices(monkeypatch, capsys):
 
 
 def test_every_games_scenarios_are_gathered_from_games():
-    """Each game in GAMES with an evals.py next to it is gathered automatically: a new game's scenarios need no change to story/evals.py."""
-    found = evals.scenarios()
-    assert {"opening", "agency", "judge", "soup"} <= set(found)
+    """Every game in GAMES has its scenarios listed in SCENARIOS (a new game without evals fails here instead of quietly having none)."""
+    from story.games import GAMES
+
+    assert set(evals.SCENARIOS) == set(GAMES)
+    assert {"opening", "agency", "judge", "soup"} <= set(evals.scenarios())
 
 
 def test_soup_scenario_runs_with_a_fake_judge(monkeypatch, capsys):

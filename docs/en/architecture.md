@@ -29,7 +29,7 @@ core/     Core: the flow every game shares, the reply format,          Doesn't k
 | Folder | Main files |
 |---|---|
 | `core/` | `team.py`: `TeamGame`, the flow every game shares (the team, continuing saves, collecting everyone's actions, restarting, playing again). `reply.py`: `Reply`, the one reply format every game sends to the shells. `ai.py`: calling Gemini. `saves.py`, `prompts.py` (reading text files), `vocab.py` (game vocabulary), `evals.py` (the shared part of evals) |
-| `games/adventure/` | `game.py`: `AdventureCore`. `engine.py` ties together `rules.py` (the rules, pure functions), `prompting.py` (building prompts) and the AI calls. `models.py` holds the save format and the AI's response formats. `genres/` holds the genre packs. `samples.py` is a sample story shared by `preview.py` (`just prompts`) and `evals.py` (`just eval` scenarios) |
+| `games/adventure/` | `game.py`: `AdventureCore`. `engine.py` ties together `rules.py` (the rules, pure functions), `prompting.py` (building prompts) and the AI calls. `models.py` holds the save format and the AI's response formats. `genres/` holds the genre packs. `evals.py` holds the `just eval` scenarios. `tools/` holds dev tools not used while playing: `samples.py` is a sample story shared by `preview.py` (`just prompts`) and `evals.py` |
 | `games/soup/` | `game.py`: `SoupCore`. `judge.py` is the AI judge and puzzle writer, `puzzles/` the puzzle bank, `evals.py` the `just eval soup` scenarios |
 | `shells/` | `rooms/` (the server side): `lobby.py` and `room.py`, the lobby and rooms; a room holds one game's core, runs it with `runner.py` (in a background thread, telling everyone how it's going) and times turns with `countdown.py`. They don't know which games exist. `screen/` (one per browser tab): `client.py`, the flow of what to show when; `view.py`, the methods an interface implements (`View`); `premise.py`, the rules of the setup form dialog. It doesn't know about rooms. The two only meet through `connection.py`. `web/`: the web server (`server.py`) and the browser page (`static/`); `web/hosting.py` is the one place that hands the lobby the games in `GAMES`, the API key, the shared call limit and where saves go. `setup.py`: asks for the language and API key on first launch |
 
@@ -44,7 +44,7 @@ Tests enforce these rules (`tests/test_shells.py`): if the core imports a game, 
 | The order and timing people see (choices appear after the narration, the countdown starts once everyone has read) | `shells/screen/client.py` |
 | The looks | `shells/web/` |
 
-**Adding a game**: add a folder under `games/`, write a subclass of `TeamGame` (`title` is its name, `description` a line about it), and register it in `GAMES` in `games/__init__.py`. The host's game picker lists it automatically, and so does `just eval` if it has an `evals.py`; the core, the other games and the shells don't change.
+**Adding a game**: add a folder under `games/`, write a subclass of `TeamGame` (`title` is its name, `description` a line about it), and register it in `GAMES` in `games/__init__.py`. The host's game picker lists it automatically. If it has eval scenarios, register its `evals.py` in `SCENARIOS` in `games/evals.py` (a test checks every game in `GAMES` is registered); the core, the other games and the shells don't change.
 
 ## How the shells know what to show
 
@@ -106,7 +106,7 @@ They always go in the project folder (`settings.DATA_DIR`), whatever folder the 
 | `just eval` | Run fixed scenarios with the real AI and check pacing, the reveal, not deciding for the player, genre tone, and the turtle soup judge (`just eval soup`); results go to `eval_results/` |
 | `just clean-logs` | Delete the logs (`saves/*.log.jsonl`), never the saves |
 
-Tests never connect to Gemini or touch your saves: fakes stand in for the AI (`tests/conftest.py`), and each test runs in a temp folder. Whether the real AI writes well is checked with `just eval`: scenarios live in each game's own `evals.py`, and `story/evals.py` gathers them from every game in `GAMES` and runs them.
+Tests never connect to Gemini or touch your saves: fakes stand in for the AI (`tests/conftest.py`), and each test runs in a temp folder. Whether the real AI writes well is checked with `just eval`: scenarios live in each game's own `evals.py`, and `games/evals.py` gathers them through `SCENARIOS` and runs them.
 
 On every push to GitHub, GitHub Actions runs `just lint` and `just test` automatically (`.github/workflows/test.yml`).
 

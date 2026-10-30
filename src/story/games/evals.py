@@ -9,36 +9,34 @@ Calls the real Gemini (costs a little and takes a few minutes), so it isn't part
     just eval --runs 5         5 runs each (the AI writes differently every time, so more runs are more accurate)
     just eval --rpm 60         at most 60 calls a minute (raise it on a paid plan to run faster)
 
-Scenarios live in each game's own evals.py next to its game.py (games/adventure/evals.py, games/soup/evals.py): every game in GAMES that has one
-is gathered automatically, so a new game's scenarios need no change here.
+Scenarios live in each game's own evals.py next to its game.py (games/adventure/evals.py, games/soup/evals.py), listed in SCENARIOS below;
+a test checks every game in GAMES is listed there. Running scenarios, reporting and saving results are in story/core/evals.py.
 Each run's output and the judge's reasons are saved to eval_results/, to compare before and after a prompt change. Saves and game logs are never touched.
 """
 
-import importlib
 import sys
+from collections.abc import Callable
 
 from story import settings
 from story.core import new_client
 from story.core.ai import MODEL
 from story.core.evals import Scenario, evaluate
-from story.games import GAMES
+from story.games.adventure import evals as adventure
+from story.games.soup import evals as soup
 
 RUNS = 3
 RPM = 14  # Most AI calls per minute: the free tier's flash-lite limit is 15. Every scenario 3 times is about 90 calls, six or seven minutes
 
 
+# Each game's scenarios, by its code in GAMES
+SCENARIOS: dict[str, Callable[[], dict[str, Scenario]]] = {"adventure": adventure.scenarios, "soup": soup.scenarios}
+
+
 def scenarios() -> dict[str, Scenario]:
-    """Every game's scenarios: from the evals module next to each game in GAMES (games without one have none)."""
+    """Every game's scenarios, by scenario name."""
     found: dict[str, Scenario] = {}
-    for game in GAMES.values():
-        name = game.__module__.rpartition(".")[0] + ".evals"
-        try:
-            module = importlib.import_module(name)
-        except ModuleNotFoundError as e:
-            if e.name != name:
-                raise
-            continue
-        found |= module.scenarios()
+    for game_scenarios in SCENARIOS.values():
+        found |= game_scenarios()
     return found
 
 

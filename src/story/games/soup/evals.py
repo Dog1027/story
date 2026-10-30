@@ -1,6 +1,6 @@
 """Turtle soup's eval scenarios (just eval soup): check the judge's rulings with guesses from real games (soup_cases in samples/<lang>.md).
 
-How to run it is in story/evals.py; running scenarios, reporting and saving results are shared, in story/core/evals.py.
+How to run it is in story/games/evals.py; running scenarios, reporting and saving results are shared, in story/core/evals.py.
 """
 
 from pathlib import Path

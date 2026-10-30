@@ -70,7 +70,7 @@ def test_epilogue_prompt_is_story_content_plus_its_own_instruction():
 
 def test_preview_shows_every_scenario_without_calling_the_ai(capsys):
     """just prompts: every scenario builds with one character, two characters, and a genre pack, with no unfilled variables."""
-    from story.games.adventure.preview import main
+    from story.games.adventure.tools.preview import main
 
     for args in ([], ["--players", "2"], ["--genre", "武俠"]):
         main(args)
@@ -107,7 +107,7 @@ def test_english_runs_end_to_end_in_its_own_process(tmp_path):
 
     script = """
 from story.games.adventure.prompting import PromptBuilder
-from story.games.adventure.samples import sample_state
+from story.games.adventure.tools.samples import sample_state
 from story.shells.web.server import render_page
 from story.core.team import CONTINUE_CHOICES
 state = sample_state(2, "")
