@@ -44,7 +44,8 @@ def pick_choice(raw: str, options: list[str]) -> str | None:
 class Status:
     """One player on the status bar (in the adventure, their character). The bag isn't here: changes are in changes, the full content via /state."""
 
-    items: list[tuple[str, Tone]]  # Items to list: (text, tone). Conditions and severities in the adventure (body first, then mind; "fine" when there are none); question count and points hit in turtle soup
+    # Items to list: (text, tone). Conditions and severities in the adventure (body first, then mind; "fine" when there are none); question count and points hit in turtle soup
+    items: list[tuple[str, Tone]]
     warning: str = ""  # The overall condition code to warn the player about (serious, dying: another wound could kill); empty when not in danger
     name: str = ""
     alive: bool = True  # Whether the character is still alive
@@ -99,8 +100,10 @@ class Reply:
     info: tuple[str, str] | None = None  # Content to show separately: (title, body), e.g. memory or help
     form: SetupForm | None = None  # setup: a free-text form the game declares; None means pick one of choices
     ending: Ending | None = None  # ended: the epilogue and journey record
-    error: Literal["api"] | None = None  # The request failed and nothing changed (notice says why): calling the AI failed, or something unexpected broke; stays in the same phase and can be retried
-    actor: str = ""  # The player who sent the input (the subject of send_as and view; the only player when alone): their name while they haven't acted this turn, and choices are theirs
+    # The request failed and nothing changed (notice says why): calling the AI failed, or something unexpected broke; stays in the same phase and can be retried
+    error: Literal["api"] | None = None
+    # The player who sent the input (the subject of send_as and view; the only player when alone): their name while they haven't acted this turn, and choices are theirs
+    actor: str = ""
     inputs: list[InputMode] = field(default_factory=list)  # When present, choices are input modes (see InputMode), not actions
 
     def to_dict(self) -> dict:
