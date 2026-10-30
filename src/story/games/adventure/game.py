@@ -12,8 +12,8 @@ import random
 import threading
 from pathlib import Path
 
-from story.core.reply import Ending, Reply, Status, join, pick_choice
-from story.core.team import FAILURES, PLAY_AGAIN_CHOICES, TeamGame
+from story.core.reply import Ending, Reply, Status, Tone, join, pick_choice
+from story.core.team import FAILURES, PLAY_AGAIN_CHOICES, ReplayFields, StatusFields, TeamGame
 from story.games.adventure.engine import Engine
 from story.games.adventure.models import Character, GameState, word
 from story.games.adventure.prompting import AWAY_ACTION, TIMEOUT_ACTION, TURN
@@ -30,7 +30,7 @@ def genre_label(choice: str) -> str:
     return {GENRE_AUTO: UI["genre_auto"], GENRE_NONE: UI["genre_none"]}.get(choice, choice)
 
 
-class AdventureCore(TeamGame):
+class AdventureCore(TeamGame[GameState]):
     """One adventure: a team of one to four characters, each played by one player (one when playing alone).
     The AI writes a turn only once every living character has acted. The shared flow is in TeamGame."""
 
@@ -54,7 +54,6 @@ class AdventureCore(TeamGame):
         """client: a Gemini client to share (e.g. one limited by RateLimit); without one, a client is made from api_key."""
         super().__init__(players, save_path)
         self.engine = engine or Engine(api_key=api_key, client=client, log_path=log_path)
-        self.state: GameState | None = None
         self.timed = False  # The mode for new games, kept from the last game
         self.genre = GENRE_AUTO  # The genre choice for new games, kept from the last game
         self.last_premise = ""
@@ -178,11 +177,11 @@ class AdventureCore(TeamGame):
     def _play_round(self, actions: dict[str, str]) -> Reply:
         """Have the AI write this turn, save, and return this turn's reply."""
         self._wait_compaction()
-        before = {c.name: snapshot(c) for c in self.state.characters}
-        self.engine.act(self.state, actions)
+        before = {c.name: snapshot(c) for c in self.game.characters}
+        self.engine.act(self.game, actions)
         self.pending = {}  # Before building the reply: the new turn's choices go to whoever hasn't acted in it
         self._save()
-        if self.state.game_over:
+        if self.game.game_over:
             self._phase = "ending"
         else:
             self._start_compaction()
@@ -190,7 +189,7 @@ class AdventureCore(TeamGame):
 
     def _on_ending(self, raw: str) -> Reply:
         """The next input after the story ends: write the epilogue. If the epilogue fails, still move on to the end so players can play again."""
-        s = self.state
+        s = self.game
         notice = ""
         if not s.epilogue:
             try:
@@ -206,7 +205,7 @@ class AdventureCore(TeamGame):
         )
 
     def _turn_reply(self, before) -> Reply:
-        s = self.state
+        s = self.game
         changes = []
         if before is not None:
             for c in s.characters:
@@ -217,31 +216,31 @@ class AdventureCore(TeamGame):
     # ---------- Data for TeamGame ----------
 
     def _active(self) -> list[str]:
-        return [c.name for c in self.state.characters if c.alive]
+        return [c.name for c in self.game.characters if c.alive]
 
     def _choices(self, name: str) -> list[str]:
-        return next((list(c.choices) for c in self.state.characters if c.name == name), [])
+        return next((list(c.choices) for c in self.game.characters if c.name == name), [])
 
     def _time_limit(self) -> int:
-        return self.state.current_time_limit
+        return self.game.current_time_limit
 
-    def _status(self) -> dict:
-        s = self.state
+    def _status(self) -> StatusFields:
+        s = self.game
         return {"turn": s.turn, "timed": s.timed_mode, "characters": [status_bar(c) for c in s.characters]}
 
     def _next_timed(self) -> bool:
         return self.timed
 
     def _loaded(self) -> None:
-        self.timed = self.state.timed_mode
+        self.timed = self.game.timed_mode
 
-    def _replay(self) -> dict:
-        s = self.state
+    def _replay(self) -> ReplayFields:
+        s = self.game
         return {"narration": s.current_narration, "resumed": True, "history": self._history(), "history_trimmed": bool(s.summary)}
 
     def _history(self) -> list[tuple[str, str]]:
         """Earlier narration (the story log's original text): (narration, the actions taken after it). With one character, actions have no name in front, as usual."""
-        s = self.state
+        s = self.game
         prefix = TURN["action_entry"].format(name=s.characters[0].name, action="") if s.solo else ""
         return [(t.narration, t.action.removeprefix(prefix)) for t in s.recent]
 
@@ -249,15 +248,15 @@ class AdventureCore(TeamGame):
         return UI["help"]
 
     def _memory(self) -> str:
-        return memory_text(self.state)
+        return memory_text(self.game)
 
     # ---------- Background memory compaction ----------
 
     def _start_compaction(self) -> None:
         """While players read, compact old memory into the summary in the background. The next LLM call waits for it to finish."""
-        if not self.engine.needs_compaction(self.state):
+        if not self.engine.needs_compaction(self.game):
             return
-        state = self.state
+        state = self.game
 
         def run() -> None:
             try:
@@ -280,5 +279,5 @@ class AdventureCore(TeamGame):
 def status_bar(c: Character) -> Status:
     """One character's status for the shells to show (one item in Reply.characters)."""
     warning = warning_level(c) if c.alive else ""
-    return Status(items=condition_list(c) or [(word("level", "healthy"), "good")], warning=warning, name=c.name,
-                  alive=c.alive, warning_text=word("level", warning) if warning else "")
+    items: list[tuple[str, Tone]] = [*condition_list(c)] or [(word("level", "healthy"), "good")]
+    return Status(items=items, warning=warning, name=c.name, alive=c.alive, warning_text=word("level", warning) if warning else "")

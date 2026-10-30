@@ -4,13 +4,23 @@ import logging
 import os
 import tempfile
 from pathlib import Path
+from typing import Protocol, Self
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 log = logging.getLogger(__name__)
 
 
-def save(state: BaseModel, path: Path) -> None:
+class Saveable(Protocol):
+    """A save format: in practice a pydantic model, which already has both."""
+
+    def model_dump_json(self, *, indent: int | None = None) -> str: ...
+
+    @classmethod
+    def model_validate_json(cls, json_data: str) -> Self: ...
+
+
+def save(state: Saveable, path: Path) -> None:
     """Write to a temp file in the same folder, then swap it in at once. Any read sees a complete save,
     never an empty or broken file because a background memory compaction saved at the same moment or the program was killed mid-write."""
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
@@ -23,7 +33,7 @@ def save(state: BaseModel, path: Path) -> None:
         raise
 
 
-def load[S: BaseModel](path: Path, kind: type[S]) -> S | None:
+def load[S: Saveable](path: Path, kind: type[S]) -> S | None:
     """Read a save; None if there is none. kind is the save format (GameState for the adventure, SoupState for turtle soup).
     A save that can't be read (broken, or from an older format) counts as none: it's renamed to *.broken so nothing is lost, and the team can start over."""
     if not path.exists():

@@ -8,10 +8,13 @@ import re
 import threading
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from types import SimpleNamespace
+from typing import Any
 
-from google.genai import errors
+from google.genai import errors, types
+
+Chunks = Iterator[types.GenerateContentResponse]
 
 WINDOW = 60  # Seconds
 RETRIES = 3  # How many times to resend when Gemini refuses (429)
@@ -47,19 +50,21 @@ class RateLimit:
         if on_queue and queued:
             on_queue(False)
 
-    def call(self, send, on_queue=None):
+    def call[T](self, send: Callable[[], T], on_queue: Callable[[bool], None] | None = None) -> T:
         """Send once there's a slot, resending on 429."""
-        for attempt in range(RETRIES + 1):
+        attempt = 0
+        while True:
             self.wait(on_queue)
             try:
                 return send()
             except errors.ClientError as e:
                 if e.code != 429 or attempt == RETRIES:
                     raise
+                attempt += 1
                 delay = re.search(r"retry in ([\d.]+)s", str(e))
                 time.sleep(float(delay.group(1)) if delay else 30)
 
-    def wrap(self, client, on_queue: Callable[[bool], None] | None = None) -> LimitedClient:
+    def wrap(self, client: Any, on_queue: Callable[[bool], None] | None = None) -> LimitedClient:
         """Wrap a Gemini client so every call through it is limited."""
         return LimitedClient(self, client, on_queue)
 
@@ -67,10 +72,10 @@ class RateLimit:
 class LimitedClient:
     """A Gemini client whose calls go through a RateLimit: models has the same methods as a Gemini client's."""
 
-    def __init__(self, limit: RateLimit, client, on_queue: Callable[[bool], None] | None = None):
+    def __init__(self, limit: RateLimit, client: Any, on_queue: Callable[[bool], None] | None = None):
         self.limit, self.client, self.on_queue = limit, client, on_queue  # Keep client: when it's collected, it closes the connection
 
-        def stream(**request):
+        def stream(**request: Any) -> Chunks:
             chunks, head = self.open_stream(request)
             if head is not None:
                 yield head
@@ -78,13 +83,13 @@ class LimitedClient:
 
         self.models = SimpleNamespace(generate_content=lambda **request: self.generate(request), generate_content_stream=stream)
 
-    def generate(self, request: dict):
+    def generate(self, request: dict[str, Any]) -> types.GenerateContentResponse:
         return self.limit.call(lambda: self.client.models.generate_content(**request), self.on_queue)
 
-    def open_stream(self, request: dict):
+    def open_stream(self, request: dict[str, Any]) -> tuple[Chunks, types.GenerateContentResponse | None]:
         """A streaming request is only sent when the first chunk is read, so reading the first chunk counts as the call. Returns (chunks, first chunk)."""
 
-        def first():
+        def first() -> tuple[Chunks, types.GenerateContentResponse | None]:
             chunks = self.client.models.generate_content_stream(**request)
             return chunks, next(chunks, None)
 

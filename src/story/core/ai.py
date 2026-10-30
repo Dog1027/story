@@ -7,9 +7,9 @@ this module knows nothing about game rules or what the prompts say.
 import json
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 import httpx
 from google import genai
@@ -58,7 +58,7 @@ class StopStream(Exception):
     reason = "stopped"  # The reason written to the log
 
 
-def close(chunks) -> None:
+def close(chunks: Iterator[types.GenerateContentResponse] | None) -> None:
     """Stop receiving a stream (if it has started)."""
     if chunks is not None and hasattr(chunks, "close"):
         chunks.close()
@@ -97,7 +97,8 @@ class AICaller:
     """Every AI call goes through here: records the kind, the seconds it took, and the token usage Gemini reports (prompt, cached, output, thinking)
     into each turn's log, to find out where waiting time goes."""
 
-    def __init__(self, api_key: str | None = None, client=None, log_path: Path | None = None):
+    def __init__(self, api_key: str | None = None, client: Any = None, log_path: Path | None = None):
+        """client: a Gemini client, or anything with the same models.generate_content(_stream) (a RateLimit's LimitedClient, the tests' fakes)."""
         self.client = client or new_client(api_key)
         self.log_path = log_path  # One log per team; None writes nothing (e.g. just prompts)
         self.calls: list[dict] = []  # AI calls since the last log line (cleared once written)
@@ -127,7 +128,7 @@ class AICaller:
             self._draft_text = value
             self.on_change()
 
-    def generate(self, kind: str, **request):
+    def generate(self, kind: str, **request: Any) -> types.GenerateContentResponse:
         """A call that returns the whole result at once."""
         started = time.monotonic()
         try:
@@ -138,7 +139,7 @@ class AICaller:
         self.record(kind, started, response)
         return response
 
-    def stream(self, kind: str, on_text, **request):
+    def stream(self, kind: str, on_text: Callable[[str], None], **request: Any) -> tuple[str, types.GenerateContentResponse | None]:
         """A streaming call: on each chunk, calls on_text with the full text so far. Returns (full text, last chunk). If on_text raises StopStream, stops and propagates."""
         started, text, last, extra = time.monotonic(), "", None, {}
         chunks = None
@@ -160,7 +161,7 @@ class AICaller:
             self.record(kind, started, last, **extra)
         return text, last
 
-    def record(self, kind: str, started: float, response, **extra) -> None:
+    def record(self, kind: str, started: float, response: types.GenerateContentResponse | None, **extra: str) -> None:
         call = {"kind": kind, "seconds": round(time.monotonic() - started, 2)}
         usage = getattr(response, "usage_metadata", None)
         for field, name in (

@@ -6,20 +6,20 @@ Input that belongs to no player (time's up, dialog answers, /state) uses send().
 
 This class handles: the player list, asking whether to continue a found save, collecting everyone's actions (all taken back if the turn fails), confirming a restart, playing again,
 view(), waiting(), failure replies, and building replies. Subclasses handle: what to ask for a new game (the setup phase), how a turn advances,
-the ending, the status bar, /help, plus the game's name (title) and the save format (state_class). A save must have names, premise, turn, game_over.
+the ending, the status bar, /help, plus the game's name (title) and the save format (state_class, with what TeamSave lists).
 """
 
 import logging
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import Protocol, TypedDict
 
 from google.genai import errors
-from pydantic import BaseModel
 
 from story.core.ai import AIFailed, is_key_error
-from story.core.reply import MAX_PLAYERS, UI, Phase, Reply, pick_choice
-from story.core.saves import load, save
+from story.core.reply import MAX_PLAYERS, UI, InputMode, Phase, Reply, Status, pick_choice
+from story.core.saves import Saveable, load, save
 
 CONTINUE_CHOICES = [UI["choice_continue"], UI["choice_new_game"]]
 CONFIRM_CHOICES = [UI["choice_confirm"], UI["choice_cancel"]]
@@ -32,11 +32,47 @@ class WrongUsage(ValueError):
     """The shells called the core the wrong way (a bug in the calling code): raised as is, not turned into a reply."""
 
 
-class TeamGame:
+class TeamSave(Saveable, Protocol):
+    """What every game's save format has (the shared flow reads these)."""
+
+    turn: int
+    game_over: bool
+
+    @property
+    def names(self) -> list[str]: ...
+
+    @property
+    def premise(self) -> str: ...
+
+
+# What the hooks below return, spread into a Reply: the keys are Reply's field names
+class ScreenFields(TypedDict, total=False):
+    actor: str
+    choices: list[str]
+    time_limit: int
+    inputs: list[InputMode]
+
+
+class StatusFields(TypedDict):
+    turn: int
+    timed: bool
+    characters: list[Status]
+
+
+class ReplayFields(TypedDict, total=False):
+    narration: str
+    resumed: bool
+    history: list[tuple[str, str]]
+    history_trimmed: bool
+
+
+class TeamGame[S: TeamSave]:
+    """S is the game's save format (state_class)."""
+
     title: str  # The game's name (adventure, turtle soup), shown by the shells
     busy_label: str  # What everyone sees while waiting for the AI (e.g. "writing the story", "the judge is thinking")
     description: str  # One line on what the game is like, shown in the room's game picker
-    state_class: type[BaseModel]  # The save format
+    state_class: type[S]  # The save format
     timeout_action: str  # Stands in for players who haven't acted when timed mode runs out (/timeout)
     away_action: str  # Stands in for a player who is away (the room sends /away when someone disconnects)
 
@@ -46,10 +82,17 @@ class TeamGame:
             raise ValueError(UI["team_size"].format(min=1, max=MAX_PLAYERS))
         self._players = names
         self.save_path = save_path
-        self.state = None  # This game's state (state_class); None before it starts
+        self.state: S | None = None  # This game's state (state_class); None before it starts
         self._phase: Phase = "setup"
         self.pending: dict[str, str] = {}  # Actions already sent this turn
         self._as: str | None = None  # The player given to send_as()
+
+    @property
+    def game(self) -> S:
+        """The game in progress, for code that only runs during one (a turn, the status bar, the ending…)."""
+        if self.state is None:
+            raise WrongUsage("No game in progress")
+        return self.state
 
     # ---------- Public interface ----------
 
@@ -216,7 +259,7 @@ class TeamGame:
     def _resume(self) -> Reply:
         self._phase = "playing"
         self.pending = {}
-        return self._reply(notice=UI["resumed"].format(premise=self.state.premise), **self._replay(), **self._screen())
+        return self._reply(notice=UI["resumed"].format(premise=self.game.premise), **self._replay(), **self._screen())
 
     def _actor(self, name: str | None = None) -> str | None:
         """Whose input this is: name if given, else the player given to send_as(), else the only player. None if they've already acted or are out."""
@@ -226,11 +269,11 @@ class TeamGame:
             name = self._as if self._as is not None else (self._players[0] if len(self._players) == 1 else None)
         return name if name in self.waiting() else None
 
-    def _screen(self) -> dict:
+    def _screen(self) -> ScreenFields:
         """The fixed part of the in-game screen: the choices of the player who sent the input (the only player when alone), and the time limit."""
         return self._screen_for(self._actor() if self._phase == "playing" else None)
 
-    def _screen_for(self, actor: str | None) -> dict:
+    def _screen_for(self, actor: str | None) -> ScreenFields:
         """A player's choices (while they haven't acted) and the time limit; no choices when actor is None."""
         if self.state is None or self._phase not in ("playing", "ending"):
             return {}
@@ -255,7 +298,7 @@ class TeamGame:
         return Reply(phase=self._phase, **(self._status() if in_game else {"timed": self._next_timed()}), **fields)
 
     def _save(self) -> None:
-        save(self.state, self.save_path)
+        save(self.game, self.save_path)
 
     # ---------- Provided by subclasses ----------
 
@@ -294,7 +337,7 @@ class TeamGame:
     def _time_limit(self) -> int:
         return 0
 
-    def _status(self) -> dict:
+    def _status(self) -> StatusFields:
         """While a game is in progress: turn, timed, characters for the reply."""
         raise NotImplementedError
 
@@ -302,7 +345,7 @@ class TeamGame:
         """Before a game starts: the mode a new game will use."""
         return False
 
-    def _replay(self) -> dict:
+    def _replay(self) -> ReplayFields:
         """What to show again after loading or reconnecting: narration, resumed, history…"""
         raise NotImplementedError
 

@@ -70,7 +70,7 @@ class Move(BaseModel):
     name: str
     kind: MoveKind
     text: str = ""
-    answer: str = ""  # A question: the answer's code (soup_answer in vocab.md)
+    answer: SoupAnswer | Literal[""] = ""  # A question: the answer's code (soup_answer in vocab.md)
     hit: int = 0  # A guess: how many key points were hit
     points: list[int] = []  # A guess: which key points were hit (numbered from 1), shown so players know what's still missing
 

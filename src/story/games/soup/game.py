@@ -12,8 +12,8 @@ The input modes (ask, guess, give up) reach the shells through Reply.inputs: cho
 import random
 from pathlib import Path
 
-from story.core.reply import Ending, InputMode, Reply, Status, join, pick_choice
-from story.core.team import FAILURES, PLAY_AGAIN_CHOICES, TeamGame
+from story.core.reply import Ending, InputMode, Reply, Status, Tone, join, pick_choice
+from story.core.team import FAILURES, PLAY_AGAIN_CHOICES, ReplayFields, ScreenFields, StatusFields, TeamGame
 from story.games.soup.judge import SoupJudge
 from story.games.soup.models import Move, Puzzle, SoupState, word
 from story.games.soup.puzzles import load_puzzles
@@ -28,7 +28,7 @@ INPUTS = [
 ]
 
 
-class SoupCore(TeamGame):
+class SoupCore(TeamGame[SoupState]):
     title = UI["title"]
     busy_label = UI["soup_busy"]
     description = UI["description"]
@@ -49,7 +49,6 @@ class SoupCore(TeamGame):
         super().__init__(players, save_path)
         self.judge = judge or SoupJudge(api_key, client, log_path)
         self.puzzles = load_puzzles()[0] if puzzles is None else puzzles
-        self.state: SoupState | None = None
         self.played: set[str] = set()  # Puzzles this room has played: drawing from the bank prefers unplayed ones, and the AI avoids them
 
     @property
@@ -91,7 +90,7 @@ class SoupCore(TeamGame):
         return random.choice(fresh or self.puzzles) if self.puzzles else None
 
     def _surface(self) -> str:
-        p = self.state.puzzle
+        p = self.game.puzzle
         return UI["soup_surface"].format(title=p.title, surface=p.surface, points=len(p.key_points))
 
     # ---------- A turn ----------
@@ -115,8 +114,8 @@ class SoupCore(TeamGame):
     def _play_round(self, actions: dict[str, str]) -> Reply:
         moves = [self._move(name, action) for name, action in actions.items()]
         if judged := [m for m in moves if m.kind in ("ask", "guess")]:
-            self.judge.judge(self.state, judged)  # On failure TeamGame takes back everyone's actions and the turn starts over
-        s = self.state
+            self.judge.judge(self.game, judged)  # On failure TeamGame takes back everyone's actions and the turn starts over
+        s = self.game
         s.rounds.append(moves)
         s.turn += 1
         s.winners = [m.name for m in moves if m.kind == "guess" and m.hit == len(s.puzzle.key_points)]
@@ -138,7 +137,7 @@ class SoupCore(TeamGame):
     def _round_text(self, moves: list[Move], last: bool = False) -> str:
         """A turn's results: what each person asked or guessed and how the judge answered. Everyone sees the same thing.
         last is the turn just played, which adds the game's result (who solved it, or that everyone gave up)."""
-        s = self.state
+        s = self.game
         total = len(s.puzzle.key_points)
         lines = []
         for m in moves:
@@ -165,7 +164,7 @@ class SoupCore(TeamGame):
         return UI["soup_you"] if len(self._players) == 1 else name
 
     def _on_ending(self, raw: str) -> Reply:
-        s = self.state
+        s = self.game
         winners = [self._who(n) for n in s.winners]
         if not winners:
             title = UI["soup_revealed"]
@@ -186,32 +185,32 @@ class SoupCore(TeamGame):
     def _choices(self, name: str) -> list[str]:
         return [m.label for m in INPUTS]
 
-    def _screen_for(self, actor: str | None) -> dict:
+    def _screen_for(self, actor: str | None) -> ScreenFields:
         screen = super()._screen_for(actor)
         if screen:
             screen["inputs"] = list(INPUTS) if actor else []
         return screen
 
-    def _status(self) -> dict:
-        s = self.state
+    def _status(self) -> StatusFields:
+        s = self.game
         total = len(s.puzzle.key_points)
         characters = []
         for name in s.players:
             best = s.best(name)
-            items = [(UI["soup_status_questions"].format(count=s.questions(name)), "muted")]
+            items: list[tuple[str, Tone]] = [(UI["soup_status_questions"].format(count=s.questions(name)), "muted")]
             items.append((UI["soup_status_best"].format(hit=best, total=total), "good" if best else "muted"))
             characters.append(Status(items=items, name=name))
         return {"turn": s.turn + 1 if not s.game_over else s.turn, "timed": False, "characters": characters}
 
-    def _replay(self) -> dict:
+    def _replay(self) -> ReplayFields:
         """The scenario comes first, then each earlier turn in order; the latest turn is the current part."""
-        texts = [self._surface()] + [self._round_text(r) for r in self.state.rounds]
+        texts = [self._surface()] + [self._round_text(r) for r in self.game.rounds]
         return {"narration": texts[-1], "resumed": True, "history": [(t, "") for t in texts[:-1]]}
 
     def _help(self) -> str:
         return UI["soup_help"]
 
     def _memory(self) -> str:
-        p = self.state.puzzle
-        rounds = "\n\n".join(UI["soup_memory_round"].format(turn=i, text=self._round_text(r)) for i, r in enumerate(self.state.rounds, 1))
+        p = self.game.puzzle
+        rounds = "\n\n".join(UI["soup_memory_round"].format(turn=i, text=self._round_text(r)) for i, r in enumerate(self.game.rounds, 1))
         return UI["soup_memory"].format(title=p.title, surface=p.surface, rounds=rounds or UI["soup_memory_empty"])

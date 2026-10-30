@@ -3,10 +3,10 @@
 All pure functions that only read and write the game state (models.py); they never call the AI or build prompts.
 """
 
-from typing import get_args
+from typing import Literal, get_args
 
 from story.core import prompts
-from story.games.adventure.models import VOCAB, Character, Condition, GameState, Severity, Turn, code
+from story.games.adventure.models import VOCAB, Character, Condition, GameState, Level, Severity, TimeOfDay, Turn, code
 
 TARGET_TURNS = 30  # The planned story length (turns); past it, the AI is only reminded to wrap up, never forced to end
 ACT_TURNS = TARGET_TURNS // 4  # Expected turns per act; staying too long reminds the AI to move on
@@ -23,13 +23,13 @@ DEATH_SCORE = 8  # A wound total reaching this is death
 DYING_SCORE = 6  # A total reaching this is dying
 HEAVY_SCORE = 4  # No severe wound, but several moderate ones adding up to this also count as badly hurt
 SEVERITY_ORDER = list(get_args(Severity))  # From light to severe
-WARNING_LEVELS = ("serious", "dying")  # Overall conditions to warn the player about: another wound could kill
+WARNING_LEVELS: tuple[Level, ...] = ("serious", "dying")  # Overall conditions to warn the player about: another wound could kill
 
 # In-game time: the AI only picks a category; the program converts it to minutes
 HOUR, DAY = 60, 24 * 60
 TIME_SPANS = {"instant": 1, "moment": 10, "while": HOUR, "hours": 4 * HOUR, "night": 8 * HOUR, "days": 3 * DAY}
 TIME_OF_DAY_START = {"dawn": 6, "morning": 9, "noon": 12, "afternoon": 15, "dusk": 18, "evening": 20, "late_night": 23}  # Opening hour
-TIME_OF_DAY_RANGES = [(5, "dawn"), (7, "morning"), (11, "noon"), (13, "afternoon"), (17, "dusk"), (19, "evening"), (23, "late_night")]
+TIME_OF_DAY_RANGES: list[tuple[int, TimeOfDay]] = [(5, "dawn"), (7, "morning"), (11, "noon"), (13, "afternoon"), (17, "dusk"), (19, "evening"), (23, "late_night")]
 
 # Natural recovery: how long at one severity before it gets one level better. Severe body wounds don't heal on their own and need treatment in the story; mind conditions all ease with time
 HEAL_TIME = {
@@ -54,12 +54,12 @@ def body_score(who: Character) -> int:
     return sum(SEVERITY_POINTS[c.severity] for c in body_conditions(who))
 
 
-def condition_list(who: Character) -> list[tuple[str, str]]:
+def condition_list(who: Character) -> list[tuple[str, Severity]]:
     """Conditions for the shells to show: (name, severity code), body first, then mind."""
     return [(c.name, c.severity) for c in body_conditions(who) + mind_conditions(who)]
 
 
-def body_level(who: Character) -> str:
+def body_level(who: Character) -> Level:
     """The overall condition (a models.Level code) follows the worst item: only a severe wound (or several moderate ones adding up) is badly hurt; only light conditions is minor."""
     score = body_score(who)
     worst = {c.severity for c in body_conditions(who)}
@@ -74,7 +74,7 @@ def body_level(who: Character) -> str:
     return "minor" if worst else "healthy"
 
 
-def warning_level(who: Character) -> str:
+def warning_level(who: Character) -> Level | Literal[""]:
     """The overall condition to warn the player about (serious, dying); empty when not in danger."""
     level = body_level(who)
     return level if level in WARNING_LEVELS else ""
@@ -83,7 +83,7 @@ def warning_level(who: Character) -> str:
 # ---------- Time ----------
 
 
-def time_of_day(minutes: int) -> str:
+def time_of_day(minutes: int) -> TimeOfDay:
     """The time-of-day code for the in-game clock, e.g. dusk."""
     hour = minutes % DAY // HOUR
     return next((name for start, name in reversed(TIME_OF_DAY_RANGES) if hour >= start), "late_night")

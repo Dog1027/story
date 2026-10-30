@@ -38,7 +38,7 @@ def pick_choice(raw: str, options: list[str]) -> str | None:
 class Status:
     """One player on the status bar (in the adventure, their character). The bag isn't here: changes are in changes, the full content via /state."""
 
-    items: list[tuple[str, str]]  # Items to list: (text, tone code). Conditions and severities in the adventure (body first, then mind; "fine" when there are none); question count and points hit in turtle soup
+    items: list[tuple[str, Tone]]  # Items to list: (text, tone). Conditions and severities in the adventure (body first, then mind; "fine" when there are none); question count and points hit in turtle soup
     warning: str = ""  # The overall condition code to warn the player about (serious, dying: another wound could kill); empty when not in danger
     name: str = ""
     alive: bool = True  # Whether the character is still alive
