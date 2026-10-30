@@ -539,7 +539,7 @@ async def test_a_room_plays_turtle_soup_together(lobby):
     mine, theirs = await host.reply(), await guest.reply()
     assert "【空號】" in mine.narration and mine.narration == theirs.narration
     assert theirs.actor == "小華" and [m.label for m in theirs.inputs] == ["提問", "猜湯底", "放棄"]
-    assert lobby.rooms[0].game == "海龜湯"  # The name shown on the room card
+    assert lobby.rooms[0].game_title == "海龜湯"  # The name shown on the room card
 
     await guest.send("/guess 全部都說出來")
     await host.send("/ask 是電話嗎")

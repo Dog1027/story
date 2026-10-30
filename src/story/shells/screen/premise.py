@@ -48,9 +48,8 @@ class PremiseForm:
     async def suggest(self, text: str) -> str:
         """Suggest one: have the AI think of an opening, always replacing the text box."""
         reply = await self._ask(f"/genre {self.genre}", "/suggest", latest_only=False)
-        assert reply is not None  # Not latest_only: never superseded
-        if reply.form is None:
-            raise PremiseFailed(reply.notice)
+        if reply is None or reply.form is None:  # Not latest_only, so never superseded; no form means the game gave no suggestion
+            raise PremiseFailed(reply.notice if reply else "")
         return self._new_default(reply.form.suggestion, text, replace=True)
 
     def setup_commands(self, timed: bool) -> list[str]:

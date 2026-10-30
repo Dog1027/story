@@ -202,7 +202,7 @@ class Lobby:
         state = "playing" if room.playing else "full" if len(room.online) >= MAX_PLAYERS else "open"
         return {
             "title": UI["room_title"].format(host=room.host), "host": room.host, "members": room.online,
-            "state": state, "game": room.game if room.playing else "", "choice": choice,
+            "state": state, "game": room.game_title if room.playing else "", "choice": choice,
         }
 
     async def _show_rooms(self, clear_for: str = "") -> None:

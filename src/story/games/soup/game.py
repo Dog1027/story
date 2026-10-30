@@ -13,7 +13,7 @@ import random
 from pathlib import Path
 
 from story.core.ai import AIFailed, GeminiClient
-from story.core.reply import Ending, InputMode, Reply, Status, Tone, join, pick_choice
+from story.core.reply import AWAY, Ending, InputMode, Reply, Status, Tone, join, pick_choice
 from story.core.team import PLAY_AGAIN_CHOICES, ReplayFields, ScreenFields, StatusFields, TeamGame
 from story.games.soup.judge import SoupJudge
 from story.games.soup.models import Move, Puzzle, SoupState, word
@@ -21,7 +21,7 @@ from story.games.soup.puzzles import load_puzzles
 from story.games.soup.text import UI
 
 PUZZLE_CHOICES = [UI["from_bank"], UI["from_ai"]]
-ASK, GUESS, GIVE_UP, AWAY = "/ask", "/guess", "/give_up", "/away"
+ASK, GUESS, GIVE_UP = "/ask", "/guess", "/give_up"
 INPUTS = [
     InputMode(UI["ask"], ASK, UI["ask_hint"]),
     InputMode(UI["guess"], GUESS, UI["guess_hint"]),

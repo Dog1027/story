@@ -16,6 +16,10 @@ Phase = Literal[
 ]
 HOST_PHASES: tuple[Phase, ...] = ("ask_continue", "setup", "confirm_restart")  # Answered only by the host, through a dialog
 
+# Commands every game understands the same way. TIMEOUT and AWAY are sent by the shells (the countdown ran out; a player is offline), not typed;
+# RESTART is only the host's to send. The core trusts its caller to keep to that: it doesn't know who the host is
+TIMEOUT, AWAY, RESTART = "/timeout", "/away", "/restart"
+
 MAX_PLAYERS = 4
 
 # Changes between turns (Reply.changes). Each item carries a tone, and shells decide how to present it (e.g. which color):

@@ -34,6 +34,10 @@ class CoreRunner:
         """What the waiting screen calls the wait: the game's own words ("writing the story", "the judge is thinking")."""
         return self.core.busy_label if self.core else ""
 
+    def busy_message(self, progress: str | None = None) -> dict:
+        """The "waiting for the AI" message: with the current progress unless one is given."""
+        return {"type": "busy", "on": True, "progress": self.progress() if progress is None else progress, "label": self.label()}
+
     def set_queued(self, queued: bool) -> None:
         """Passed to make_core as on_queue: an AI call started or stopped waiting in line (called from the core's thread)."""
         self.queued = queued
@@ -49,7 +53,7 @@ class CoreRunner:
         """Call the core in a background thread. With busy, everyone sees "writing the story" and how it's going."""
         if busy:
             self.busy, self.reported = True, ("", "")
-            await self.broadcast({"type": "busy", "on": True, "progress": "", "label": self.label()})
+            await self.broadcast(self.busy_message(progress=""))
         try:
             return await asyncio.to_thread(fn)  # Progress and narration so far arrive through changed() meanwhile
         finally:
@@ -72,7 +76,7 @@ class CoreRunner:
             return  # Only while everyone sees "writing the story"; news arriving after the call ended is dropped
         progress, draft = self.progress(), self.core.draft
         if progress != self.reported[0]:
-            await self.broadcast({"type": "busy", "on": True, "progress": progress, "label": self.label()})
+            await self.broadcast(self.busy_message(progress))
         if draft and draft != self.reported[1]:
             await self.broadcast({"type": "draft", "text": draft})
         self.reported = (progress, draft or self.reported[1])

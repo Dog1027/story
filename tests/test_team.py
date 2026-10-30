@@ -62,3 +62,12 @@ def test_a_game_only_supplies_its_hooks_and_the_base_class_runs_the_team(isolate
     reply = game.send_as("A", "x")
     assert game.rounds == [{"A": "x", "B": "y"}] and reply.narration == "round 1"  # Actions in team order, not the order sent
     assert game.waiting() == ["A", "B"]
+
+
+def test_start_turns_a_bug_into_a_reply_like_send(isolated, caplog):
+    class Broken(ToyGame):
+        def _new_game(self):
+            raise KeyError("bug")
+
+    reply = Broken(["A"], isolated / "toy.json").start()
+    assert reply.error == "api" and "unexpected error" in caplog.text

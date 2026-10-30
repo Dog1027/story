@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Protocol, TypedDict
 
 from story.core.ai import AIFailed, GeminiClient, is_key_error
-from story.core.reply import MAX_PLAYERS, UI, InputMode, Phase, Reply, Status, pick_choice
+from story.core.reply import AWAY, MAX_PLAYERS, RESTART, TIMEOUT, UI, InputMode, Phase, Reply, Status, pick_choice
 from story.core.saves import Saveable, load, save
 
 CONTINUE_CHOICES = [UI["choice_continue"], UI["choice_new_game"]]
@@ -137,7 +137,11 @@ class TeamGame[S: TeamSave]:
             self.ai.on_change = on_change
 
     def start(self) -> Reply:
-        """The first reply: asks whether to continue if the same players have an unfinished save, otherwise starts a new game."""
+        """The first reply: asks whether to continue if the same players have an unfinished save, otherwise starts a new game.
+        Like send(), never raises for a failure (only for WrongUsage), and may call the AI."""
+        return self._guarded(self._start, "")
+
+    def _start(self, raw: str) -> Reply:
         state = load(self.save_path, self.state_class)
         if state and not state.game_over and sorted(state.names) == sorted(self._players):  # The same players in any order
             self.state, self._phase = state, "ask_continue"
@@ -145,15 +149,15 @@ class TeamGame[S: TeamSave]:
             return self._reply(choices=CONTINUE_CHOICES, notice=UI["found_save"].format(turn=state.turn, premise=state.premise))
         return self._new_game()
 
-    def action_for(self, text: str, name: str | None = None) -> str | None:
+    def action_for(self, text: str, *, name: str | None = None) -> str | None:
         """The action this input from player name stands for in the game (e.g. "2" → their second choice); name may be left out when playing alone.
         None when it isn't an action (a command, blank, not in a game)."""
         raw = text.strip()
         if self._phase != "playing" or not raw:
             return None
-        if raw == "/timeout":
+        if raw == TIMEOUT:
             return self.timeout_action
-        if raw == "/away":
+        if raw == AWAY:
             return self.away_action
         return self._action(raw, self._actor(name))
 
@@ -174,6 +178,10 @@ class TeamGame[S: TeamSave]:
             "ending": self._on_ending,
             "ended": self._on_ended,
         }[self._phase]
+        return self._guarded(handler, raw)
+
+    def _guarded(self, handler: Callable[[str], Reply], raw: str) -> Reply:
+        """Run a phase's handler, turning anything unexpected into a reply players can retry from (the AI failing is handled inside, by _failed)."""
         try:
             return handler(raw)
         except WrongUsage:
@@ -218,19 +226,19 @@ class TeamGame[S: TeamSave]:
         answer = pick_choice(raw, CONTINUE_CHOICES)
         if answer == CONTINUE_CHOICES[0] or raw == "/continue":
             return self._resume()
-        if answer == CONTINUE_CHOICES[1] or raw in ("/new", "/restart"):
+        if answer == CONTINUE_CHOICES[1] or raw in ("/new", RESTART):
             return self._new_game()
         return self._reply(choices=CONTINUE_CHOICES, notice=UI["answer_continue"])
 
     def _on_playing(self, raw: str) -> Reply:
-        if raw == "/restart":
+        if raw == RESTART:
             self._phase = "confirm_restart"
             return self._reply(choices=CONFIRM_CHOICES, notice=UI["confirm_restart"])
         action = self.action_for(raw)
         if action is None:
             notice = UI["unknown_command"].format(command=raw) if raw else UI["enter_action"]
             return self._reply(notice=notice, **self._screen())
-        return self._take_action(action, timeout=raw == "/timeout")
+        return self._take_action(action, timeout=raw == TIMEOUT)
 
     def _take_action(self, action: str, timeout: bool) -> Reply:
         """Record this player's action; advance a turn only once everyone has acted. When time runs out, everyone who hasn't acted hesitates."""
@@ -266,7 +274,7 @@ class TeamGame[S: TeamSave]:
         return self._reply(choices=CONFIRM_CHOICES, notice=UI["answer_confirm"])
 
     def _on_ended(self, raw: str) -> Reply:
-        if pick_choice(raw, PLAY_AGAIN_CHOICES) or raw in ("/new", "/restart"):
+        if pick_choice(raw, PLAY_AGAIN_CHOICES) or raw in ("/new", RESTART):
             return self._new_game()
         return self._reply(choices=PLAY_AGAIN_CHOICES, notice=UI["answer_play_again"])
 
@@ -340,7 +348,7 @@ class TeamGame[S: TeamSave]:
 
     def _is_action(self, raw: str) -> bool:
         """Whether this input is an in-game action (which must be checked against having acted already)."""
-        return not raw.startswith("/") or raw == "/away"
+        return not raw.startswith("/") or raw == AWAY
 
     def _action(self, raw: str, actor: str | None) -> str | None:
         """The action an in-game input stands for; None if it isn't one. /timeout and /away are already handled."""
