@@ -199,6 +199,13 @@ def test_ai_puzzles_are_checked_and_rewritten_once(isolated):
     assert SoupJudge(client=client, log_path=isolated / "log.jsonl").make_puzzle(avoid=[]) is None
 
 
+def test_an_unusable_check_is_retried_without_telling_the_writer_a_problem(isolated):
+    draft = PuzzleDraft(title="題", surface="湯面", truth="湯底", key_points=["一", "二"])
+    client = FakeClient(draft, None, draft, PuzzleCheck(ok=True, problem=""))  # The first check's answer couldn't be parsed
+    assert SoupJudge(client=client, log_path=isolated / "log.jsonl").make_puzzle(avoid=[]).title == "題"
+    assert client.prompts[2] == client.prompts[0]  # Rewritten from the same prompt: no made-up problem attached
+
+
 # ---------- The puzzle bank ----------
 
 

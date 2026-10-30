@@ -13,7 +13,7 @@ from google.genai import types
 from pydantic import BaseModel, Field
 
 from story.core import prompts
-from story.core.ai import MODEL
+from story.core.ai import MODEL, AICaller, GeminiClient
 from story.core.evals import Scenario, Trial
 from story.games.adventure.engine import Engine
 from story.games.adventure.genres import Genre, load_genres
@@ -45,13 +45,15 @@ class Verdict(BaseModel):
 class AdventureTrial(Trial):
     """One run of an adventure scenario: a real Engine, plus the judge and the checks every scenario needs."""
 
-    def __init__(self, client, log_path: Path, genres: dict[str, Genre]):
+    def __init__(self, client: GeminiClient, log_path: Path, genres: dict[str, Genre]):
         super().__init__(client, log_path)
         self.engine = Engine(client=client, genres=genres, log_path=log_path)
+        self.judge_ai = AICaller(client=client)  # The judge's calls go through AICaller like every other, but aren't written into the game's log
 
     def judge(self, name: str, section: str, expect: bool = True, **values) -> None:
         """Ask the judge to decide by eval.md's criteria. expect=False is for deliberately bad samples: the check passes only if the judge fails them."""
-        response = self.client.models.generate_content(
+        response = self.judge_ai.generate(
+            "judge",
             model=JUDGE_MODEL,
             contents=EVAL[section].format(**values),
             config=types.GenerateContentConfig(

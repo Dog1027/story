@@ -13,6 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from story import settings
+from story.core.ai import GeminiClient
 from story.core.ratelimit import RateLimit
 
 WORKERS = 8  # How many scenarios run at once
@@ -37,7 +38,7 @@ class Run:
 class Trial:
     """One run of a scenario: records the check results and what to save. Each game subclasses it to add its own tools (e.g. the adventure's Engine and judge)."""
 
-    def __init__(self, client, log_path: Path):
+    def __init__(self, client: GeminiClient, log_path: Path):
         self.client = client
         self.log_path = log_path  # This run's game log (in a temporary folder, deleted afterwards)
         self.checks: list[Check] = []
@@ -51,10 +52,10 @@ class Trial:
 class Scenario:
     description: str
     run: Callable[[Trial], None]
-    trial: Callable[[object, Path], Trial] = Trial  # Builds the Trial for this scenario: (client, log path)
+    trial: Callable[[GeminiClient, Path], Trial] = Trial  # Builds the Trial for this scenario: (client, log path)
 
 
-def attempt(scenario: Scenario, client, log_path: Path) -> Run:
+def attempt(scenario: Scenario, client: GeminiClient, log_path: Path) -> Run:
     trial = scenario.trial(client, log_path)
     try:
         scenario.run(trial)

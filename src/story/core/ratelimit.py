@@ -9,10 +9,11 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable, Iterator
-from types import SimpleNamespace
 from typing import Any
 
 from google.genai import errors, types
+
+from story.core.ai import GeminiClient
 
 Chunks = Iterator[types.GenerateContentResponse]
 
@@ -64,24 +65,17 @@ class RateLimit:
                 delay = re.search(r"retry in ([\d.]+)s", str(e))
                 time.sleep(float(delay.group(1)) if delay else 30)
 
-    def wrap(self, client: Any, on_queue: Callable[[bool], None] | None = None) -> LimitedClient:
+    def wrap(self, client: GeminiClient, on_queue: Callable[[bool], None] | None = None) -> LimitedClient:
         """Wrap a Gemini client so every call through it is limited."""
         return LimitedClient(self, client, on_queue)
 
 
 class LimitedClient:
-    """A Gemini client whose calls go through a RateLimit: models has the same methods as a Gemini client's."""
+    """A Gemini client whose calls go through a RateLimit (a GeminiClient: models has the same methods as a Gemini client's)."""
 
-    def __init__(self, limit: RateLimit, client: Any, on_queue: Callable[[bool], None] | None = None):
+    def __init__(self, limit: RateLimit, client: GeminiClient, on_queue: Callable[[bool], None] | None = None):
         self.limit, self.client, self.on_queue = limit, client, on_queue  # Keep client: when it's collected, it closes the connection
-
-        def stream(**request: Any) -> Chunks:
-            chunks, head = self.open_stream(request)
-            if head is not None:
-                yield head
-                yield from chunks
-
-        self.models = SimpleNamespace(generate_content=lambda **request: self.generate(request), generate_content_stream=stream)
+        self.models = LimitedModels(self)
 
     def generate(self, request: dict[str, Any]) -> types.GenerateContentResponse:
         return self.limit.call(lambda: self.client.models.generate_content(**request), self.on_queue)
@@ -94,3 +88,19 @@ class LimitedClient:
             return chunks, next(chunks, None)
 
         return self.limit.call(first, self.on_queue)
+
+
+class LimitedModels:
+    """LimitedClient.models: the same two calls as a Gemini client's models, each going through the RateLimit."""
+
+    def __init__(self, owner: LimitedClient):
+        self.owner = owner
+
+    def generate_content(self, **request: Any) -> types.GenerateContentResponse:
+        return self.owner.generate(request)
+
+    def generate_content_stream(self, **request: Any) -> Chunks:
+        chunks, head = self.owner.open_stream(request)
+        if head is not None:
+            yield head
+            yield from chunks

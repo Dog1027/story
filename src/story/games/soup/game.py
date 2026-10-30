@@ -11,10 +11,10 @@ The input modes (ask, guess, give up) reach the shells through Reply.inputs: cho
 
 import random
 from pathlib import Path
-from typing import Any
 
+from story.core.ai import AIFailed, GeminiClient
 from story.core.reply import Ending, InputMode, Reply, Status, Tone, join, pick_choice
-from story.core.team import FAILURES, PLAY_AGAIN_CHOICES, ReplayFields, ScreenFields, StatusFields, TeamGame
+from story.core.team import PLAY_AGAIN_CHOICES, ReplayFields, ScreenFields, StatusFields, TeamGame
 from story.games.soup.judge import SoupJudge
 from story.games.soup.models import Move, Puzzle, SoupState, word
 from story.games.soup.puzzles import load_puzzles
@@ -44,20 +44,13 @@ class SoupCore(TeamGame[SoupState]):
         save_path: Path,
         log_path: Path | None = None,
         judge: SoupJudge | None = None,
-        client: Any = None,
+        client: GeminiClient | None = None,
         puzzles: list[Puzzle] | None = None,
     ):
-        super().__init__(players, save_path)
         self.judge = judge or SoupJudge(api_key, client, log_path)
+        super().__init__(players, save_path, ai=self.judge)
         self.puzzles = load_puzzles()[0] if puzzles is None else puzzles
         self.played: set[str] = set()  # Puzzles this room has played: drawing from the bank prefers unplayed ones, and the AI avoids them
-
-    @property
-    def progress(self) -> str:
-        return self.judge.progress
-
-    def watch(self, on_change) -> None:
-        self.judge.on_change = on_change
 
     # ---------- New game: the puzzle ----------
 
@@ -73,7 +66,7 @@ class SoupCore(TeamGame[SoupState]):
         if picked == PUZZLE_CHOICES[1]:
             try:
                 puzzle = self.judge.make_puzzle(avoid=[p.title for p in self.puzzles] + sorted(self.played))
-            except FAILURES as e:  # Unreachable, out of quota…: draw from the bank instead of getting stuck
+            except AIFailed as e:  # Unreachable, out of quota…: draw from the bank instead of getting stuck
                 note = UI["ai_failed"].format(error=str(e)[:200])
             else:
                 note = "" if puzzle else UI["ai_unsound"]

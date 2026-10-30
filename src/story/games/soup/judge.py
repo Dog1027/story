@@ -79,7 +79,8 @@ class SoupJudge(AICaller):
         self.write_log({"turn": state.turn + 1, "soup": [m.model_dump() for m in moves]})
 
     def make_puzzle(self, avoid: list[str]) -> Puzzle | None:
-        """Have the AI write a puzzle, then check whether it holds up; if not, rewrite it with the problem attached. Returns None if every attempt fails."""
+        """Have the AI write a puzzle, then check whether it holds up; if not, rewrite it with the problem attached. Returns None if no attempt gives a sound puzzle;
+        raises AIFailed if the AI can't be reached (the game then draws from the bank)."""
         prompt = SOUP["make"].format(avoid="\n".join(f"- {t}" for t in avoid) or "-")
         try:
             for _ in range(MAKE_ATTEMPTS):
@@ -90,10 +91,11 @@ class SoupJudge(AICaller):
                     continue
                 self.progress = UI["stage_check"]
                 problem = self._find_problem(draft)
-                self.write_log({"puzzle": draft.title, "problem": problem})  # Log every attempt, to help tune the check
-                if not problem:
+                self.write_log({"puzzle": draft.title, "problem": "unchecked" if problem is None else problem})  # Log every attempt, to help tune the check
+                if problem == "":
                     return draft
-                prompt += "\n\n" + SOUP["retry"].format(problem=problem)
+                if problem is not None:  # Unchecked: just try again, there's nothing to tell the writer
+                    prompt += "\n\n" + SOUP["retry"].format(problem=problem)
             return None
         finally:
             self.progress = ""
@@ -119,8 +121,8 @@ class SoupJudge(AICaller):
             return None
         return Puzzle(title=draft.title.strip(), surface=draft.surface.strip(), truth=draft.truth.strip(), key_points=points)
 
-    def _find_problem(self, puzzle: Puzzle) -> str:
-        """Check a puzzle: an empty string if it holds up, otherwise what's wrong."""
+    def _find_problem(self, puzzle: Puzzle) -> str | None:
+        """Check a puzzle: an empty string if it holds up, otherwise what's wrong; None if the check's answer can't be used."""
         response = self.generate(
             "puzzle_check",
             model=MODEL,
@@ -134,5 +136,5 @@ class SoupJudge(AICaller):
         )
         check = response.parsed
         if not isinstance(check, PuzzleCheck):
-            return UI["no_ruling"]
+            return None
         return "" if check.ok else (check.problem.strip() or "?")

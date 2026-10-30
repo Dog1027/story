@@ -5,21 +5,38 @@ this module knows nothing about game rules or what the prompts say.
 """
 
 import json
+import logging
 import re
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, Protocol
 
 import httpx
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 from story.core.prompts import UI  # Error messages shown to players (story/core/ui/<lang>/core.md)
 
 MODEL = "gemini-3.5-flash-lite"
 REQUEST_TIMEOUT = 40  # Seconds to wait for one AI request; Gemini sometimes hangs a minute or two, and resending is usually faster
 REQUEST_ATTEMPTS = 3  # How many times to send on a timeout or a busy server (429, 5xx), including the first
+log = logging.getLogger(__name__)
+
+
+class GeminiModels(Protocol):
+    """The two calls this program makes on a client's models."""
+
+    def generate_content(self, **request: Any) -> types.GenerateContentResponse: ...
+
+    def generate_content_stream(self, **request: Any) -> Iterator[types.GenerateContentResponse]: ...
+
+
+class GeminiClient(Protocol):
+    """A Gemini client (new_client), or anything with the same models: a RateLimit's LimitedClient, the tests' fakes."""
+
+    @property
+    def models(self) -> GeminiModels: ...
 
 
 def new_client(api_key: str | None) -> genai.Client:
@@ -42,13 +59,20 @@ def is_key_error(e: Exception) -> bool:
 
 class AIFailed(RuntimeError):
     """Calling the AI didn't give a usable result (timed out, cut off, unparsable, left something out); the message is shown to players.
-    Games raise it for their own checks too. The core treats it as retryable; any other RuntimeError is a bug."""
+    Games raise it for their own checks too. The core treats it as retryable; any other RuntimeError is a bug.
+    code: the HTTP status when Gemini itself refused (is_key_error reads it), otherwise None."""
+
+    def __init__(self, message: str = "", code: int | None = None):
+        super().__init__(message)
+        self.code = code
 
 
 def raise_friendly(e: Exception) -> NoReturn:
-    """Still timing out, unreachable or cut off mid-answer after the resends: turn it into an error the core handles; re-raise anything else as is."""
+    """Still timing out, unreachable, cut off mid-answer or refused by Gemini after the resends: turn it into an error the core handles; re-raise anything else as is."""
     if isinstance(e, httpx.TransportError):  # Timeouts, failed connections, connections reset partway through a stream…
         raise AIFailed(UI["timeout"]) from e
+    if isinstance(e, errors.APIError):  # Gemini answered with an error (bad key, quota, server trouble)
+        raise AIFailed(str(e), code=e.code) from e
     raise e
 
 
@@ -97,9 +121,9 @@ class AICaller:
     """Every AI call goes through here: records the kind, the seconds it took, and the token usage Gemini reports (prompt, cached, output, thinking)
     into each turn's log, to find out where waiting time goes."""
 
-    def __init__(self, api_key: str | None = None, client: Any = None, log_path: Path | None = None):
-        """client: a Gemini client, or anything with the same models.generate_content(_stream) (a RateLimit's LimitedClient, the tests' fakes)."""
-        self.client = client or new_client(api_key)
+    def __init__(self, api_key: str | None = None, client: GeminiClient | None = None, log_path: Path | None = None):
+        """Without a client, one is made from api_key."""
+        self.client: GeminiClient = client or new_client(api_key)
         self.log_path = log_path  # One log per team; None writes nothing (e.g. just prompts)
         self.calls: list[dict] = []  # AI calls since the last log line (cleared once written)
         self.on_change: Callable[[], None] = lambda: None  # Called (from the worker thread) whenever progress or draft changes
@@ -182,5 +206,5 @@ class AICaller:
         try:
             with self.log_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        except OSError:
-            pass  # A log that can't be written doesn't affect the game
+        except OSError as e:  # A log that can't be written doesn't affect the game, but say so in the server's output
+            log.warning("could not write the game log %s: %s", self.log_path, e)

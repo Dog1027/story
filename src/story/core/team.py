@@ -13,18 +13,15 @@ import logging
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Protocol, TypedDict
+from typing import Protocol, TypedDict
 
-from google.genai import errors
-
-from story.core.ai import AIFailed, is_key_error
+from story.core.ai import AIFailed, GeminiClient, is_key_error
 from story.core.reply import MAX_PLAYERS, UI, InputMode, Phase, Reply, Status, pick_choice
 from story.core.saves import Saveable, load, save
 
 CONTINUE_CHOICES = [UI["choice_continue"], UI["choice_new_game"]]
 CONFIRM_CHOICES = [UI["choice_confirm"], UI["choice_cancel"]]
 PLAY_AGAIN_CHOICES = [UI["choice_play_again"]]
-FAILURES = (errors.APIError, AIFailed)  # Calling the AI failed: stay in the same phase and let players retry
 log = logging.getLogger(__name__)
 
 
@@ -45,11 +42,19 @@ class TeamSave(Saveable, Protocol):
     def premise(self) -> str: ...
 
 
+class AIProgress(Protocol):
+    """What the shared flow reads off a game's AI-calling object (an AICaller, or a test fake): see progress, draft and watch below."""
+
+    progress: str
+    draft: str
+    on_change: Callable[[], None]
+
+
 class GameMaker(Protocol):
     """How shells build a game (each game class in story.games.GAMES): the host's key, the team, where its save and log go,
     and optionally a Gemini client to share (e.g. one limited by RateLimit). Games may take more keyword arguments for tests."""
 
-    def __call__(self, api_key: str, players: list[str], *, save_path: Path, log_path: Path | None = None, client: Any = None) -> TeamGame: ...
+    def __call__(self, api_key: str, players: list[str], *, save_path: Path, log_path: Path | None = None, client: GeminiClient | None = None) -> TeamGame: ...
 
 
 # What the hooks below return, spread into a Reply: the keys are Reply's field names
@@ -83,12 +88,14 @@ class TeamGame[S: TeamSave]:
     timeout_action: str  # Stands in for players who haven't acted when timed mode runs out (/timeout)
     away_action: str  # Stands in for a player who is away (the room sends /away when someone disconnects)
 
-    def __init__(self, players: list[str], save_path: Path):
+    def __init__(self, players: list[str], save_path: Path, ai: AIProgress | None = None):
+        """ai: the game's AI-calling object (the adventure's Engine, turtle soup's SoupJudge), whose progress and draft the shells see; None for a game without one."""
         names = [n.strip() for n in players if n.strip()]
         if not 1 <= len(names) <= MAX_PLAYERS or len(set(names)) != len(names):
             raise ValueError(UI["team_size"].format(min=1, max=MAX_PLAYERS))
         self._players = names
         self.save_path = save_path
+        self.ai = ai
         self.state: S | None = None  # This game's state (state_class); None before it starts
         self._phase: Phase = "setup"
         self.pending: dict[str, str] = {}  # Actions already sent this turn
@@ -116,16 +123,18 @@ class TeamGame[S: TeamSave]:
     @property
     def progress(self) -> str:
         """While send() runs, what it's doing now (e.g. "planning the story outline"); shells may read it from another thread."""
-        return ""
+        return self.ai.progress if self.ai else ""
 
     @property
     def draft(self) -> str:
         """While send() runs, the narration the AI is writing (what has streamed in so far); shells may read it from another thread."""
-        return ""
+        return self.ai.draft if self.ai else ""
 
     def watch(self, on_change: Callable[[], None]) -> None:
         """Call on_change() whenever progress or draft changes, so shells don't have to keep checking. It's called from the thread
         running send(), so it should only hand the news over to the shell's own thread (e.g. loop.call_soon_threadsafe)."""
+        if self.ai:
+            self.ai.on_change = on_change
 
     def start(self) -> Reply:
         """The first reply: asks whether to continue if the same players have an unfinished save, otherwise starts a new game."""
@@ -238,7 +247,7 @@ class TeamGame[S: TeamSave]:
         actions = {n: self.pending[n] for n in self._players if n in self.pending}
         try:
             reply = self._play_round(actions)
-        except FAILURES as e:
+        except AIFailed as e:
             self.state = load(self.save_path, self.state_class) or self.state  # It may be half changed; restore from the save
             # Take back every action this turn so everyone chooses again. Taking back only the last one isn't enough: if an action filled in
             # on time-out or for an offline player fails, everyone counts as having acted but no one can resend, and the game is stuck
@@ -318,7 +327,7 @@ class TeamGame[S: TeamSave]:
         raise NotImplementedError
 
     def _play_round(self, actions: dict[str, str]) -> Reply:
-        """Everyone has acted: advance a turn and save. On failure, raise one of FAILURES; this class restores and takes back every action."""
+        """Everyone has acted: advance a turn and save. On failure, raise AIFailed; this class restores and takes back every action."""
         raise NotImplementedError
 
     def _on_ending(self, raw: str) -> Reply:

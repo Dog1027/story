@@ -5,7 +5,7 @@ from itertools import pairwise
 import pytest
 from conftest import ARC, HERO, InvalidKeyError, beat, cond, hero, make_engine, solo
 
-from story.core.ai import is_key_error
+from story.core.ai import AIFailed, is_key_error
 from story.games.adventure.models import Condition, Turn
 from story.games.adventure.prompting import clock_text
 from story.games.adventure.rules import (
@@ -513,6 +513,21 @@ def test_timeout_after_retries_becomes_a_normal_error():
     with pytest.raises(RuntimeError, match="太久沒有回應"):
         engine.act(solo(premise="x", arc=ARC), {HERO: "a"})
     assert engine.calls[0]["kind"] == "turn" and "timed out" in engine.calls[0]["error"]
+
+
+def test_gemini_refusing_becomes_ai_failed_and_keeps_the_key_error():
+    """Gemini answering with an error (here a bad key) becomes AIFailed, so the core never deals with the SDK's own error classes."""
+    from google.genai import errors
+
+    engine, gemini = make_engine(beat())
+
+    def refuse(**request):
+        raise errors.ClientError(400, {"error": {"message": "API key not valid. Please pass a valid API key."}})
+
+    gemini.models.generate_content = refuse
+    with pytest.raises(AIFailed) as caught:
+        engine.act(solo(premise="x", arc=ARC), {HERO: "a"})
+    assert is_key_error(caught.value)
 
 
 def test_is_key_error():

@@ -11,10 +11,10 @@ import logging
 import random
 import threading
 from pathlib import Path
-from typing import Any
 
+from story.core.ai import AIFailed, GeminiClient
 from story.core.reply import Ending, Reply, SetupForm, Status, Tone, join, pick_choice
-from story.core.team import FAILURES, PLAY_AGAIN_CHOICES, ReplayFields, StatusFields, TeamGame
+from story.core.team import PLAY_AGAIN_CHOICES, ReplayFields, StatusFields, TeamGame
 from story.games.adventure.engine import Engine
 from story.games.adventure.models import Character, GameState, word
 from story.games.adventure.prompting import AWAY_ACTION, TIMEOUT_ACTION, TURN
@@ -50,28 +50,17 @@ class AdventureCore(TeamGame[GameState]):
         save_path: Path,
         log_path: Path | None = None,
         engine: Engine | None = None,
-        client: Any = None,
+        client: GeminiClient | None = None,
     ):
         """client: a Gemini client to share (e.g. one limited by RateLimit); without one, a client is made from api_key."""
-        super().__init__(players, save_path)
         self.engine = engine or Engine(api_key=api_key, client=client, log_path=log_path)
+        super().__init__(players, save_path, ai=self.engine)
         self.timed = False  # The mode for new games, kept from the last game
         self.genre = GENRE_AUTO  # The genre choice for new games, kept from the last game
         self.last_premise = ""
         self.suggested = ""  # The premise /suggest came up with, used first when the premise is left blank
         self.drawn = ""  # A premise drawn at random from the genre packs' opening ideas; not drawn on play again, which keeps the last premise
         self._compaction: threading.Thread | None = None
-
-    @property
-    def progress(self) -> str:
-        return self.engine.progress
-
-    @property
-    def draft(self) -> str:
-        return self.engine.draft
-
-    def watch(self, on_change) -> None:
-        self.engine.on_change = on_change
 
     # ---------- New game: the story premise ----------
 
@@ -86,7 +75,7 @@ class AdventureCore(TeamGame[GameState]):
             try:
                 chosen = self.genre if self.genre in self.engine.genres else ""
                 suggestion = self.engine.suggest_premise(self.last_premise or DEFAULT_PREMISE, genre=chosen)
-            except FAILURES as e:
+            except AIFailed as e:
                 return self._failed(e, self._ask_premise)
             self.suggested = suggestion
             return self._ask_premise(suggestion=suggestion)
@@ -114,7 +103,7 @@ class AdventureCore(TeamGame[GameState]):
         state = self._new_state(premise)
         try:
             self.engine.start(state)
-        except FAILURES as e:
+        except AIFailed as e:
             return self._failed(e, self._ask_premise)
         self.state, self._phase, self.last_premise, self.suggested, self.drawn = state, "playing", premise, "", ""
         self._save()
@@ -190,7 +179,7 @@ class AdventureCore(TeamGame[GameState]):
             try:
                 self.engine.write_epilogue(s)
                 self._save()
-            except FAILURES as e:
+            except AIFailed as e:
                 notice = UI["epilogue_failed"].format(error=str(e)[:200])
         self._phase = "ended"
         return self._reply(

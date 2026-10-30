@@ -253,10 +253,8 @@ class FakeGroupEngine(Watched):
 class InvalidKeyError(AIFailed):
     """Simulates Gemini reporting an invalid API key."""
 
-    code = 400
-
-    def __str__(self):
-        return "API key not valid. Please pass a valid API key."
+    def __init__(self):
+        super().__init__("API key not valid. Please pass a valid API key.", code=400)
 
 
 # ---------- Turtle soup ----------

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from google.genai import types
 
-from story.core.ai import MODEL, AICaller, AIFailed, StopStream, partial_bool, partial_string
+from story.core.ai import MODEL, AICaller, AIFailed, GeminiClient, StopStream, partial_bool, partial_string
 from story.games.adventure.genres import Genre, load_genres
 from story.games.adventure.models import Epilogue, GameState, GenrePick, StoryArc, StoryBeat, Turn
 from story.games.adventure.prompting import MEMORY, SYSTEM_PROMPT, TURN, PromptBuilder, clock_text, format_actions
@@ -37,7 +37,7 @@ class Engine(AICaller):
     def __init__(
         self,
         api_key: str | None = None,
-        client=None,
+        client: GeminiClient | None = None,
         log_path: Path | None = None,
         genres: dict[str, Genre] | None = None,
     ):
@@ -77,7 +77,8 @@ class Engine(AICaller):
         state.genre, state.genre_pending = (picked if picked in self.genres else ""), False  # Not in the catalog (or blank): no genre
 
     def plan_arc(self, state: GameState) -> None:
-        """Have the AI plan the story outline. If it fails before the opening, a later turn makes one from the story so far and picks which act to continue from by the turn number."""
+        """Have the AI plan the story outline. If its answer can't be used, the game goes on without one and a later turn makes one from the story so far,
+        picking which act to continue from by the turn number. Raises AIFailed if the AI can't be reached."""
         response = self.generate(
             "arc",
             model=MODEL,
