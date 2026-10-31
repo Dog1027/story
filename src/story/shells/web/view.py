@@ -15,6 +15,7 @@ Browser → server:
 import asyncio
 import logging
 from dataclasses import asdict
+from typing import Any
 
 from aiohttp import web
 
@@ -49,7 +50,7 @@ class WebView(View):
                 return
             await self.ws.send_json(message)
 
-    async def ask(self, kind: str, **fields):
+    async def ask(self, kind: str, **fields: Any) -> Any:
         """Send a message that needs a reply and return the browser's answer."""
         self.next_id += 1
         mine = self.next_id

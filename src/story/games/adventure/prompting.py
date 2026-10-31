@@ -75,7 +75,7 @@ def names_text(names: list[str]) -> str:
     return TURN["names_sep"].join(names)
 
 
-def character_facts(c: Character) -> dict:
+def character_facts(c: Character) -> dict[str, str | list[str]]:
     """One character in the game state: body, mind, overall (how far from death), bag."""
     key, empty = STATUS_KEYS, STATUS_EMPTY
     if not c.alive:

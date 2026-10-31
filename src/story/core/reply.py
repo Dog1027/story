@@ -3,7 +3,7 @@ so shells don't need to know which game is being played."""
 
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from story.core.prompts import UI  # Text shown to players (story/core/ui/<lang>/core.md)
 
@@ -106,12 +106,12 @@ class Reply:
     actor: str = ""
     inputs: list[InputMode] = field(default_factory=list)  # When present, choices are input modes (see InputMode), not actions
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to a dict that can be saved as JSON (used by web rooms to send replies)."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> Reply:
+    def from_dict(cls, data: dict[str, Any]) -> Reply:
         """The reverse of to_dict(). JSON has no tuples, so tuples become lists, which makes no difference to shells unpacking them."""
         data = dict(data)
         if data.get("ending"):

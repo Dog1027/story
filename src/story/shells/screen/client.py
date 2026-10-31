@@ -177,6 +177,20 @@ class Client:
 
     async def show_reply(self, reply: Reply) -> None:
         """Decide what happens next from the reply's phase."""
+        self.follow_reply(reply)
+        if reply.form is not None:
+            await self.show_setup_form(reply)
+        elif reply.phase in HOST_PHASES and reply.choices:
+            # The core's question and two options: continue/new game, confirm/cancel, or turtle soup's bank/AI puzzle
+            yes = await self.view.ask_confirm(reply.notice, *reply.choices)
+            await self.send("1" if yes else "2")
+        elif reply.phase in ("playing", "ending"):
+            await self.show_turn(reply)  # The turn that ended the story; the room goes on to write the epilogue
+        elif reply.phase == "ended":
+            await self.show_ending(reply.ending)
+
+    def follow_reply(self, reply: Reply) -> None:
+        """What every reply updates before its screen is shown: who's acting, the mode, input modes, the timer, info and notices."""
         if reply.phase != "playing":
             self.waiting = []  # This game's actions are over (the ending, back to the premise…): the hint no longer says "waiting for X"
             self.view.stop_timer()
@@ -194,17 +208,6 @@ class Client:
             self.view.notify(reply.notice, error=True)
         elif reply.notice and reply.phase in ("playing", "ending", "ended") and not reply.narration:
             self.view.notify(reply.notice)
-
-        if reply.form is not None:
-            await self.show_setup_form(reply)
-        elif reply.phase in HOST_PHASES and reply.choices:
-            # The core's question and two options: continue/new game, confirm/cancel, or turtle soup's bank/AI puzzle
-            yes = await self.view.ask_confirm(reply.notice, *reply.choices)
-            await self.send("1" if yes else "2")
-        elif reply.phase in ("playing", "ending"):
-            await self.show_turn(reply)  # The turn that ended the story; the room goes on to write the epilogue
-        elif reply.phase == "ended":
-            await self.show_ending(reply.ending)
 
     async def show_setup_form(self, reply: Reply) -> None:
         """The game asked for its setup form (Reply.form): let the view draw it, apply its choices, then send what the host wrote."""

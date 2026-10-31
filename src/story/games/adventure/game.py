@@ -72,6 +72,23 @@ class AdventureCore(TeamGame[AdventureState]):
         return self._ask_premise()
 
     def _on_setup(self, raw: str) -> Reply:
+        """A command changes the form (the reply is the form again); anything else is the premise, and the story begins."""
+        if raw.startswith("/"):
+            return self._setup_command(raw)
+        premise = " ".join(raw.split()) or self._default_premise()
+        state = self._new_state(premise)
+        try:
+            self.engine.start(state)
+        except AIFailed as e:
+            return self._failed(e, self._ask_premise)
+        self.state, self._phase = state, "playing"
+        self.last_premise = premise
+        self.suggested = self.drawn = ""  # Used up: the next new story draws or suggests afresh
+        self._save()
+        return self._turn_reply(before=None)
+
+    def _setup_command(self, raw: str) -> Reply:
+        """/suggest, /random, /timed, /genre in the new story form."""
         if raw == "/suggest":
             try:
                 chosen = self.genre if self.genre in self.engine.genres else ""
@@ -97,20 +114,7 @@ class AdventureCore(TeamGame[AdventureState]):
             if self.drawn and not self.suggested and self.drawn not in self._premise_pool():
                 self.drawn = self._draw_premise()  # The drawn opening switches to the new genre's
             return self._ask_premise(notice=UI["genre_chosen"].format(choice=genre_label(choice)))
-        if raw.startswith("/"):
-            return self._ask_premise(notice=UI["unknown_command"].format(command=raw))
-
-        premise = " ".join(raw.split()) or self._default_premise()
-        state = self._new_state(premise)
-        try:
-            self.engine.start(state)
-        except AIFailed as e:
-            return self._failed(e, self._ask_premise)
-        self.state, self._phase = state, "playing"
-        self.last_premise = premise
-        self.suggested = self.drawn = ""  # Used up: the next new story draws or suggests afresh
-        self._save()
-        return self._turn_reply(before=None)
+        return self._ask_premise(notice=UI["unknown_command"].format(command=raw))
 
     def _ask_premise(self, suggestion: str = "", notice: str = "", error: Literal["api"] | None = None) -> Reply:
         self._phase = "setup"

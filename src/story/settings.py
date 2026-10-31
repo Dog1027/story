@@ -30,7 +30,7 @@ def config_path() -> Path:
     return CONFIG_DIR / "config.toml"
 
 
-def load() -> dict:
+def load() -> dict[str, str]:
     """Read the config, flattened to {"section.name": value}; empty if there is none. Only reads: importing the core reads the language through here."""
     try:
         data = _flatten(tomllib.loads(config_path().read_text(encoding="utf-8")))
