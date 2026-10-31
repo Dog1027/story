@@ -156,7 +156,7 @@ class AdventureCore(TeamGame[AdventureState]):
 
     def _draw_premise(self, avoid: str = "") -> str:
         pool = self._premise_pool()
-        return random.choice([p for p in pool if p != avoid] or pool)
+        return random.choice([p for p in pool if p != avoid] or pool)  # nosec B311: picking a story opening, not security
 
     # ---------- A turn ----------
 

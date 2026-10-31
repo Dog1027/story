@@ -212,7 +212,7 @@ class StreamingEngine(FakeEngine):
         super().__init__()
         self.draft, self.fail = "", fail
 
-    def play_turn(self, state, action):
+    def play_turn(self, state, actions):
         import time
 
         text = "風雨中，你推開了燈塔的門。"
@@ -222,7 +222,7 @@ class StreamingEngine(FakeEngine):
         self.draft = ""
         if self.fail:
             raise AIFailed("503 UNAVAILABLE")
-        super().play_turn(state, action)
+        super().play_turn(state, actions)
         state.current_narration = text
 
 

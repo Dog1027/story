@@ -82,7 +82,7 @@ class SoupCore(TeamGame[SoupState]):
 
     def _draw(self) -> Puzzle | None:
         fresh = [p for p in self.puzzles if p.title not in self.played]
-        return random.choice(fresh or self.puzzles) if self.puzzles else None
+        return random.choice(fresh or self.puzzles) if self.puzzles else None  # nosec B311: picking a puzzle, not security
 
     def _surface(self) -> str:
         p = self.game.puzzle
