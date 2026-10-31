@@ -115,14 +115,18 @@ class Lobby:
                 self.people[name], self.tokens[name] = conn, token
                 await conn.send({"type": "joined"})
                 room = self.where[name]
-            if room is not None:
-                self.shown.pop(name, None)
-                await room.add(name, conn)
-            elif back := next((r for r in self.rooms if r.playing and name in r.members), None):  # Disconnected mid-game: straight back
-                await self._enter(name, back)
-            else:
-                await self._show_rooms(clear_for=name)
+            await self._place(name, conn, room)
             return name
+
+    async def _place(self, name: str, conn: ServerEnd, room: Room | None) -> None:
+        """Someone just joined: back to their seat (same browser again), their room (back mid-game), or the lobby."""
+        if room is not None:
+            self.shown.pop(name, None)
+            await room.add(name, conn)
+        elif back := next((r for r in self.rooms if r.playing and name in r.members), None):  # Disconnected mid-game: straight back
+            await self._enter(name, back)
+        else:
+            await self._show_rooms(clear_for=name)
 
     async def _forget(self, name: str) -> None:
         """Their connection ended: leave their room (a game in progress keeps their seat) and free the name."""

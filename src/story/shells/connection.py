@@ -5,6 +5,7 @@ every message goes to JSON and back, so the two ends share no objects and the me
 """
 
 import asyncio
+import contextlib
 import json
 from collections.abc import Coroutine
 from typing import Any
@@ -46,10 +47,8 @@ class Connection[In: Message, Out: Message]:
 
     async def send_if_open(self, message: Out) -> None:
         """send(), but a closed connection is fine: the receiver already left, and whoever handles their leaving deals with it."""
-        try:
+        with contextlib.suppress(ConnectionError):
             await self.send(message)
-        except ConnectionError:
-            pass
 
     async def receive(self) -> In | None:
         """Receive the next message; None once the connection is over."""

@@ -17,7 +17,7 @@ from collections.abc import Callable
 
 from story.core import HOST_PHASES, Ending, InputMode, Reply, Status, pick_choice
 from story.shells.connection import PlayerEnd
-from story.shells.messages import LobbyScreen, SendMessage, ServerMessage
+from story.shells.messages import BusyMessage, LobbyScreen, SendMessage, ServerMessage
 from story.shells.players import MAX_NAME_LEN, InvalidName, check_name
 from story.shells.screen.premise import PremiseForm
 from story.shells.screen.view import View, status_line
@@ -321,11 +321,7 @@ class Client:
         """Receive messages pushed by the room. Simple ones are handled directly; replies, lobby screens and others that must wait for the previous one to finish showing are queued in inbox and handled in order."""
         while (message := await self.conn.receive()) is not None:
             if message["type"] == "busy":
-                self.progress = message.get("progress", "")
-                self.busy_label = message.get("label", "") or self.busy_label
-                self.set_busy(message["on"])
-                if message["on"]:
-                    self.view.show_busy()  # The room sends busy again whenever the progress changes
+                self.follow_busy(message)
             elif message["type"] == "draft":  # Narration the AI is writing, forwarded by the room
                 self.follow_draft(message["text"])
             elif message["type"] == "timer":
@@ -345,7 +341,18 @@ class Client:
                     waiting.set_result(Reply.from_dict(message["reply"]))
             else:
                 self.inbox.put_nowait(message)
-        for waiting in self.answers.values():  # Requests still waiting for the room would otherwise wait forever
+        self.disconnected()
+
+    def follow_busy(self, message: BusyMessage) -> None:
+        self.progress = message.get("progress", "")
+        self.busy_label = message.get("label", "") or self.busy_label
+        self.set_busy(message["on"])
+        if message["on"]:
+            self.view.show_busy()  # The room sends busy again whenever the progress changes
+
+    def disconnected(self) -> None:
+        """The connection to the room ended: release requests still waiting for it (they would otherwise wait forever) and say so."""
+        for waiting in self.answers.values():
             if not waiting.done():
                 waiting.set_exception(ConnectionError(UI["room_disconnected"]))
         self.answers.clear()

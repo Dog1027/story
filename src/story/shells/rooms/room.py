@@ -242,20 +242,29 @@ class Room:
         elif not self.is_host(name) and core.phase != "ending":  # Anyone may retry an ending that failed to wrap up
             await self._send_notice(name, UI["wait_host_story"].format(host=self.host))
         elif form and core.phase == "setup":  # Actions in the new game dialog, not pushed to anyone else
-            reply = await self.runner.call(lambda: core.send(text))
-            if answer is not None:
-                await self._safe_write(self.members[name], {"type": "premise", "id": answer, "reply": reply.to_dict()})
+            await self._on_form(name, text, answer)
         else:
-            starting = core.phase == "setup"  # Starting a game: calls the AI
-            if starting:  # What the host wrote in a setup form is shown to everyone first; answers to choices (turtle soup's puzzle source) aren't
-                premise = "" if self.host_reply and self.host_reply.form is None else text
-                await self._broadcast({"type": "new_story", "premise": premise})
-            restarting = core.phase == "confirm_restart"
-            reply = await self.runner.call(lambda: core.send(text), busy=starting)
-            if restarting and reply.phase == "setup":  # The host confirmed giving up this game: back to picking one, not the same game's setup
-                await self._back_to_waiting()
-                return
-            await self._route(reply)
+            await self._answer_host_phase(text)
+
+    async def _on_form(self, name: str, text: str, answer: int | None) -> None:
+        core = self.active_core
+        reply = await self.runner.call(lambda: core.send(text))
+        if answer is not None:
+            await self._safe_write(self.members[name], {"type": "premise", "id": answer, "reply": reply.to_dict()})
+
+    async def _answer_host_phase(self, text: str) -> None:
+        """The host answers the setup, continuing a save or confirming a restart; or anyone retries an ending that failed to wrap up."""
+        core = self.active_core
+        starting = core.phase == "setup"  # Starting a game: calls the AI
+        if starting:  # What the host wrote in a setup form is shown to everyone first; answers to choices (turtle soup's puzzle source) aren't
+            premise = "" if self.host_reply and self.host_reply.form is None else text
+            await self._broadcast({"type": "new_story", "premise": premise})
+        restarting = core.phase == "confirm_restart"
+        reply = await self.runner.call(lambda: core.send(text), busy=starting)
+        if restarting and reply.phase == "setup":  # The host confirmed giving up this game: back to picking one, not the same game's setup
+            await self._back_to_waiting()
+            return
+        await self._route(reply)
 
     async def _on_lobby(self, name: str, text: str) -> None:
         if not self.is_host(name):
@@ -310,29 +319,35 @@ class Room:
                 await self._broadcast_notice(UI["host_setting_up"], skip=self.host)
             return
         self.host_reply = None
-        if phase == "playing" and reply.error:  # The turn didn't advance: the core took back everyone's actions, and everyone chooses again
-            self.countdown.stop()
-            await self._send_to_all(reply)
-            if reply.time_limit:
-                self.countdown.start_now(reply.time_limit)
-            return
-        if phase == "playing" and not reply.narration:
-            if only:
-                await self._send_reply(only, reply)
-            await self._broadcast_waiting()
+        if phase == "playing":
+            await self._route_turn(reply, only)
             return
         self.countdown.stop()
         await self._send_to_all(reply)
-        if phase == "playing":
-            if reply.time_limit:
-                self.countdown.after_reading(reply.time_limit)
-        elif phase == "ending" and not reply.error:
+        if phase == "ending" and not reply.error:
             # Go on to write the epilogue. If wrapping up the ending failed, don't go round again on our own: the same error would repeat
             # endlessly (and an epilogue that fails calls the AI every time); anyone can send something to try again
             core = self.active_core
             await self._route(await self.runner.call(lambda: core.send(""), busy=True))
         elif phase == "ended":
             await self._back_to_waiting()
+
+    async def _route_turn(self, reply: Reply, only: str) -> None:
+        """A reply during play: a failed turn, someone's action that didn't end the turn yet, or a new turn."""
+        if reply.error:  # The turn didn't advance: the core took back everyone's actions, and everyone chooses again
+            self.countdown.stop()
+            await self._send_to_all(reply)
+            if reply.time_limit:
+                self.countdown.start_now(reply.time_limit)
+        elif not reply.narration:
+            if only:
+                await self._send_reply(only, reply)
+            await self._broadcast_waiting()
+        else:
+            self.countdown.stop()
+            await self._send_to_all(reply)
+            if reply.time_limit:
+                self.countdown.after_reading(reply.time_limit)
 
     async def _back_to_waiting(self) -> None:
         """The game is over (or the host restarted): drop the core and anyone offline, and show the waiting screen; the same people can play again."""
@@ -378,13 +393,17 @@ class Room:
                 if self.core is not None and self.core.phase == "playing":
                     await self._send_reply(member.name, self.core.view(member.name))
             await self._broadcast_waiting()
-            if (request := message.get("answer")) is not None and name in self.members:  # The premise dialog is waiting for this answer: give it one, or it waits forever
-                failed = Reply(phase=self.core.phase if self.core else "setup", error="api", notice=UI["room_error"])
-                await self._safe_write(self.members[name], {"type": "premise", "id": request, "reply": failed.to_dict()})
-            elif self.host_reply and not message.get("form") and self.core is not None and self.core.phase == self.host_reply.phase:
-                await self._send_reply(self.host, self.host_reply)  # The host's dialog closed when they answered: show it again so they can answer again
+            await self._reopen_dialog(name, message)
         except Exception:
             log.exception("could not restore the screens after the error")
+
+    async def _reopen_dialog(self, name: str, message: SendMessage) -> None:
+        """After an error, a dialog that was waiting gets an answer or comes back, so nobody is left stuck."""
+        if (request := message.get("answer")) is not None and name in self.members:  # The premise dialog is waiting for this answer: give it one, or it waits forever
+            failed = Reply(phase=self.core.phase if self.core else "setup", error="api", notice=UI["room_error"])
+            await self._safe_write(self.members[name], {"type": "premise", "id": request, "reply": failed.to_dict()})
+        elif self.host_reply and not message.get("form") and self.core is not None and self.core.phase == self.host_reply.phase:
+            await self._send_reply(self.host, self.host_reply)  # The host's dialog closed when they answered: show it again so they can answer again
 
     # ---------- Broadcasting ----------
 
