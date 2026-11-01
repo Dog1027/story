@@ -70,7 +70,8 @@ button { cursor: pointer; }
 .chip.warning { background: var(--sev-3); border-color: var(--sev-3); color: var(--surface); font-weight: 600; }
 
 /* ---------- Lobby and room waiting screens (inside the story area) ---------- */
-#app.wide { --column: 52rem; }
+#app.lobby { --column: 52rem; }
+#app.lobby:not(.offline) #dock { display: none; } /* The lobby is all buttons; once disconnected, the input box comes back to say so */
 .lobby-panel { display: grid; gap: 16px; }
 .lobby-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; }
 .lobby-head h1 { margin: 0; font-family: var(--serif); font-size: 1.5rem; font-weight: 600; letter-spacing: 0.04em; }

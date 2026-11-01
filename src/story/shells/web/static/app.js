@@ -46,6 +46,7 @@ function connect() {
   ws.onclose = () => {
     if (!state.exited) {
       setBusy(true);
+      $("app").classList.add("offline"); // Brings the input box back in the lobby too: its placeholder keeps saying the connection is gone
       input.placeholder = t("disconnected");
       toast(t("server_lost"), { error: true, lasting: true });
     }
@@ -63,7 +64,7 @@ const answer = (id, value = null) => send({ t: "answer", id, value });
 const handlers = {
   clear({ premise }) {
     log.replaceChildren();
-    $("app").classList.remove("wide");
+    $("app").classList.remove("lobby");
     state.busyLine = null;
     state.follow = true;
     if (premise) {
@@ -307,7 +308,7 @@ function renderLobby(screen) {
   renderStatus(null);
   if (screen.you) store("story-name", screen.you); // Only remember a name the server accepted
   renderChoices([]); // Also clear choices left over from the last game, invisible but still taking space: the waiting screen's buttons are in the panel
-  $("app").classList.toggle("wide", screen.view === "lobby"); // The lobby has two columns side by side: the status bar and input box widen with it
+  $("app").classList.toggle("lobby", screen.view === "lobby"); // The lobby has two columns side by side, and only buttons: no input box below (see style.css)
   log.querySelectorAll(".lobby-panel").forEach((el) => el.remove());
   const panel = screen.view === "room" ? roomPanel(screen) : lobbyPanel(screen);
   add("section", "lobby-panel").replaceWith(panel);
