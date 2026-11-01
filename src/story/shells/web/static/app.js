@@ -402,10 +402,12 @@ function roomPanel({ title, host, you, members, seats, choices, games = [] }) {
     const name = members[i];
     const seat = tag("li", "seat" + (name ? "" : " empty"));
     if (name) {
-      const label = tag("span", "seat-name", name);
-      if (name === you) label.append(tag("span", "you-tag", t("you_tag")));
-      seat.append(tag("span", "avatar", initial(name)), label);
-      if (name === host) seat.append(tag("span", "host-tag", t("host_tag")));
+      const info = tag("span", "seat-info"), tags = tag("span", "seat-tags"); // The tags go on a line under the name, so a narrow seat still shows the name
+      info.append(tag("span", "seat-name", name));
+      if (name === you) tags.append(tag("span", "you-tag", t("you_tag")));
+      if (name === host) tags.append(tag("span", "host-tag", t("host_tag")));
+      if (tags.childElementCount) info.append(tags);
+      seat.append(tag("span", "avatar", initial(name)), info);
     } else {
       seat.append(tag("span", "avatar", ""), tag("span", "seat-name", t("seat_empty")));
     }

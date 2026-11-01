@@ -130,7 +130,9 @@ button { cursor: pointer; }
 .seats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .seat { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; min-width: 0; }
 .seat-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.seat .host-tag { margin-left: auto; }
+.seat-info { display: grid; min-width: 0; }
+.seat-tags { display: flex; gap: 4px; }
+.seat-tags > * { margin-left: 0; white-space: nowrap; }
 .seat.empty { background: none; border-style: dashed; }
 .seat.empty .seat-name { color: var(--muted); font-weight: 400; }
 .seat.empty .avatar { background: none; border: 1px dashed var(--line); }
