@@ -308,7 +308,7 @@ function renderLobby(screen) {
   renderStatus(null);
   if (screen.you) store("story-name", screen.you); // Only remember a name the server accepted
   renderChoices([]); // Also clear choices left over from the last game, invisible but still taking space: the waiting screen's buttons are in the panel
-  $("app").classList.toggle("lobby", screen.view === "lobby"); // The lobby has two columns side by side, and only buttons: no input box below (see style.css)
+  $("app").classList.toggle("lobby", screen.view === "lobby"); // The lobby has two columns side by side
   log.querySelectorAll(".lobby-panel").forEach((el) => el.remove());
   const panel = screen.view === "room" ? roomPanel(screen) : lobbyPanel(screen);
   add("section", "lobby-panel").replaceWith(panel);
