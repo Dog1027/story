@@ -209,7 +209,7 @@ def test_cannot_lose_items_you_do_not_have():
     assert hero(state).inventory == []
 
 
-def test_flags_are_not_duplicated_and_empty_events_are_skipped():
+def test_facts_are_not_duplicated_and_empty_events_are_skipped():
     state, *_ = play(beat(facts_set=["與守門人結仇"], key_event=""), beat(facts_set=["與守門人結仇"], key_event="找到地下室"))
     assert state.facts == ["與守門人結仇"]
     assert state.key_events == ["找到地下室"]
@@ -332,7 +332,7 @@ def test_prompt_includes_the_history_and_no_duplicate_action():
     assert prompt.count("推開門") == 1
 
 
-def test_compaction_folds_old_events_and_flags_into_summary():
+def test_compaction_folds_old_events_and_facts_into_summary():
     engine, gemini = make_engine(summary="壓縮後的摘要")
     turns = [Turn(narration=f"第{i}回合", action="a") for i in range(4)]
     state = solo(

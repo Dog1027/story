@@ -20,7 +20,7 @@ class Countdown:
         self.deadline = 0.0  # When it runs out (loop.time()), so people who connect midway can pick it up
 
     def after_reading(self, seconds: int) -> None:
-        """New narration with a time limit: start once everyone has read it (see read()), or after READY_WAIT."""
+        """New narration with a time limit: start once everyone has read it (see finished_reading()), or after READY_WAIT."""
         self.stop()
         self.read_by, self.reading, self.seconds = set(), True, seconds
         self.task = asyncio.create_task(self._run(seconds, wait_first=True))
@@ -61,7 +61,7 @@ class Countdown:
             self.start_now(self.seconds)
 
     async def _run(self, seconds: int, wait_first: bool) -> None:
-        if wait_first:  # Waiting for everyone to finish reading (read() switches to the real countdown early)
+        if wait_first:  # Waiting for everyone to finish reading (finished_reading() switches to the real countdown early)
             await asyncio.sleep(READY_WAIT)
         self.reading = False
         self.deadline = asyncio.get_running_loop().time() + seconds
