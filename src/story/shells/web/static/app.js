@@ -46,9 +46,7 @@ function connect() {
   ws.onclose = () => {
     if (!state.exited) {
       setBusy(true);
-      $("app").classList.add("offline"); // Brings the input box back in the lobby too: its placeholder keeps saying the connection is gone
-      input.placeholder = t("disconnected");
-      toast(t("server_lost"), { error: true, lasting: true });
+      $("offline").hidden = false; // A bar across the top on every screen (the lobby has no input box), with a button to reload
     }
   };
 }
@@ -769,6 +767,7 @@ function activity(text) {
 // ---------- Menu ----------
 
 const menu = $("menu");
+$("reload").addEventListener("click", () => location.reload());
 $("menu-button").addEventListener("click", (event) => {
   event.stopPropagation();
   menu.hidden = !menu.hidden;

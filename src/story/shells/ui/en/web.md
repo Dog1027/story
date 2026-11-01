@@ -54,11 +54,13 @@ Dark
 ## connecting
 Connecting…
 
-## disconnected
-Disconnected. Please reload the page.
-
 ## server_lost
-Lost the connection to the server. Please reload the page.
+<!-- The bar across the top of the page when disconnected -->
+Lost the connection to the server.
+
+## reload
+<!-- The button on the disconnected bar: reloads the page -->
+Reload
 
 ## exited
 You've left. Reload the page to come back in.
