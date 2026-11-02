@@ -153,8 +153,8 @@ Key points:
 {rounds}
 
 ## memory_round
-<!-- Variables: {turn}, {text} -->
-Round {turn}
+<!-- The title in 【】, drawn as a heading by the web version. Variables: {turn}, {text} -->
+【Round {turn}】
 {text}
 
 ## memory_empty

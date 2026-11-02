@@ -54,6 +54,10 @@ Dark
 ## connecting
 Connecting…
 
+## bag
+<!-- The inventory button at the top: shows what they carry below the status bar -->
+Inventory
+
 ## server_lost
 <!-- The bar across the top of the page when disconnected -->
 Lost the connection to the server.

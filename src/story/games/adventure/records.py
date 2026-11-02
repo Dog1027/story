@@ -14,18 +14,20 @@ DEFAULT_PREMISE = PREMISE["default"]  # The premise used when there's no genre p
 
 
 def memory_text(state: AdventureState) -> str:
-    events = "\n".join(UI["memory_event"].format(event=e) for e in state.key_events) or UI["memory_no_events"]
+    """/state: the bags, facts, key events and summary, one section each (see memory_section); empty sections are left out."""
+    item = UI["memory_item"].format
     if state.solo:
-        bags = UI["memory_bag"].format(items=join(state.characters[0].inventory) or UI["memory_empty_bag"])
+        bags = [item(item=i) for i in state.characters[0].inventory]
     else:
-        bags = "\n".join(UI["memory_named_bag"].format(name=c.name, items=join(c.inventory) or UI["memory_empty_bag"]) for c in state.characters)
-    return UI["memory"].format(
-        bags=bags,
-        facts=join(state.facts) or UI["memory_no_facts"],
-        events=events,
-        summary=state.summary or UI["memory_no_summary"],
-        turns=len(state.story_log),
-    )
+        bags = [UI["memory_named_bag"].format(name=c.name, items=join(c.inventory)) for c in state.characters if c.inventory]
+    sections = {
+        "memory_bags": bags,
+        "memory_facts": [item(item=f) for f in state.facts],
+        "memory_events": [item(item=e) for e in state.key_events],
+        "memory_summary": [state.summary] if state.summary else [],
+    }
+    text = "\n\n".join(UI["memory_section"].format(title=UI[key], body="\n".join(lines)) for key, lines in sections.items() if lines)
+    return text or UI["memory_nothing"]
 
 
 def ending_record(state: AdventureState) -> str:

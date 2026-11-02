@@ -133,45 +133,34 @@ AI 沒有想出開頭，請再試一次。
 
 限時模式的倒數由外殼負責，時間到時送出 /timeout。
 
-## memory
-<!-- 變數：{bags}（每個人一行，見 memory_bag、memory_named_bag）、{facts}、{events}（每個事件一行，見 memory_event）、{summary}、{turns} -->
-[背包]
-{bags}
+## memory_section
+<!-- /state 的一個區塊：標題單獨一行、用【】包起來（網頁版畫成小標題），內容一行一項（「- 」開頭的畫成清單）。變數：{title}、{body} -->
+【{title}】
+{body}
 
-[已確立的事實]
-  {facts}
+## memory_bags
+背包
 
-[重大事件]
-{events}
+## memory_facts
+已確立的事實
 
-[長期摘要]
-  {summary}
+## memory_events
+重大事件
 
-[劇情紀錄] {turns} 回合原文
+## memory_summary
+長期摘要
 
-## memory_bag
-<!-- 只有一位角色時的背包。變數：{items} -->
-  {items}
+## memory_item
+<!-- 清單的一項。變數：{item} -->
+- {item}
 
 ## memory_named_bag
-<!-- 有好幾位角色時，一個人的背包。變數：{name}、{items} -->
-  {name}：{items}
+<!-- 有好幾位角色時，一個人的背包（沒帶東西的人不列）。變數：{name}、{items} -->
+- {name}：{items}
 
-## memory_event
-<!-- 變數：{event} -->
-  - {event}
-
-## memory_empty_bag
-空
-
-## memory_no_facts
-無
-
-## memory_no_events
-  （無）
-
-## memory_no_summary
-（尚無）
+## memory_nothing
+<!-- 什麼都還沒有時 -->
+還沒有任何紀錄。
 
 <!-- ---------- 結局紀錄 ---------- -->
 

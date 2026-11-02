@@ -271,4 +271,4 @@ def status_bar(c: Character) -> Status:
     """One character's status for the shells to show (one item in Reply.characters)."""
     warning = warning_level(c) if c.alive else ""
     items: list[tuple[str, Tone]] = [*condition_list(c)] or [(word("level", "healthy"), "good")]
-    return Status(items=items, warning=warning, name=c.name, alive=c.alive, warning_text=word("level", warning) if warning else "")
+    return Status(items=items, warning=warning, name=c.name, alive=c.alive, warning_text=word("level", warning) if warning else "", bag=list(c.inventory))

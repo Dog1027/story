@@ -284,7 +284,7 @@ def test_away_is_an_action_whose_text_the_core_decides(core, engine):
     assert "已經行動" in core.send_as("阿明", "/away").notice
     core.send_as("小華", "/away")
     assert engine.rounds == [{"阿明": "阿明往上爬", "小華": AWAY_ACTION}]
-    assert "[背包]\n  阿明：" in core.send("/state").info[1]  # Each person's bag
+    assert "【背包】\n- 阿明：" in core.send("/state").info[1]  # Each person's bag
 
 
 def test_send_as_accepts_actions_in_any_order(core, engine):

@@ -54,7 +54,7 @@ The End
 
 ## hint_input
 <!-- The input box hint -->
-↑↓ to choose, or write your action
+Pick one, or write your action
 
 ## hint_others_acted
 <!-- Web: you haven't acted yet, but others have. Variables: {names}, {hint} (the usual hint) -->

@@ -14,7 +14,7 @@
   --good: #2b7a4b;
   --shadow: 0 10px 30px rgba(20, 30, 45, 0.16);
   --serif: "Noto Serif TC", "Songti TC", "PMingLiU", "MingLiU", serif;
-  --sans: system-ui, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+  --sans: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif; /* CJK fonts before system-ui: on Linux system-ui can be a monospaced font, which spaces Chinese out */
   --column: 38rem;
   color-scheme: light;
 }
@@ -59,7 +59,6 @@ button { cursor: pointer; }
 .turn { color: var(--muted); font-variant-numeric: tabular-nums; }
 .mode { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--sev-3) 14%, transparent); color: var(--sev-3); }
 .icon-button { margin-left: auto; border: 0; background: none; font-size: 20px; line-height: 1; padding: 4px 8px; border-radius: 8px; color: var(--muted); }
-.icon-button:hover { background: var(--accent-soft); color: var(--ink); }
 .status { display: grid; gap: 4px; margin-top: 6px; }
 .offline { /* Disconnected: shown on every screen until the page is reloaded */
   max-width: var(--column); margin: 8px auto 0; display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 14px; border-radius: 12px;
@@ -68,6 +67,17 @@ button { cursor: pointer; }
 .offline[hidden] { display: none; }
 .offline .btn { margin-left: auto; padding: 4px 14px; flex: none; }
 .status:empty { display: none; }
+.bag-button:not([hidden]) + .icon-button { margin-left: 0; }
+.bag-button {
+  margin-left: auto; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 2px 10px; font-size: 13px; color: var(--muted);
+}
+.bag-button[aria-expanded="true"] { border-color: var(--accent); color: var(--ink); }
+.bag-count { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent); }
+.bag { max-width: var(--column); margin: 8px auto 0; display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); max-height: 30vh; overflow-y: auto; }
+.bag[hidden] { display: none; }
+.bag-name { font-size: 12px; font-weight: 600; color: var(--muted); }
+.bag-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(8em, 1fr)); gap: 4px 12px; }
+.bag-list li::before { content: "・"; color: var(--accent); }
 .status-row { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
 .status-name { font-weight: 600; white-space: nowrap; min-width: 4.5em; }
 .status-row.fallen .status-name { color: var(--muted); font-weight: 400; }
@@ -184,7 +194,6 @@ button { cursor: pointer; }
 .spinner { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .continue { width: 100%; border: 1px dashed var(--line); background: none; border-radius: 10px; padding: 10px; color: var(--muted); }
-.continue:hover { border-color: var(--accent); color: var(--ink); }
 .fatal { color: var(--sev-3); text-align: center; }
 
 /* ---------- Bottom: countdown, choices, input ---------- */
@@ -209,7 +218,16 @@ button { cursor: pointer; }
   background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
 }
 .choice .num { color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 600; }
-.choice:hover, .choice.active { border-color: var(--accent); background: var(--accent-soft); }
+.choice.active { border-color: var(--accent); background: var(--accent-soft); }
+/* Hover only on devices that really hover: on phones the next button under a tapped finger would stay lit, as if picked already */
+@media (hover: hover) {
+  .choice:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .icon-button:hover { background: var(--accent-soft); color: var(--ink); }
+  .continue:hover { border-color: var(--accent); color: var(--ink); }
+  .menu button:hover { background: var(--accent-soft); }
+  .btn:hover { border-color: var(--accent); }
+  .bag-button:hover { border-color: var(--accent); color: var(--ink); }
+}
 .choice.selected { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); font-weight: 600; } /* Turtle soup: the input mode currently picked */
 .input-row { display: flex; gap: 8px; }
 .input-row input {
@@ -227,7 +245,6 @@ button { cursor: pointer; }
   display: grid; padding: 6px; min-width: 200px;
 }
 .menu button { border: 0; background: none; text-align: left; padding: 8px 12px; border-radius: 8px; }
-.menu button:hover { background: var(--accent-soft); }
 .menu-theme { display: flex; align-items: center; gap: 4px; padding: 6px 12px 4px; border-top: 1px solid var(--line); margin-top: 4px; color: var(--muted); font-size: 13px; }
 .menu-theme span { margin-right: auto; }
 .menu-theme button { padding: 3px 8px; font-size: 13px; }
@@ -245,7 +262,12 @@ button { cursor: pointer; }
 .sheet p { margin: 0; }
 .sheet .hint { color: var(--muted); font-size: 13px; white-space: pre-wrap; }
 .sheet .error { color: var(--sev-3); font-size: 13px; min-height: 1.2em; }
-.sheet .body { white-space: pre-wrap; font-size: 14px; max-height: 50vh; overflow-y: auto; }
+.sheet .body { font-size: 14px; max-height: 55vh; overflow-y: auto; display: grid; gap: 6px; align-content: start; }
+.sheet .body h3 { margin: 10px 0 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: var(--muted); }
+.sheet .body h3:first-child { margin-top: 0; }
+.sheet .body p { white-space: pre-wrap; }
+.sheet .body ul { margin: 0; padding-left: 1.2em; display: grid; gap: 2px; }
+.sheet .field { display: grid; gap: 6px; }
 .sheet .record { white-space: pre-wrap; font-family: var(--serif); line-height: 1.8; }
 .sheet input[type="text"], .sheet input[type="password"], .sheet textarea, .sheet select {
   width: 100%; font-size: 16px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
@@ -255,7 +277,6 @@ button { cursor: pointer; }
 .sheet .buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .sheet .buttons .spacer { margin-right: auto; }
 .btn { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 16px; }
-.btn:hover { border-color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .btn:disabled { opacity: 0.55; cursor: default; }
 

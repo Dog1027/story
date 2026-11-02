@@ -133,45 +133,34 @@ Send an empty line   Use the default premise
 
 In timed mode the countdown is up to the shell, which sends /timeout when time runs out.
 
-## memory
-<!-- Variables: {bags} (one line per person, see memory_bag, memory_named_bag), {facts}, {events} (one line per event, see memory_event), {summary}, {turns} -->
-[Inventory]
-{bags}
+## memory_section
+<!-- One section of /state: the title alone on a line in 【】 (the web version draws it as a heading), then one item per line (lines starting with "- " become a list). Variables: {title}, {body} -->
+【{title}】
+{body}
 
-[Established facts]
-  {facts}
+## memory_bags
+Inventory
 
-[Key events]
-{events}
+## memory_facts
+Established facts
 
-[Long-term summary]
-  {summary}
+## memory_events
+Key events
 
-[Story log] {turns} turns of full text
+## memory_summary
+Long-term summary
 
-## memory_bag
-<!-- The inventory when there is one character. Variable: {items} -->
-  {items}
+## memory_item
+<!-- One list item. Variable: {item} -->
+- {item}
 
 ## memory_named_bag
-<!-- One person's inventory when there are several characters. Variables: {name}, {items} -->
-  {name}: {items}
+<!-- One person's inventory when there are several characters (people carrying nothing are left out). Variables: {name}, {items} -->
+- {name}: {items}
 
-## memory_event
-<!-- Variable: {event} -->
-  - {event}
-
-## memory_empty_bag
-empty
-
-## memory_no_facts
-none
-
-## memory_no_events
-  (none)
-
-## memory_no_summary
-(none yet)
+## memory_nothing
+<!-- When there's nothing yet -->
+Nothing recorded yet.
 
 <!-- ---------- The journey record ---------- -->
 

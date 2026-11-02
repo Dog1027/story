@@ -121,7 +121,8 @@ def test_info_commands_do_not_advance_the_story(core):
     new_game(core)
     reply = core.send("/state")
     assert reply.info[0] == "目前資訊" and reply.narration == ""
-    assert "[背包]\n  鑰匙" in reply.info[1]  # The status bar doesn't show the bag; the full contents are here
+    assert "【背包】\n- 鑰匙" in reply.info[1] and "【長期摘要】" not in reply.info[1]  # Empty sections are left out
+    assert reply.characters[0].bag == ["鑰匙"]  # Shells show the bag on request
     assert reply.choices == ["往上爬", "檢查鑰匙"]
     assert core.send("/help").info[0] == "說明"
     assert core.state.turn == 1

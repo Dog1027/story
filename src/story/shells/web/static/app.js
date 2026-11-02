@@ -276,6 +276,7 @@ log.addEventListener("click", (event) => {
 function renderStatus(status) {
   const box = $("status");
   box.replaceChildren();
+  renderBag(status);
   if (!status) {
     $("turn").textContent = "";
     $("mode").hidden = true;
@@ -297,6 +298,30 @@ function renderStatus(status) {
     box.append(row);
   }
 }
+
+// The bag: a button on the top bar (only once someone carries something) opens a list below the status bar, so the bar itself stays short
+function renderBag(status) {
+  const people = status ? status.characters.filter((c) => c.bag && c.bag.length) : [];
+  const button = $("bag-button"), panel = $("bag");
+  button.hidden = !people.length;
+  if (!people.length) panel.hidden = true;
+  button.setAttribute("aria-expanded", String(!panel.hidden));
+  $("bag-count").textContent = people.reduce((n, c) => n + c.bag.length, 0) || "";
+  panel.replaceChildren();
+  for (const c of people) {
+    const group = tag("div", "bag-group");
+    if (status.named) group.append(tag("div", "bag-name", c.name));
+    const list = tag("ul", "bag-list");
+    for (const item of c.bag) list.append(tag("li", "", item));
+    group.append(list);
+    panel.append(group);
+  }
+}
+
+$("bag-button").addEventListener("click", () => {
+  $("bag").hidden = !$("bag").hidden;
+  $("bag-button").setAttribute("aria-expanded", String(!$("bag").hidden));
+});
 
 // ---------- Lobby and room waiting screens ----------
 
@@ -609,8 +634,25 @@ function buttons(list) {
 
 function infoSheet(title, body) {
   openSheet((sheet, close) => {
-    sheet.append(tag("h2", "", title), tag("div", "body", body), buttons([[t("close"), () => close(), true]]));
+    sheet.append(tag("h2", "", title), infoBody(body), buttons([[t("close"), () => close(), true]]));
   });
+}
+
+// The game's text for /state and /help: a line alone in 【】 is a section heading, lines starting with "- " a list, anything else a paragraph
+function infoBody(text) {
+  const box = tag("div", "body");
+  let list = null;
+  for (const line of text.split("\n")) {
+    const heading = line.trim().match(/^【(.+)】$/);
+    if (heading) box.append(tag("h3", "", heading[1]));
+    else if (line.startsWith("- ")) {
+      if (!list) box.append(list = tag("ul"));
+      list.append(tag("li", "", line.slice(2)));
+      continue;
+    } else if (line.trim()) box.append(tag("p", "", line));
+    list = null;
+  }
+  return box;
 }
 
 // Changing names leaves the room, and the save belongs to the team's names, so it's like starting over: ask first
@@ -663,7 +705,7 @@ function nameSheet({ id, error, max_len }) {
     const submit = () => close(name.value);
     name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } });
     sheet.append(tag("h2", "", t("name_title")), tag("p", "hint", t("name_hint")), name, errorLine);
-    sheet.append(buttons([[t("leave"), () => close(null)], [t("enter"), submit, true]]));
+    sheet.append(buttons([[t("enter"), submit, true]]));
   }, (value) => answer(id, value), false);
 }
 
@@ -734,9 +776,10 @@ function premiseSheet({ id, default: initial, timed, genre, options, hints }) {
     const row = tag("div", "buttons");
     reroll.classList.add("spacer");
     row.append(reroll, suggest, startButton);
+    const field = (...parts) => { const box = tag("div", "field"); box.append(...parts); return box; }; // A control with its explanation, set apart from the next one
     sheet.append(tag("h2", "", t("premise_title")));
-    if (options.length) sheet.append(select, genreHint);
-    sheet.append(tag("p", "hint", t("premise_hint")), area, timedLabel, row);
+    if (options.length) sheet.append(field(select, genreHint));
+    sheet.append(field(tag("p", "hint", t("premise_hint")), area), timedLabel, row);
   }, (value) => {
     state.premise = null;
     answer(id, value);
@@ -771,6 +814,8 @@ $("reload").addEventListener("click", () => location.reload());
 $("menu-button").addEventListener("click", (event) => {
   event.stopPropagation();
   menu.hidden = !menu.hidden;
+  const playing = $("turn").textContent !== ""; // The status bar shows a turn only during a game: in the lobby and rooms these commands do nothing
+  menu.querySelectorAll("[data-command]").forEach((b) => { b.hidden = !playing; });
   markTheme();
 });
 document.addEventListener("click", (event) => { if (!menu.hidden && !menu.contains(event.target)) menu.hidden = true; });

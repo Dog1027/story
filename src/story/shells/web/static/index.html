@@ -6,9 +6,9 @@
   <title>{{title}}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600&family=Noto+Serif+TC:wght@400;600&display=swap">
   <link rel="icon" href="/static/logo.svg?v=1" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/style.css?v=31">
+  <link rel="stylesheet" href="/static/style.css?v=32">
   <script>
     // Appearance: follow the system, or the light/dark choice the player made in the menu (stored only in this browser)
     try {
@@ -37,6 +37,7 @@
         </span>
         <span id="turn" class="turn"></span>
         <span id="mode" class="mode" hidden></span>
+        <button id="bag-button" class="bag-button" type="button" hidden aria-expanded="false" aria-controls="bag">{{bag}} <span id="bag-count" class="bag-count"></span></button>
         <button id="menu-button" class="icon-button" type="button" aria-label="{{menu}}" aria-haspopup="true">⋯</button>
       </div>
       <div id="offline" class="offline" hidden role="alert">
@@ -44,6 +45,7 @@
         <button id="reload" class="btn" type="button">{{reload}}</button>
       </div>
       <div id="status" class="status"></div>
+      <div id="bag" class="bag" hidden></div>
     </header>
 
     <main id="log" aria-live="polite"></main>
@@ -80,6 +82,6 @@
   <!-- Interface text (story/shells/ui/<lang>/dialogs.md, web.md): the server replaces names in double braces with this language's text; T is the whole string table -->
   <script>const T = {{texts}};</script>
   <!-- ?v= is a version number: bump it when app.js or style.css changes so browsers drop their cached copies -->
-  <script src="/static/app.js?v=31"></script>
+  <script src="/static/app.js?v=32"></script>
 </body>
 </html>

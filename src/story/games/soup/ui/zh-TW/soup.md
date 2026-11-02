@@ -153,8 +153,8 @@ AI 出題中
 {rounds}
 
 ## memory_round
-<!-- 變數：{turn}、{text} -->
-第 {turn} 回
+<!-- 標題用【】包起來，網頁版畫成小標題。變數：{turn}、{text} -->
+【第 {turn} 回】
 {text}
 
 ## memory_empty
