@@ -78,6 +78,10 @@ button { cursor: pointer; }
 .bag-name { font-size: 12px; font-weight: 600; color: var(--muted); }
 .bag-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(8em, 1fr)); gap: 4px 12px; }
 .bag-list li::before { content: "・"; color: var(--accent); }
+.bag-list li.new { color: var(--accent); font-weight: 600; }
+.bag-button.pulse { animation: bag-pulse 0.9s ease-out 2; }
+@keyframes bag-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 100% { box-shadow: 0 0 0 8px transparent; } }
+@media (prefers-reduced-motion: reduce) { .bag-button.pulse { animation: none; border-color: var(--accent); } }
 .status-row { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
 .status-name { font-weight: 600; white-space: nowrap; min-width: 4.5em; }
 .status-row.fallen .status-name { color: var(--muted); font-weight: 400; }

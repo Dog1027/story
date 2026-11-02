@@ -28,6 +28,9 @@ const state = {
   timer: null, // { total, left, last }
   lobbyPane: "rooms", // Which lobby tab shows on phones: rooms, people
   premise: null, // The open premise dialog
+  me: "", // My name, from the lobby screen
+  bagKnown: null, // Everything in the bags last time (name + item), to spot what's new; null at the start of a game, so loading doesn't count as new
+  bagNew: new Set(), // New items, highlighted until the list has been opened and closed again
   exited: false,
   autoNamed: false, // Already tried the remembered name once automatically (on failure, ask the player instead of retrying forever)
 };
@@ -78,7 +81,7 @@ const handlers = {
     scrollLog(true); // You just acted: always scroll to the bottom to see the result
   },
   note({ text }) { add("div", "note", text); },
-  narration_start() { startNarration(); },
+  narration_start() { closeBag(); startNarration(); }, // A new passage needs the room: fold the bag away
   past_narration({ text }) { add("div", "narration", text); }, // Earlier narration when loading: shown at once, no typing
   narration_text({ text }) { if (state.narration) state.narration.text = text; },
   narration_end({ id, text }) {
@@ -300,28 +303,51 @@ function renderStatus(status) {
 }
 
 // The bag: a button on the top bar (only once someone carries something) opens a list below the status bar, so the bar itself stays short
+// New items make the count pulse and stay highlighted in the list until it's been looked at. With several people, my own bag comes first
 function renderBag(status) {
   const people = status ? status.characters.filter((c) => c.bag && c.bag.length) : [];
+  people.sort((a, b) => (b.name === state.me) - (a.name === state.me));
   const button = $("bag-button"), panel = $("bag");
+  const keys = new Set(people.flatMap((c) => c.bag.map((item) => `${c.name}\n${item}`)));
+  const fresh = state.bagKnown ? [...keys].filter((k) => !state.bagKnown.has(k)) : [];
+  state.bagKnown = status ? keys : null;
+  fresh.forEach((k) => state.bagNew.add(k));
+  if (fresh.length) {
+    button.classList.remove("pulse");
+    void button.offsetWidth; // Restart the animation
+    button.classList.add("pulse");
+  }
   button.hidden = !people.length;
-  if (!people.length) panel.hidden = true;
-  button.setAttribute("aria-expanded", String(!panel.hidden));
+  if (!people.length) closeBag();
   $("bag-count").textContent = people.reduce((n, c) => n + c.bag.length, 0) || "";
   panel.replaceChildren();
   for (const c of people) {
     const group = tag("div", "bag-group");
     if (status.named) group.append(tag("div", "bag-name", c.name));
     const list = tag("ul", "bag-list");
-    for (const item of c.bag) list.append(tag("li", "", item));
+    for (const item of c.bag) list.append(tag("li", state.bagNew.has(`${c.name}\n${item}`) ? "new" : "", item));
     group.append(list);
     panel.append(group);
   }
 }
 
-$("bag-button").addEventListener("click", () => {
-  $("bag").hidden = !$("bag").hidden;
-  $("bag-button").setAttribute("aria-expanded", String(!$("bag").hidden));
+function closeBag() {
+  const panel = $("bag");
+  if (!panel.hidden) { // Looked at: new items are no longer new
+    state.bagNew.clear();
+    panel.querySelectorAll(".new").forEach((el) => el.classList.remove("new"));
+  }
+  panel.hidden = true;
+  $("bag-button").setAttribute("aria-expanded", "false");
+}
+
+$("bag-button").addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (!$("bag").hidden) return closeBag();
+  $("bag").hidden = false;
+  $("bag-button").setAttribute("aria-expanded", "true");
 });
+document.addEventListener("click", (event) => { if (!$("bag").hidden && !$("bag").contains(event.target)) closeBag(); }); // Tapping anywhere else folds it away
 
 // ---------- Lobby and room waiting screens ----------
 
@@ -329,7 +355,7 @@ $("bag-button").addEventListener("click", () => {
 // Buttons send the choice's number, the same as typing it in the input box
 function renderLobby(screen) {
   renderStatus(null);
-  if (screen.you) store("story-name", screen.you); // Only remember a name the server accepted
+  if (screen.you) { store("story-name", screen.you); state.me = screen.you; } // Only remember a name the server accepted
   renderChoices([]); // Also clear choices left over from the last game, invisible but still taking space: the waiting screen's buttons are in the panel
   $("app").classList.toggle("lobby", screen.view === "lobby"); // The lobby has two columns side by side
   log.querySelectorAll(".lobby-panel").forEach((el) => el.remove());
