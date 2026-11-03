@@ -374,6 +374,8 @@ async def test_input_modes_switch_what_typing_does():
 
     client.send = send
     client.actor, client.inputs = "阿明", list(INPUTS)
+    client.set_choices([m.label for m in INPUTS])
+    assert ("mark_choice", 0) in view.calls  # Asking is marked from the start: typing straight away asks
     await client.act("他死了嗎")
     assert sent[-1] == ("/ask 他死了嗎", "提問：他死了嗎")  # Not picking a mode means asking
     await client.act("2")

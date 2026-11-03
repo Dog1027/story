@@ -242,7 +242,7 @@ class Client:
                 await self.narrate(reply.narration)
             for name, groups in reply.changes:
                 self.view.show_changes(groups, name if len(reply.characters) > 1 else "")  # No name needed when playing alone
-            self.view.show_choices(self.choices)
+            self.show_choices()
         else:
             self.set_choices(reply.choices)
         self.set_status(reply.turn, reply.characters)
@@ -283,8 +283,14 @@ class Client:
 
     def set_choices(self, choices: list[str]) -> None:
         self.choices = list(choices)
-        self.view.show_choices(self.choices)
+        self.show_choices()
         self.refresh_hint()
+
+    def show_choices(self) -> None:
+        """Show the choices; with input modes, also mark the one picked, so it's clear that typing straight away asks (each turn starts on the first mode)."""
+        self.view.show_choices(self.choices)
+        if self.inputs and self.actor and self.choices:
+            self.view.mark_choice(self.input_mode)
 
     def set_status(self, turn: int, characters: list[Status]) -> None:
         self.shown = (turn, characters)
