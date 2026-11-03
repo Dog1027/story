@@ -9,6 +9,8 @@ const PAUSE_AFTER = { "。": 250, "！": 250, "？": 250, "，": 100, "、": 80,
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
 // Phones and tablets: don't move focus to the input box automatically, or the keyboard keeps popping up
 const TOUCH = matchMedia("(pointer: coarse)").matches || matchMedia("(hover: none)").matches;
+// Typing speed from the menu: fast types quicker (pressing Enter once more shows it all), instant shows each passage at once
+const TYPING = { normal: { speed: 1, skip: false }, fast: { speed: 0.4, skip: false }, instant: { speed: 1, skip: true } };
 
 const $ = (id) => document.getElementById(id);
 // Interface text: T is the string table the server puts in the page (story/shells/ui/<lang>/dialogs.md, web.md); {name} is replaced with the value in vars
@@ -24,6 +26,9 @@ const state = {
   choices: [],
   active: -1, // The choice moved to with ↑↓
   follow: true, // While the story area is at the bottom, follow new content
+  hint: "", // The input box hint from the server; while typing, the box says how to speed up instead
+  dividers: [], // Turn dividers before passages whose turn isn't known yet (it comes with the status bar after the passage)
+  turnShown: 0, // The last turn a divider was numbered with
   busyLine: null,
   timer: null, // { total, left, last }
   lobbyPane: "rooms", // Which lobby tab shows on phones: rooms, people
@@ -68,6 +73,9 @@ const handlers = {
     $("app").classList.remove("lobby");
     state.busyLine = null;
     state.follow = true;
+    $("jump").hidden = true;
+    state.dividers = [];
+    state.turnShown = 0;
     if (premise) {
       const el = add("div", "premise");
       el.append(tag("b", "", t("premise")), premise);
@@ -82,7 +90,7 @@ const handlers = {
   },
   note({ text }) { add("div", "note", text); },
   narration_start() { closeBag(); startNarration(); }, // A new passage needs the room: fold the bag away
-  past_narration({ text }) { add("div", "narration", text); }, // Earlier narration when loading: shown at once, no typing
+  past_narration({ text }) { addDivider(); add("div", "narration", text); }, // Earlier narration when loading: shown at once, no typing
   narration_text({ text }) { if (state.narration) state.narration.text = text; },
   narration_end({ id, text }) {
     if (!state.narration) startNarration();
@@ -96,6 +104,9 @@ const handlers = {
     state.narration.el.remove();
     state.narration = null;
     state.typing = null;
+    const divider = state.dividers.pop();
+    if (divider) divider.remove();
+    showHint();
   },
   changes({ name, groups }) {
     const el = add("div", "changes");
@@ -112,12 +123,12 @@ const handlers = {
   wait_enter({ id, hint }) {
     const button = add("button", "continue", hint);
     button.type = "button";
-    state.waitingEnter = () => { button.remove(); state.waitingEnter = null; input.placeholder = placeholder; answer(id); };
+    state.waitingEnter = () => { button.remove(); state.waitingEnter = null; showHint(); answer(id); };
     button.onclick = state.waitingEnter;
-    const placeholder = input.placeholder;
     input.placeholder = hint; // So you know to press Enter next even while scrolled up reading earlier story
     input.disabled = false;
     focusInput();
+    nudge();
   },
   prepare_choices({ choices, timed }) {
     state.typing = state.typing || { speed: 1, skip: false }; // From now on Enter only speeds up typing and never picks a choice that isn't visible yet
@@ -136,13 +147,15 @@ const handlers = {
     } else {
       renderChoices(choices);
     }
+    if (choices.length) nudge();
   },
   mark_choice({ index }) { // Turtle soup: mark the input mode currently picked (ask, guess); what's typed next is sent in that mode
     choicesList.querySelectorAll(".choice").forEach((b, i) => b.classList.toggle("selected", i === index));
     focusInput();
   },
   hint({ placeholder }) {
-    if (!state.waitingEnter) input.placeholder = placeholder;
+    state.hint = placeholder;
+    if (!state.typing) showHint();
   },
   status({ status }) { renderStatus(status); },
   lobby({ screen }) { renderLobby(screen); },
@@ -163,12 +176,14 @@ const handlers = {
   info({ title, body }) { infoSheet(title, body); },
   fatal({ text }) { add("div", "fatal", text); setBusy(true); input.placeholder = text; },
   confirm({ id, question, yes, no }) {
+    nudge();
     openSheet((sheet, close) => {
       sheet.append(tag("h2", "", question));
       sheet.append(buttons([[no, () => close(false)], [yes, () => close(true), true]]));
     }, (value) => answer(id, value), false);
   },
   ending({ id, title, record }) {
+    nudge();
     openSheet((sheet, close) => {
       sheet.append(tag("h2", "", title ? t("ending_title", { title }) : t("story_over")), tag("p", "record", record));
       sheet.append(buttons([[t("leave"), () => close(false)], [t("play_again"), () => close(true), true]]));
@@ -182,7 +197,7 @@ const handlers = {
       answer(message.id, saved);
     } else nameSheet(message);
   },
-  premise(message) { premiseSheet(message); },
+  premise(message) { nudge(); premiseSheet(message); },
   premise_update(message) { if (state.premise) state.premise.update(message); },
   exit() {
     state.exited = true;
@@ -221,18 +236,54 @@ function add(name, className, text) {
 function scrollLog(force = false) {
   if (force) state.follow = true;
   if (state.follow) log.scrollTop = log.scrollHeight;
+  else $("jump").hidden = false; // Reading back: say there's something new below instead of pulling the reader down
 }
 
 // Keep following new content while at the bottom; stop when scrolled up (so you can read back while text is typing), and resume when back at the bottom
-log.addEventListener("scroll", () => { state.follow = log.scrollTop + log.clientHeight >= log.scrollHeight - 4; });
+log.addEventListener("scroll", () => {
+  state.follow = log.scrollTop + log.clientHeight >= log.scrollHeight - 4;
+  if (state.follow) $("jump").hidden = true;
+});
+$("jump").addEventListener("click", () => scrollLog(true));
+
+// A divider before each passage, numbered once the status bar brings the turn; it stays hidden while empty. The epilogue isn't a turn
+function addDivider() {
+  const last = log.lastElementChild;
+  if (last && last.classList.contains("ending-title")) return;
+  state.dividers.push(add("div", "turn-divider"));
+}
+
+function numberDividers(turn) {
+  if (turn <= state.turnShown) return; // The same turn again (someone came or went): a passage in progress keeps waiting
+  state.dividers.reverse().forEach((el, i) => { // Counting back from this turn: loading shows several earlier passages at once
+    const number = turn - i;
+    if (number > 1 && number > state.turnShown) el.textContent = t("turn", { turn: number });
+    else el.remove(); // The opening needs no divider
+  });
+  state.dividers = [];
+  state.turnShown = turn;
+}
+
+// The input box hint: the server's, unless waiting for Enter (which shows its own)
+function showHint() {
+  if (!state.waitingEnter) input.placeholder = state.hint;
+}
+
+// When it's your turn while this tab is in the background, say so in the tab's title; back to normal once the tab is shown
+function nudge() {
+  if (document.hidden) document.title = t("your_turn_title", { title: T.title });
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) document.title = T.title; });
 
 // A passage of narration: start typing while the AI is still writing, with the typing chasing the text received so far; done once it's all received and typed
 function startNarration() {
   if (state.busyLine) { state.busyLine.remove(); state.busyLine = null; }
+  addDivider();
   const narration = { el: add("div", "narration"), text: "", done: false };
   state.narration = narration;
-  state.typing = { speed: 1, skip: false };
+  state.typing = { ...TYPING[setting("speed")] };
   const typing = state.typing;
+  if (!typing.skip && !REDUCED_MOTION) input.placeholder = t(TOUCH ? "typing_hint_touch" : "typing_hint");
   narration.finished = (async () => {
     let shown = 0;
     while (!narration.discarded) {
@@ -255,7 +306,7 @@ function startNarration() {
       }
     }
     if (state.narration === narration) state.narration = null;
-    if (state.typing === typing) state.typing = null;
+    if (state.typing === typing) { state.typing = null; showHint(); }
   })();
 }
 
@@ -286,6 +337,7 @@ function renderStatus(status) {
     return;
   }
   $("turn").textContent = t("turn", { turn: status.turn });
+  numberDividers(status.turn);
   $("mode").hidden = !status.timed;
   $("mode").textContent = status.mode;
   for (const c of status.characters) {
@@ -842,7 +894,7 @@ $("menu-button").addEventListener("click", (event) => {
   menu.hidden = !menu.hidden;
   const playing = $("turn").textContent !== ""; // The status bar shows a turn only during a game: in the lobby and rooms these commands do nothing
   menu.querySelectorAll("[data-command]").forEach((b) => { b.hidden = !playing; });
-  markTheme();
+  markSettings();
 });
 document.addEventListener("click", (event) => { if (!menu.hidden && !menu.contains(event.target)) menu.hidden = true; });
 menu.addEventListener("click", (event) => {
@@ -854,18 +906,32 @@ menu.addEventListener("click", (event) => {
   } else if (button.dataset.local === "rename") {
     menu.hidden = true;
     renameSheet();
-  } else if (button.dataset.themeChoice) {
-    const choice = button.dataset.themeChoice;
-    if (choice === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = choice;
-    store("story-theme", choice);
-    markTheme();
+  } else if (button.dataset.value) {
+    const name = button.closest("[data-setting]").dataset.setting, value = button.dataset.value;
+    store(`story-${name}`, value === SETTINGS[name] ? "" : value);
+    if (name !== "speed") setRoot(name, value === SETTINGS[name] ? "" : value); // Speed is read when the next passage starts
+    markSettings();
   }
 });
 
-function markTheme() {
-  const current = document.documentElement.dataset.theme || "system";
-  menu.querySelectorAll("[data-theme-choice]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeChoice === current)));
+// The menu's settings and their defaults (index.html applies the stored appearance and text size before the page draws)
+const SETTINGS = { theme: "system", size: "medium", speed: "normal" };
+
+function setting(name) {
+  const value = stored(`story-${name}`);
+  return value && menu.querySelector(`[data-setting="${name}"] [data-value="${value}"]`) ? value : SETTINGS[name];
+}
+
+function setRoot(name, value) {
+  if (value) document.documentElement.dataset[name] = value;
+  else delete document.documentElement.dataset[name];
+}
+
+function markSettings() {
+  menu.querySelectorAll("[data-setting]").forEach((group) => {
+    const current = setting(group.dataset.setting);
+    group.querySelectorAll("[data-value]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.value === current)));
+  });
 }
 
 // Notices must appear above the choice area at the bottom: record the choice area's height

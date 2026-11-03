@@ -16,8 +16,11 @@
   --serif: "Noto Serif TC", "Songti TC", "PMingLiU", "MingLiU", serif;
   --sans: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif; /* CJK fonts before system-ui: on Linux system-ui can be a monospaced font, which spaces Chinese out */
   --column: 38rem;
+  --text-scale: 1; /* The story's text size from the menu */
   color-scheme: light;
 }
+:root[data-size="small"] { --text-scale: 0.9; }
+:root[data-size="large"] { --text-scale: 1.15; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --paper: #11151b; --surface: #181d25; --ink: #dde3eb; --muted: #8b96a5; --line: #29303b;
@@ -182,11 +185,19 @@ button { cursor: pointer; }
   padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px));
 }
 #log > * { max-width: var(--column); margin: 0 auto 18px; }
-.narration { font-family: var(--serif); font-size: 1.12rem; line-height: 1.95; white-space: pre-wrap; text-align: justify; }
+.narration { font-family: var(--serif); font-size: calc(1.12rem * var(--text-scale)); line-height: 1.95; white-space: pre-wrap; text-align: justify; }
 .premise { color: var(--muted); font-family: var(--serif); white-space: pre-wrap; border-left: 2px solid var(--line); padding-left: 12px; }
 .premise b { font-family: var(--sans); font-weight: 600; font-size: 12px; letter-spacing: 0.1em; display: block; margin-bottom: 2px; }
 .action { display: flex; justify-content: flex-end; }
-.action span { background: var(--accent-soft); color: var(--ink); border-radius: 14px 14px 4px 14px; padding: 6px 14px; max-width: 85%; }
+.action span { font-size: calc(15px * var(--text-scale)); background: var(--accent-soft); color: var(--ink); border-radius: 14px 14px 4px 14px; padding: 6px 14px; max-width: 85%; }
+.turn-divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; letter-spacing: 0.1em; }
+.turn-divider::before, .turn-divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.turn-divider:empty { display: none; } /* Waiting for its turn number */
+.jump { /* New content below while reading back: floats just above the choices */
+  position: fixed; z-index: 15; left: 50%; transform: translateX(-50%); bottom: calc(var(--dock-height, 120px) + 10px);
+  border: 1px solid var(--accent); background: var(--surface); color: var(--accent); border-radius: 999px;
+  padding: 4px 14px; font-size: 13px; font-weight: 600; box-shadow: var(--shadow); animation: fade-in 0.2s ease-out;
+}
 .note { color: var(--muted); font-size: 13px; text-align: center; }
 .changes { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .changes .who { color: var(--ink); font-weight: 600; margin-right: 6px; }
@@ -218,7 +229,7 @@ button { cursor: pointer; }
 .choices.reveal { animation: fade-in 0.4s ease-out; }
 @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } }
 .choice {
-  width: 100%; text-align: left; display: flex; gap: 10px; align-items: baseline;
+  font-size: calc(15px * var(--text-scale)); width: 100%; text-align: left; display: flex; gap: 10px; align-items: baseline;
   background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
 }
 .choice .num { color: var(--accent); font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -249,10 +260,11 @@ button { cursor: pointer; }
   display: grid; padding: 6px; min-width: 200px;
 }
 .menu button { border: 0; background: none; text-align: left; padding: 8px 12px; border-radius: 8px; }
-.menu-theme { display: flex; align-items: center; gap: 4px; padding: 6px 12px 4px; border-top: 1px solid var(--line); margin-top: 4px; color: var(--muted); font-size: 13px; }
-.menu-theme span { margin-right: auto; }
-.menu-theme button { padding: 3px 8px; font-size: 13px; }
-.menu-theme button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); }
+.menu-setting { display: flex; align-items: center; gap: 4px; padding: 4px 12px; color: var(--muted); font-size: 13px; }
+.menu-setting:first-of-type { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 8px; }
+.menu-setting span { margin-right: auto; padding-right: 12px; white-space: nowrap; }
+.menu-setting button { padding: 3px 8px; font-size: 13px; }
+.menu-setting button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); }
 
 .overlay {
   position: fixed; inset: 0; z-index: 30; background: color-mix(in srgb, var(--ink) 35%, transparent);
@@ -303,7 +315,7 @@ button { cursor: pointer; }
 .exit-screen { text-align: center; color: var(--muted); padding-top: 20vh; }
 
 @media (max-width: 480px) {
-  .narration { font-size: 1.05rem; line-height: 1.9; }
+  .narration { font-size: calc(1.05rem * var(--text-scale)); line-height: 1.9; }
   /* Phones: every dialog comes up from the bottom. When the keyboard opens, the page shrinks above it (interactive-widget=resizes-content in index.html), so the dialog sits above the keyboard */
   .overlay { place-items: end center; padding: 0; }
   .sheet { border-radius: 16px 16px 0 0; width: 100%; padding-bottom: max(22px, env(safe-area-inset-bottom, 0px)); }

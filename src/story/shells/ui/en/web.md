@@ -51,6 +51,32 @@ Light
 ## theme_dark
 Dark
 
+## menu_size
+<!-- Reading setting in the menu: the size of the story text -->
+Text size
+
+## size_small
+S
+
+## size_medium
+M
+
+## size_large
+L
+
+## menu_speed
+<!-- Reading setting in the menu: how fast the story types out; "Instant" shows the whole passage at once -->
+Typing
+
+## speed_normal
+Normal
+
+## speed_fast
+Fast
+
+## speed_instant
+Instant
+
 ## connecting
 Connecting…
 
@@ -151,3 +177,19 @@ fallen
 ## seconds
 <!-- Seconds left on the countdown. Variable: {seconds} -->
 {seconds}s
+
+## new_content
+<!-- New content while scrolled up reading back: a button floating above the choices that goes back to the bottom -->
+↓ New
+
+## your_turn_title
+<!-- The browser tab's title when it's your turn while the tab is in the background. Variable: {title} (title) -->
+(Your turn) {title}
+
+## typing_hint
+<!-- The input box hint while the story is typing (computers) -->
+Press Enter or tap the story to speed up
+
+## typing_hint_touch
+<!-- The input box hint while the story is typing (phones) -->
+Tap the story to speed up

@@ -8,12 +8,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600&family=Noto+Serif+TC:wght@400;600&display=swap">
   <link rel="icon" href="/static/logo.svg?v=1" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/style.css?v=33">
+  <link rel="stylesheet" href="/static/style.css?v=34">
   <script>
-    // Appearance: follow the system, or the light/dark choice the player made in the menu (stored only in this browser)
+    // Appearance and text size: follow the system and the default, or what the player chose in the menu (stored only in this browser)
     try {
-      const theme = localStorage.getItem("story-theme");
+      const theme = localStorage.getItem("story-theme"), size = localStorage.getItem("story-size");
       if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+      if (size === "small" || size === "large") document.documentElement.dataset.size = size;
     } catch (e) {}
   </script>
 </head>
@@ -50,6 +51,7 @@
 
     <main id="log" aria-live="polite"></main>
 
+    <button id="jump" class="jump" type="button" hidden>{{new_content}}</button>
     <footer id="dock">
       <div id="timer" class="timer" hidden><div class="timer-track"><div id="timer-fill" class="timer-fill"></div></div><span id="timer-text" class="timer-text"></span></div>
       <ol id="choices" class="choices"></ol>
@@ -64,11 +66,24 @@
     <button type="button" data-command="/state" role="menuitem">{{menu_state}}</button>
     <button type="button" data-command="/restart" role="menuitem">{{menu_restart}}</button>
     <button type="button" data-local="rename" role="menuitem">{{menu_rename}}</button>
-    <div class="menu-theme" role="group" aria-label="{{menu_theme}}">
+    <!-- Settings remembered in this browser: data-setting is the name, data-value each choice (defaults in SETTINGS in app.js) -->
+    <div class="menu-setting" role="group" aria-label="{{menu_theme}}" data-setting="theme">
       <span>{{menu_theme}}</span>
-      <button type="button" data-theme-choice="system">{{theme_system}}</button>
-      <button type="button" data-theme-choice="light">{{theme_light}}</button>
-      <button type="button" data-theme-choice="dark">{{theme_dark}}</button>
+      <button type="button" data-value="system">{{theme_system}}</button>
+      <button type="button" data-value="light">{{theme_light}}</button>
+      <button type="button" data-value="dark">{{theme_dark}}</button>
+    </div>
+    <div class="menu-setting" role="group" aria-label="{{menu_size}}" data-setting="size">
+      <span>{{menu_size}}</span>
+      <button type="button" data-value="small">{{size_small}}</button>
+      <button type="button" data-value="medium">{{size_medium}}</button>
+      <button type="button" data-value="large">{{size_large}}</button>
+    </div>
+    <div class="menu-setting" role="group" aria-label="{{menu_speed}}" data-setting="speed">
+      <span>{{menu_speed}}</span>
+      <button type="button" data-value="normal">{{speed_normal}}</button>
+      <button type="button" data-value="fast">{{speed_fast}}</button>
+      <button type="button" data-value="instant">{{speed_instant}}</button>
     </div>
   </div>
 
@@ -82,6 +97,6 @@
   <!-- Interface text (story/shells/ui/<lang>/dialogs.md, web.md): the server replaces names in double braces with this language's text; T is the whole string table -->
   <script>const T = {{texts}};</script>
   <!-- ?v= is a version number: bump it when app.js or style.css changes so browsers drop their cached copies -->
-  <script src="/static/app.js?v=33"></script>
+  <script src="/static/app.js?v=34"></script>
 </body>
 </html>

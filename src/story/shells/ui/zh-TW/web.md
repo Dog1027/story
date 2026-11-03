@@ -51,6 +51,32 @@ Story
 ## theme_dark
 深色
 
+## menu_size
+<!-- 選單裡的閱讀設定：故事文字的大小 -->
+字級
+
+## size_small
+小
+
+## size_medium
+中
+
+## size_large
+大
+
+## menu_speed
+<!-- 選單裡的閱讀設定：故事打字的速度；「立即」是不打字，整段直接出現 -->
+打字
+
+## speed_normal
+正常
+
+## speed_fast
+快
+
+## speed_instant
+立即
+
 ## connecting
 連線中…
 
@@ -151,3 +177,19 @@ Story
 ## seconds
 <!-- 倒數的秒數。變數：{seconds} -->
 {seconds} 秒
+
+## new_content
+<!-- 往上捲回去讀時有新內容：浮在選項上方的按鈕，按了回到最底 -->
+↓ 新內容
+
+## your_turn_title
+<!-- 分頁不在前面時輪到你（選項出來、要按繼續、要回答對話框）：瀏覽器分頁的標題。變數：{title}（title） -->
+（輪到你）{title}
+
+## typing_hint
+<!-- 故事打字中，輸入列的提示（電腦） -->
+按 Enter 或點一下故事可以加快
+
+## typing_hint_touch
+<!-- 故事打字中，輸入列的提示（手機） -->
+點一下故事可以加快

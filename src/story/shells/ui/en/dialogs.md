@@ -18,10 +18,10 @@ Enter
 Start
 
 ## reroll
-Another one
+Random pick
 
 ## suggest
-Inspire me
+Ask the AI
 
 ## thinking
 <!-- The "Inspire me" button while waiting for the AI -->
@@ -50,7 +50,7 @@ e.g. Alex
 A new story
 
 ## premise_hint
-Premise: edit it directly, or press "Another one" or "Inspire me"
+Premise: edit it directly; "Random pick" draws an opening from the genre packs, "Ask the AI" has the AI write a new one
 
 ## premise_placeholder
 e.g. You are a courier delivering letters in a city at the end of the world…
