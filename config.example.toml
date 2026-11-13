@@ -1,0 +1,17 @@
+# Story's settings. Copy this file to config.toml in the same folder and fill it in
+# (or just run the program: the first launch asks for these and writes config.toml for you).
+# config.toml holds your API key, so git ignores it; don't commit it.
+#
+# Environment variables win over this file: STORY_LANG overrides language, GEMINI_API_KEY overrides api_key.
+#
+# 設定檔範例。複製成同一個資料夾裡的 config.toml 再填好
+# （或直接執行程式，第一次啟動會問這些，並自動寫好 config.toml）。
+# config.toml 裡有 API key，不會進版控，請不要 commit。
+#
+# 環境變數優先於這個檔案：STORY_LANG 蓋過 language，GEMINI_API_KEY 蓋過 api_key。
+
+# Language / 語言: "zh-TW" (default / 預設) or "en"
+language = "zh-TW"
+
+# Gemini API key, free at / 免費申請： https://aistudio.google.com/apikey
+api_key = "your-gemini-api-key"

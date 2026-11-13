@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Settings (holds the API key); config.example.toml shows what goes in it
+/config.toml
+
 # Game saves
 saves/
 # Saves and logs from the old terminal version

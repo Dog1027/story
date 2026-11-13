@@ -10,7 +10,7 @@ and the web server (web/server.py). Same format as core.md.
 English
 
 ## setup_key
-A Gemini API key is needed; get one free at https://aistudio.google.com/apikey. It's saved in ~/.config/story/config.toml.
+A Gemini API key is needed; get one free at https://aistudio.google.com/apikey. It's saved in config.toml in the project folder.
 
 ## setup_key_prompt
 Gemini API key (hidden while typing; press Enter to skip for now): 

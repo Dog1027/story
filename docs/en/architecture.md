@@ -94,7 +94,7 @@ They always go in the project folder (`settings.DATA_DIR`), whatever folder the 
 | `saves/team-<names>.<game>.json` | Each team's save for each game (several names are joined with `+`) |
 | `saves/team-<names>.<game>.log.jsonl` | One line per turn: players' actions, the changes the AI proposed and the program applied, and each AI call's kind (`kind`), seconds and token usage. Look here when things feel slow or results look odd |
 | `server.log` | Output of the server started by `just start` |
-| `~/.config/story/config.toml` | The language and API key |
+| `config.toml` | The language and API key (ignored by git; see `config.example.toml`) |
 
 ## Tests and other commands
 

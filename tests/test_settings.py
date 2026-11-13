@@ -1,4 +1,4 @@
-"""The settings file (~/.config/story/config.toml): reading and writing, environment variables winning, moving old files in. In tests the config lives in a temp folder."""
+"""The settings file (config.toml in the project folder): reading and writing, environment variables winning, moving old files in. In tests the config lives in a temp folder."""
 
 import stat
 
@@ -26,12 +26,36 @@ def test_environment_variables_win(monkeypatch):
 
 
 def test_old_files_move_into_the_config(isolated):
-    (isolated / "api_key").write_text("old-key\n")
+    old = settings.CONFIG_DIR
+    old.mkdir()
+    (old / "api_key").write_text("old-key\n")
     assert settings.api_key() is None  # Reading never changes files: setup moves them on launch
     settings.migrate()
     assert settings.api_key() == "old-key"
-    assert not (isolated / "api_key").exists()
+    assert not (old / "api_key").exists()
     assert 'api_key = "old-key"' in (isolated / "config.toml").read_text()
+
+
+def test_the_old_config_moves_into_the_project_folder(isolated):
+    old = settings.CONFIG_DIR
+    old.mkdir()
+    (old / "config.toml").write_text('language = "en"\napi_key = "k"\n')
+    assert settings.language() == "zh-TW"  # conftest pins STORY_LANG
+    assert settings.get("language") == "en"  # Read from the old place until moved: the core reads the language before setup runs
+    settings.migrate()
+    assert not (old / "config.toml").exists()
+    assert settings.get("language") == "en" and settings.get("api_key") == "k"
+    assert stat.S_IMODE((isolated / "config.toml").stat().st_mode) == 0o600
+
+
+def test_the_example_config_is_valid_and_ignored_by_git():
+    import tomllib
+    from pathlib import Path
+
+    project = Path(__file__).resolve().parents[1]
+    example = tomllib.loads((project / "config.example.toml").read_text(encoding="utf-8"))
+    assert set(example) <= {"language", "api_key"}
+    assert "/config.toml" in (project / ".gitignore").read_text().splitlines()
 
 
 def test_sections_are_kept_as_tables(isolated):

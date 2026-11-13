@@ -1,4 +1,5 @@
-"""Settings: ~/.config/story/config.toml, which can be edited by hand.
+"""Settings: config.toml in the project folder (next to pyproject.toml), which can be edited by hand. It holds the API key, so git ignores it;
+config.example.toml shows what can go in it.
 
     language = "en"          # Language: zh-TW (default) or en
     api_key = "…"            # Gemini API key
@@ -7,7 +8,8 @@ In code, a setting is named "section.name", e.g. get("api_key"); settings with a
 
 Environment variables win over this file: STORY_LANG overrides language, GEMINI_API_KEY (or GOOGLE_API_KEY) overrides api_key,
 so you can switch language or key temporarily without editing the file. The language and API key entered on first launch are written here (handwritten comments are lost).
-The core, games and shells all read it; personal genre packs and turtle soup puzzles live in the same folder (~/.config/story/genres/<lang>/, puzzles/<lang>/).
+The core, games and shells all read it. Personal genre packs and turtle soup puzzles live in ~/.config/story/ (genres/<lang>/, puzzles/<lang>/),
+where config.toml also used to be: migrate() moves an old one into the project folder.
 """
 
 import json
@@ -15,8 +17,8 @@ import os
 import tomllib
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / ".config" / "story"
-# The project folder (where pyproject.toml is): saves/ and eval_results/ go here, whatever folder the program is started from
+CONFIG_DIR = Path.home() / ".config" / "story"  # Personal genre packs and puzzles (and, before 2026-11, config.toml)
+# The project folder (where pyproject.toml is): config.toml, saves/ and eval_results/ go here, whatever folder the program is started from
 DATA_DIR = Path(__file__).resolve().parents[2]
 KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 
@@ -26,18 +28,30 @@ class InvalidConfig(Exception):
 
 
 def config_path() -> Path:
-    """Where config.toml is: computed each time, so redirecting CONFIG_DIR (e.g. in tests) moves it too."""
+    """Where config.toml is: computed each time, so redirecting DATA_DIR (e.g. in tests) moves it too."""
+    return DATA_DIR / "config.toml"
+
+
+def old_config_path() -> Path:
+    """Where config.toml was before 2026-11."""
     return CONFIG_DIR / "config.toml"
+
+
+def _reading_path() -> Path:
+    """The config to read: the old one until migrate() has moved it (importing the core reads the language before setup runs)."""
+    path = config_path()
+    return path if path.exists() or not old_config_path().is_file() else old_config_path()
 
 
 def load() -> dict[str, str]:
     """Read the config, flattened to {"section.name": value}; empty if there is none. Only reads: importing the core reads the language through here."""
+    path = _reading_path()
     try:
-        data = _flatten(tomllib.loads(config_path().read_text(encoding="utf-8")))
+        data = _flatten(tomllib.loads(path.read_text(encoding="utf-8")))
     except FileNotFoundError:
         data = {}
     except tomllib.TOMLDecodeError as e:
-        raise InvalidConfig(f"{config_path()} is not valid TOML: {e}") from e
+        raise InvalidConfig(f"{path} is not valid TOML: {e}") from e
     return data
 
 
@@ -68,7 +82,12 @@ def api_key() -> str | None:
 
 
 def migrate() -> None:
-    """Move the API key from the old layout (its own file, ~/.config/story/api_key) into config.toml (setup.run() calls this on launch)."""
+    """Move old settings into the project's config.toml (setup.run() calls this on launch):
+    ~/.config/story/config.toml (before 2026-11), and the API key in its own file ~/.config/story/api_key (older still)."""
+    new, old_config = config_path(), old_config_path()
+    if old_config.is_file() and not new.exists() and old_config.resolve() != new.resolve():
+        _write(load())  # Written fresh, so the new file gets the owner-only permissions too
+        old_config.unlink()
     old = CONFIG_DIR / "api_key"
     if not old.is_file():
         return
@@ -90,7 +109,6 @@ def _flatten(table: dict, prefix: str = "") -> dict:
 
 
 def _write(data: dict) -> None:
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     # Settings without a section come first; "section.name" goes under its own [section]. Values are all strings: a JSON string is also valid TOML
     def line(key: str, value: str) -> str:
         return f"{key} = {json.dumps(value, ensure_ascii=False)}\n"

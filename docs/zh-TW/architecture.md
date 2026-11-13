@@ -93,7 +93,7 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 | `saves/team-名字.玩法.json` | 每一隊每種玩法的存檔（好幾個人時名字用 `+` 串起來） |
 | `saves/team-名字.玩法.log.jsonl` | 每回合一行：玩家行動、AI 提議與程式套用的變化、每次 AI 呼叫的種類（`kind`）、秒數與 token 用量。覺得慢或結果奇怪時看這裡 |
 | `server.log` | `just start` 的伺服器輸出 |
-| `~/.config/story/config.toml` | 語言與 API key |
+| `config.toml` | 語言與 API key（不進版控，寫法見 `config.example.toml`） |
 
 ## 測試與其他指令
 

@@ -10,7 +10,7 @@
 繁體中文
 
 ## setup_key
-需要 Gemini API key，可以到 https://aistudio.google.com/apikey 免費申請。會存在 ~/.config/story/config.toml。
+需要 Gemini API key，可以到 https://aistudio.google.com/apikey 免費申請。會存在程式資料夾裡的 config.toml。
 
 ## setup_key_prompt
 Gemini API key（輸入時不會顯示，直接按 Enter 先跳過）：
