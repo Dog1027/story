@@ -35,7 +35,7 @@ AI 出題失敗（{error}），改從題庫抽一題。
 AI 出的題目檢查後不夠合理，改從題庫抽一題。
 
 ## no_puzzles
-題庫裡沒有題目，AI 也沒能出題。請稍後再試，或在 ~/.config/story/puzzles/ 加入題目。
+題庫裡沒有題目，AI 也沒能出題。請稍後再試，或在 src/story/games/soup/puzzles/ 加入題目。
 
 ## stage_make
 AI 出題中

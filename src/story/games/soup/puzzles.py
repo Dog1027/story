@@ -1,22 +1,16 @@
 """The turtle soup puzzle bank: one markdown file per puzzle, with sections title, surface (the scenario), truth (the answer), key_points (one per line).
 
-Like genre packs, built-in puzzles are in story/games/soup/puzzles/<lang>/ and personal ones in ~/.config/story/puzzles/<lang>/; personal ones win on the same name.
+Like genre packs, puzzles live in story/games/soup/puzzles/<lang>/, with the project: add your own there too.
 Puzzles with a bad format are skipped, with the reason.
 """
 
 from pathlib import Path
 
-from story import settings
 from story.core import prompts
 from story.games.soup.models import Puzzle
 from story.games.soup.text import UI
 
 BUILTIN_DIR = Path(__file__).resolve().parent / "puzzles" / prompts.LANGUAGE
-
-
-def personal_dir() -> Path:
-    """Your own puzzles, next to the config (read when loading, so it follows settings.CONFIG_DIR)."""
-    return settings.CONFIG_DIR / "puzzles" / prompts.LANGUAGE
 
 
 MIN_POINTS, MAX_POINTS = 2, 4  # How many key points
@@ -37,18 +31,13 @@ def parse_puzzle(path: Path) -> Puzzle:
     return Puzzle(title=parts["title"].strip(), surface=parts["surface"].strip(), truth=parts["truth"].strip(), key_points=points)
 
 
-def load_puzzles(dirs: list[Path] | None = None) -> tuple[list[Puzzle], list[str]]:
-    """Read every puzzle; returns (puzzles, skipped puzzles with reasons). Later folders win (personal over built-in)."""
-    found: dict[str, Puzzle] = {}
+def load_puzzles(root: Path = BUILTIN_DIR) -> tuple[list[Puzzle], list[str]]:
+    """Read every puzzle in root; returns (puzzles, skipped puzzles with reasons)."""
+    puzzles: list[Puzzle] = []
     problems: list[str] = []
-    for root in dirs if dirs is not None else [BUILTIN_DIR, personal_dir()]:
-        if not root.is_dir():
-            continue
-        for path in sorted(root.glob("*.md")):
-            try:
-                puzzle = parse_puzzle(path)
-            except InvalidPuzzle as e:
-                problems.append(f"{path}: {e}")
-                continue
-            found[puzzle.title] = puzzle
-    return list(found.values()), problems
+    for path in sorted(root.glob("*.md")) if root.is_dir() else []:
+        try:
+            puzzles.append(parse_puzzle(path))
+        except InvalidPuzzle as e:
+            problems.append(f"{path}: {e}")
+    return puzzles, problems

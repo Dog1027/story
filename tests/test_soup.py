@@ -1,7 +1,6 @@
 """Turtle soup: making the puzzle, everyone asking or guessing at the same time each turn, solving only by stating every key point (several can win together in one turn), giving up, loading,
 plus the judge (a real SoupJudge with a fake Gemini) and the puzzle bank. Never calls the real AI."""
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -215,7 +214,7 @@ def test_every_language_has_the_same_puzzles():
     assert len(base) >= 8
     for lang in (p for p in root.iterdir() if p.is_dir()):
         assert sorted(p.name for p in lang.glob("*.md")) == base, lang.name
-        puzzles, problems = load_puzzles([lang])
+        puzzles, problems = load_puzzles(lang)
         assert len(puzzles) == len(base) and not problems, (lang.name, problems)
         for f in lang.glob("*.md"):  # The number of key points must match too
             assert len(prompts.items(prompts.sections(f.stem, lang)["key_points"])) == len(
@@ -227,16 +226,9 @@ def test_broken_puzzles_are_skipped_with_a_reason(tmp_path):
     (tmp_path / "ok.md").write_text("## title\n好\n## surface\n面\n## truth\n底\n## key_points\n- 一\n- 二\n", encoding="utf-8")
     (tmp_path / "bad.md").write_text("## title\n壞\n## surface\n面\n", encoding="utf-8")
     (tmp_path / "few.md").write_text("## title\n少\n## surface\n面\n## truth\n底\n## key_points\n- 一\n", encoding="utf-8")
-    puzzles, problems = load_puzzles([tmp_path])
+    puzzles, problems = load_puzzles(tmp_path)
     assert [p.title for p in puzzles] == ["好"] and len(problems) == 2
     assert any("truth" in p for p in problems) and any("2-4" in p for p in problems)
-
-
-def test_personal_puzzles_override_builtin_ones_with_the_same_title(tmp_path):
-    (tmp_path / "mine.md").write_text("## title\n空號\n## surface\n我的版本\n## truth\n底\n## key_points\n- 一\n- 二\n", encoding="utf-8")
-    puzzles, _ = load_puzzles([BUILTIN_DIR, tmp_path])
-    assert next(p for p in puzzles if p.title == "空號").surface == "我的版本"
-    assert Path(BUILTIN_DIR).name == "zh-TW"
 
 
 def test_a_guess_lists_only_the_key_points_it_hit(isolated):

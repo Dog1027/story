@@ -1,4 +1,4 @@
-"""Genre packs: reading and checking the format, personal packs overriding built-in ones, the AI picking by premise, where they go in prompts, "suggest one" and the /genre command."""
+"""Genre packs: reading and checking the format, the AI picking by premise, where they go in prompts, "suggest one" and the /genre command."""
 
 from conftest import HERO, FakeEngine, beat, make_engine, solo
 
@@ -33,13 +33,13 @@ def pack(**fields):
 
 def test_builtin_genres_are_all_valid():
     """Every built-in genre pack must pass the checks: this catches a format mistake when a built-in pack is edited."""
-    genres, problems = load_genres([BUILTIN_DIR])
+    genres, problems = load_genres(BUILTIN_DIR)
     assert problems == [] and len(genres) >= 3
 
 
 def test_genre_folder_is_parsed(tmp_path):
     write_genre(tmp_path, "wuxia", premises="- 你是鏢師。\n- 你是捕快。\n", names="人名：沈青衣", twists="- 師父才是元兇\n\n* 秘笈是假的\n")
-    genres, problems = load_genres([tmp_path])
+    genres, problems = load_genres(tmp_path)
     genre = genres["武俠"]
     assert problems == []
     assert genre.description == "江湖恩怨" and genre.guide == "用古白話。"
@@ -54,17 +54,10 @@ def test_broken_genres_are_skipped_with_a_reason(tmp_path):
     bad = tmp_path / "沒有設定欄位"
     bad.mkdir()
     (bad / "GENRE.md").write_text("只有內文", encoding="utf-8")
-    genres, problems = load_genres([tmp_path])
+    genres, problems = load_genres(tmp_path)
     assert genres == {}
     assert len(problems) == 4
     assert any("description" in p for p in problems) and any("超過" in p for p in problems)
-
-
-def test_personal_genre_overrides_builtin_with_same_name(tmp_path):
-    write_genre(tmp_path / "builtin", "武俠", guide="內建的指引")
-    write_genre(tmp_path / "personal", "我的武俠", guide="自己改的指引")
-    genres, _ = load_genres([tmp_path / "builtin", tmp_path / "personal"])
-    assert genres["武俠"].guide == "自己改的指引"
 
 
 # ---------- engine: how a genre gets into the prompts ----------
@@ -195,5 +188,5 @@ def test_ai_suggestion_wins_over_drawn_premise(isolated):
 def test_every_language_has_valid_genre_packs():
     """Every language's built-in genre packs (story/genres/<lang>/) pass the checks. English counts length in words, so the same limits fit too."""
     for folder in BUILTIN_DIR.parent.iterdir():
-        genres, problems = load_genres([folder])
+        genres, problems = load_genres(folder)
         assert genres and not problems, (folder.name, problems)

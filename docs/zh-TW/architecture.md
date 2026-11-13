@@ -75,8 +75,8 @@ core/     核心：每種玩法共用的流程、回覆格式、呼叫 AI、存�
 |---|---|
 | AI 的寫法（寫作規則、字數、節奏） | `games/adventure/prompts/`，先看裡面的 [README](../../src/story/games/adventure/prompts/README.zh-TW.md) |
 | 海龜湯裁判的標準 | `games/soup/prompts/` |
-| 題材包 | `games/adventure/genres/`（個人的放 `~/.config/story/genres/`），寫法見[怎麼寫題材包](genres.md) |
-| 海龜湯題庫 | `games/soup/puzzles/`，一題一個檔案（個人的放 `~/.config/story/puzzles/`） |
+| 題材包 | `games/adventure/genres/`，寫法見[怎麼寫題材包](genres.md) |
+| 海龜湯題庫 | `games/soup/puzzles/`，一題一個檔案 |
 | 模型、逾時 | `core/ai.py` 的 `MODEL`、`REQUEST_TIMEOUT` |
 | 故事長度、最早第幾回合能結束、每一幕至少幾回合 | `games/adventure/rules.py` 的 `TARGET_TURNS`、`MIN_ENDING_TURN`、`MIN_ACT_TURNS` |
 | 傷勢的分數、死亡門檻、痊癒時間 | `games/adventure/rules.py` |

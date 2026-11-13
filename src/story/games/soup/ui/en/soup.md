@@ -35,7 +35,7 @@ The AI couldn't write a puzzle ({error}), so here's one from the puzzle bank.
 The AI's puzzle didn't pass the check, so here's one from the puzzle bank.
 
 ## no_puzzles
-The puzzle bank is empty and the AI couldn't write one. Try again later, or add puzzles to ~/.config/story/puzzles/.
+The puzzle bank is empty and the AI couldn't write one. Try again later, or add puzzles to src/story/games/soup/puzzles/.
 
 ## stage_make
 writing a puzzle

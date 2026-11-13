@@ -76,8 +76,8 @@ Paths are under `src/story/`.
 |---|---|
 | How the AI writes (rules, length, pacing) | `games/adventure/prompts/`, starting with its [README](../../src/story/games/adventure/prompts/README.md) |
 | How strict the turtle soup judge is | `games/soup/prompts/` |
-| Genre packs | `games/adventure/genres/` (personal ones in `~/.config/story/genres/`); see [Writing a genre pack](genres.md) |
-| Turtle soup puzzles | `games/soup/puzzles/`, one file per puzzle (personal ones in `~/.config/story/puzzles/`) |
+| Genre packs | `games/adventure/genres/`; see [Writing a genre pack](genres.md) |
+| Turtle soup puzzles | `games/soup/puzzles/`, one file per puzzle |
 | The model, the timeout | `MODEL`, `REQUEST_TIMEOUT` in `core/ai.py` |
 | Story length, the earliest turn it can end, the minimum turns per act | `TARGET_TURNS`, `MIN_ENDING_TURN`, `MIN_ACT_TURNS` in `games/adventure/rules.py` |
 | Wound scores, the death threshold, healing times | `games/adventure/rules.py` |

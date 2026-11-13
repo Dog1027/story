@@ -8,14 +8,11 @@ The structure follows [Agent Skills](https://code.claude.com/docs/en/skills) (Cl
 
 ## Where they live
 
-| Location | Use |
-|---|---|
-| `src/story/games/adventure/genres/<lang>/` | Built-in genres, managed with the project (everyone gets them once committed) |
-| `~/.config/story/genres/<lang>/` | Personal genres, only on your own computer |
+Every genre pack lives in `src/story/games/adventure/genres/<lang>/`, in version control with the project (everyone gets them once committed). Your own go here too, one folder per genre.
 
 `<lang>` is `zh-TW` (Traditional Chinese) or `en` (English), chosen with `STORY_LANG` like the prompts, with a full set of genre packs per language. The English packs aren't word-for-word translations: naming material uses names English readers can pronounce, and openings and twists are written as sentences that read naturally in English. The genres don't have to match across languages, and a pack may exist in only one language.
 
-Personal packs win when `name` is the same, so to adjust a built-in genre's style, put a pack with the same `name` in your personal folder (the folder name can differ) instead of editing the built-in one. The web version reads the folders on the computer running the server.
+To adjust an existing genre's style, edit that pack directly; git can always bring the old version back. The web version reads the folders on the computer running the server.
 
 ## What's in the folder
 

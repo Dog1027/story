@@ -8,8 +8,7 @@ In code, a setting is named "section.name", e.g. get("api_key"); settings with a
 
 Environment variables win over this file: STORY_LANG overrides language, GEMINI_API_KEY (or GOOGLE_API_KEY) overrides api_key,
 so you can switch language or key temporarily without editing the file. The language and API key entered on first launch are written here (handwritten comments are lost).
-The core, games and shells all read it. Personal genre packs and turtle soup puzzles live in ~/.config/story/ (genres/<lang>/, puzzles/<lang>/),
-where config.toml also used to be: migrate() moves an old one into the project folder.
+The core, games and shells all read it. It used to be in ~/.config/story/: migrate() moves an old one into the project folder.
 """
 
 import json
@@ -17,7 +16,7 @@ import os
 import tomllib
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / ".config" / "story"  # Personal genre packs and puzzles (and, before 2026-11, config.toml)
+CONFIG_DIR = Path.home() / ".config" / "story"  # Where config.toml was before 2026-11 (only read to move it)
 # The project folder (where pyproject.toml is): config.toml, saves/ and eval_results/ go here, whatever folder the program is started from
 DATA_DIR = Path(__file__).resolve().parents[2]
 KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
