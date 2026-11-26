@@ -2,17 +2,19 @@
 config.example.toml shows what can go in it.
 
     language = "en"          # Language: zh-TW (default) or en
+    ai = "gemini"            # Which AI: gemini, or ollama (a local model); gemini when unset
+
+    [gemini]
     api_key = "…"            # Gemini API key
 
-    [ollama]                 # Optional: use a local model through Ollama instead of Gemini (no API key needed)
+    [ollama]                 # A local model through Ollama (no API key needed)
     model = "…"              # The model's name in Ollama (ollama list)
     url = "http://localhost:11434"
     num_ctx = "16384"        # Context length in tokens
 
-In code, a setting is named "section.name", e.g. get("api_key"); settings with a section are written under [section].
+In code, a setting is named "section.name", e.g. get("gemini.api_key"); settings with a section are written under [section].
 
-Environment variables win over this file: STORY_LANG overrides language, GEMINI_API_KEY (or GOOGLE_API_KEY) overrides api_key,
-STORY_OLLAMA_MODEL overrides ollama.model (set it to "" to use Gemini for once),
+Environment variables win over this file: STORY_LANG overrides language, STORY_AI overrides ai, GEMINI_API_KEY (or GOOGLE_API_KEY) overrides gemini.api_key,
 so you can switch language or key temporarily without editing the file. The language and API key entered on first launch are written here (handwritten comments are lost).
 The core, games and shells all read it. It used to be in ~/.config/story/: migrate() moves an old one into the project folder.
 """
@@ -26,6 +28,7 @@ CONFIG_DIR = Path.home() / ".config" / "story"  # Where config.toml was before 2
 # The project folder (where pyproject.toml is): config.toml, saves/ and eval_results/ go here, whatever folder the program is started from
 DATA_DIR = Path(__file__).resolve().parents[2]
 KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
+AIS = ("gemini", "ollama")
 
 
 class InvalidConfig(Exception):
@@ -83,13 +86,23 @@ def api_key() -> str | None:
     for var in KEY_ENV_VARS:
         if key := os.environ.get(var, "").strip():
             return key
-    return get("api_key")
+    return get("gemini.api_key") or get("api_key")  # api_key: where it was before [gemini] (until migrate() moves it)
+
+
+def ai() -> str:
+    """Which AI to call: "gemini" (the default) or "ollama"."""
+    value = (os.environ.get("STORY_AI") or get("ai") or "gemini").strip().lower()
+    if value not in AIS:
+        raise InvalidConfig(f'ai = "{value}" in {config_path()} (or STORY_AI) should be "gemini" or "ollama"')
+    return value
+
+
+def use_ollama() -> bool:
+    return ai() == "ollama"
 
 
 def ollama_model() -> str | None:
-    """The local model to use through Ollama; None to use Gemini."""
-    if "STORY_OLLAMA_MODEL" in os.environ:
-        return os.environ["STORY_OLLAMA_MODEL"].strip() or None
+    """The local model in Ollama (ollama.model); used when ai is ollama."""
     return get("ollama.model")
 
 
@@ -105,25 +118,30 @@ def ollama_num_ctx() -> int:
 
 
 def ai_ready() -> bool:
-    """Whether the AI can be called: a Gemini API key, or a local model through Ollama."""
-    return bool(api_key() or ollama_model())
+    """Whether the chosen AI can be called: a Gemini API key, or a local model's name for Ollama."""
+    return bool(ollama_model() if use_ollama() else api_key())
 
 
 def migrate() -> None:
     """Move old settings into the project's config.toml (setup.run() calls this on launch):
-    ~/.config/story/config.toml (before 2026-11), and the API key in its own file ~/.config/story/api_key (older still)."""
+    ~/.config/story/config.toml (before 2026-11), the API key in its own file ~/.config/story/api_key (older still),
+    and a top-level api_key (before [gemini], 2026-11) into gemini.api_key."""
     new, old_config = config_path(), old_config_path()
     if old_config.is_file() and not new.exists() and old_config.resolve() != new.resolve():
         _write(load())  # Written fresh, so the new file gets the owner-only permissions too
         old_config.unlink()
     old = CONFIG_DIR / "api_key"
-    if not old.is_file():
-        return
+    if old.is_file():
+        data = load()
+        if (value := old.read_text(encoding="utf-8").strip()) and not data.get("api_key") and not data.get("gemini.api_key"):
+            data["gemini.api_key"] = value
+        old.unlink()
+        _write(data)
     data = load()
-    if (value := old.read_text(encoding="utf-8").strip()) and "api_key" not in data:
-        data["api_key"] = value
-    old.unlink()
-    _write(data)
+    if "api_key" in data:
+        value = data.pop("api_key")
+        data.setdefault("gemini.api_key", value)
+        _write(data)
 
 
 def _flatten(table: dict, prefix: str = "") -> dict:

@@ -2,20 +2,22 @@
 
 import stat
 
+import pytest
+
 from story import settings
 
 
 def test_put_and_get_and_remove(isolated):
     settings.put("language", "en")
-    settings.put("api_key", 'k"ey')
-    assert settings.get("language") == "en" and settings.get("api_key") == 'k"ey'
-    settings.put("api_key", None)
-    assert settings.get("api_key") is None and settings.get("language") == "en"
+    settings.put("gemini.api_key", 'k"ey')
+    assert settings.get("language") == "en" and settings.get("gemini.api_key") == 'k"ey'
+    settings.put("gemini.api_key", None)
+    assert settings.get("gemini.api_key") is None and settings.get("language") == "en"
     assert stat.S_IMODE((isolated / "config.toml").stat().st_mode) == 0o600  # It may hold the API key
 
 
 def test_environment_variables_win(monkeypatch):
-    settings.put("api_key", "from-file")
+    settings.put("gemini.api_key", "from-file")
     settings.put("language", "en")
     assert settings.api_key() == "from-file"
     monkeypatch.setenv("GEMINI_API_KEY", "from-env")
@@ -33,7 +35,7 @@ def test_old_files_move_into_the_config(isolated):
     settings.migrate()
     assert settings.api_key() == "old-key"
     assert not (old / "api_key").exists()
-    assert 'api_key = "old-key"' in (isolated / "config.toml").read_text()
+    assert '[gemini]\napi_key = "old-key"' in (isolated / "config.toml").read_text()
 
 
 def test_the_old_config_moves_into_the_project_folder(isolated):
@@ -44,7 +46,7 @@ def test_the_old_config_moves_into_the_project_folder(isolated):
     assert settings.get("language") == "en"  # Read from the old place until moved: the core reads the language before setup runs
     settings.migrate()
     assert not (old / "config.toml").exists()
-    assert settings.get("language") == "en" and settings.get("api_key") == "k"
+    assert settings.get("language") == "en" and settings.get("gemini.api_key") == "k" and settings.get("api_key") is None
     assert stat.S_IMODE((isolated / "config.toml").stat().st_mode) == 0o600
 
 
@@ -54,7 +56,7 @@ def test_the_example_config_is_valid_and_ignored_by_git():
 
     project = Path(__file__).resolve().parents[1]
     example = tomllib.loads((project / "config.example.toml").read_text(encoding="utf-8"))
-    assert set(example) <= {"language", "api_key"}
+    assert set(example) <= {"language", "ai", "gemini", "ollama"} and example["ai"] in settings.AIS
     assert "/config.toml" in (project / ".gitignore").read_text().splitlines()
 
 
@@ -75,7 +77,7 @@ def test_first_launch_asks_only_for_what_is_missing(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     monkeypatch.setattr(setup, "getpass", lambda prompt="": "my-key")
     setup.run()
-    assert settings.get("language") == "en" and settings.get("api_key") == "my-key"
+    assert settings.get("language") == "en" and settings.get("gemini.api_key") == "my-key"
 
     monkeypatch.setattr("builtins.input", lambda prompt="": (_ for _ in ()).throw(AssertionError("should not ask again")))
     setup.run()  # Everything is set: asks nothing
@@ -96,3 +98,33 @@ def test_a_broken_config_raises_an_error_naming_the_file(isolated):
     (isolated / "config.toml").write_text("language = \n")
     with pytest.raises(settings.InvalidConfig, match="config.toml"):
         settings.load()
+
+
+def test_a_top_level_api_key_moves_under_gemini(isolated):
+    (isolated / "config.toml").write_text('language = "en"\napi_key = "k"\n')
+    assert settings.api_key() == "k"  # Still read before it's moved
+    settings.migrate()
+    assert (isolated / "config.toml").read_text() == 'language = "en"\n\n[gemini]\napi_key = "k"\n'
+
+
+def test_ai_picks_gemini_or_ollama(monkeypatch):
+    assert settings.ai() == "gemini" and not settings.ai_ready()
+    settings.put("ollama.model", "local")
+    assert settings.ai() == "gemini" and not settings.ai_ready()  # Unset means Gemini, even with a local model set (and no key here)
+    settings.put("ai", "ollama")
+    assert settings.use_ollama() and settings.ai_ready()
+    monkeypatch.setenv("STORY_AI", "ollama")
+    assert settings.use_ollama()
+    monkeypatch.setenv("STORY_AI", "claude")
+    with pytest.raises(settings.InvalidConfig):
+        settings.ai()
+
+
+def test_setup_does_not_ask_for_a_key_with_ollama(monkeypatch):
+    from story.shells import setup
+
+    settings.put("language", "en")
+    settings.put("ai", "ollama")
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr(setup, "getpass", lambda prompt="": (_ for _ in ()).throw(AssertionError("should not ask for a key")))
+    setup.run()

@@ -75,9 +75,9 @@ def test_an_ollama_error_is_shown_to_players():
         AICaller(client=client).generate("turn", model="x", contents="hi")
 
 
-def test_setting_ollama_model_switches_the_client(monkeypatch):
-    assert not settings.ai_ready()
+def test_ai_ollama_switches_the_client(monkeypatch):
+    settings.put("ai", "ollama")
     settings.put("ollama.model", "local")
-    assert settings.ai_ready() and isinstance(new_client(None), OllamaClient)
-    monkeypatch.setenv("STORY_OLLAMA_MODEL", "")  # Back to Gemini for once
-    assert settings.ollama_model() is None
+    assert isinstance(new_client(None), OllamaClient)
+    monkeypatch.setenv("STORY_AI", "gemini")  # Back to Gemini for once
+    assert not isinstance(new_client("key"), OllamaClient)

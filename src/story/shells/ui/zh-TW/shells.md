@@ -198,6 +198,9 @@ AI 思考中
 ## server_no_key
 網頁伺服器呼叫 AI 用架站者的 API key：請先在終端機裡執行一次 uv run story 輸入 key，或設定環境變數 GEMINI_API_KEY。
 
+## server_no_model
+config.toml 設了 ai = "ollama"，但 [ollama] 沒有 model：請加上 model = "<ollama list 裡的名字>"。
+
 ## server_open_warning
 ⚠ 已開放其他電腦連線。目前沒有 HTTPS，連線內容（名字、劇情）以明文傳送，名字也沒有密碼保護，只建議在信任的網路使用。
 

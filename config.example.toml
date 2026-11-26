@@ -2,25 +2,27 @@
 # (or just run the program: the first launch asks for these and writes config.toml for you).
 # config.toml holds your API key, so git ignores it; don't commit it.
 #
-# Environment variables win over this file: STORY_LANG overrides language, GEMINI_API_KEY overrides api_key.
+# Environment variables win over this file: STORY_LANG overrides language, STORY_AI overrides ai, GEMINI_API_KEY overrides gemini.api_key.
 #
 # 設定檔範例。複製成同一個資料夾裡的 config.toml 再填好
 # （或直接執行程式，第一次啟動會問這些，並自動寫好 config.toml）。
 # config.toml 裡有 API key，不會進版控，請不要 commit。
 #
-# 環境變數優先於這個檔案：STORY_LANG 蓋過 language，GEMINI_API_KEY 蓋過 api_key。
+# 環境變數優先於這個檔案：STORY_LANG 蓋過 language，STORY_AI 蓋過 ai，GEMINI_API_KEY 蓋過 gemini.api_key。
 
 # Language / 語言: "zh-TW" (default / 預設) or "en"
 language = "zh-TW"
 
+# Which AI / 用哪個 AI: "gemini" (default when unset / 沒寫就是這個), or "ollama" (a local model / 本機模型)
+# Both sections below can stay; this picks one. / 下面兩段可以都留著，這裡選一個用。
+ai = "gemini"
+
+[gemini]
 # Gemini API key, free at / 免費申請： https://aistudio.google.com/apikey
 api_key = "your-gemini-api-key"
 
-# Optional: use a local model through Ollama instead of Gemini (then api_key isn't needed).
-# STORY_OLLAMA_MODEL overrides model; set it to "" to use Gemini for once.
-# 選用：改用 Ollama 跑的本機模型，不用 Gemini（這時不需要 api_key）。
-# 環境變數 STORY_OLLAMA_MODEL 蓋過 model；設成 "" 就暫時改回 Gemini。
-# [ollama]
-# model = "hf.co/AtomicChat/Inkling-2-Mini-Uncensored-GGUF:IQ3_S"   # The name in `ollama list` / `ollama list` 裡的名字
-# url = "http://localhost:11434"
-# num_ctx = "16384"   # Context length in tokens / 上下文長度（token）
+[ollama]
+# A local model through Ollama; no API key needed / Ollama 跑的本機模型，不需要 API key
+model = "hf.co/AtomicChat/Inkling-2-Mini-Uncensored-GGUF:IQ3_S"   # The name in `ollama list` / `ollama list` 裡的名字
+url = "http://localhost:11434"
+num_ctx = "16384"   # Context length in tokens / 上下文長度（token）

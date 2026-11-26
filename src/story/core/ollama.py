@@ -1,5 +1,5 @@
 """Calling a local model through Ollama instead of Gemini: a client with the same two calls as a Gemini client's models (a GeminiClient),
-so the games and the rest of the core don't know the difference. Chosen by setting ollama.model in config.toml (story/settings.py).
+so the games and the rest of the core don't know the difference. Chosen by ai = "ollama" in config.toml (story/settings.py).
 
 The request's system_instruction becomes the system message, response_schema (a pydantic model) becomes Ollama's format (output constrained to that JSON schema),
 and the answer comes back as a Gemini response (text, parsed, finish_reason, token usage). thinking_config is ignored: local models answer without thinking, which is faster.

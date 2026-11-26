@@ -29,9 +29,9 @@
 | `just start`／`just stop` | | 在背景啟動／關閉伺服器（輸出在 `server.log`） |
 | `just update` | `git pull --ff-only && uv sync` | 把遠端的更新拉下來，並安裝新加的套件（伺服器在跑的話，再用 `just start` 重啟） |
 
-第一次執行時會問語言與 API key，存在程式資料夾裡的 `config.toml`（可以直接編輯，寫法見 `config.example.toml`；不會進版控）。環境變數優先：`STORY_LANG`（`zh-TW`、`en`）、`GEMINI_API_KEY`。
+第一次執行時會問語言與 API key，存在程式資料夾裡的 `config.toml`（可以直接編輯，寫法見 `config.example.toml`；不會進版控）。環境變數優先：`STORY_LANG`（`zh-TW`、`en`）、`STORY_AI`、`GEMINI_API_KEY`。
 
-想改用 [Ollama](https://ollama.com) 跑的本機模型、不用 Gemini（就不需要 API key），在設定檔加上 `[ollama]` 段落，寫 `model = "<ollama list 裡的名字>"`（見 `config.example.toml`）。本機模型不經思考直接回答，大綱與判定可能比 Gemini 粗糙。
+想改用 [Ollama](https://ollama.com) 跑的本機模型、不用 Gemini（就不需要 API key），在設定檔寫 `ai = "ollama"`，再加上 `[ollama]` 段落寫 `model = "<ollama list 裡的名字>"`（見 `config.example.toml`）；Gemini 的 key 放在 `[gemini]`，兩邊可以都留著，用 `ai` 切換。本機模型不經思考直接回答，大綱與判定可能比 Gemini 粗糙。
 
 在瀏覽器打開 `http://這台電腦的IP:8080`（本機是 <http://localhost:8080>），手機和電腦都能用。AI 用架站者的 key，玩家只要輸入名字。
 

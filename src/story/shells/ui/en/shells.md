@@ -198,6 +198,9 @@ Address to listen on; 0.0.0.0 lets other computers connect (default: this comput
 ## server_no_key
 The web server calls the AI with the host's API key: run uv run story once in a terminal to enter it, or set the GEMINI_API_KEY environment variable.
 
+## server_no_model
+config.toml says ai = "ollama" but [ollama] has no model: add model = "<name from ollama list>".
+
 ## server_open_warning
 ⚠ Other computers can connect. There's no HTTPS yet, so traffic (names, the story) is sent in plain text and names have no password; only use this on a network you trust.
 

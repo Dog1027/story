@@ -41,12 +41,12 @@ class GeminiClient(Protocol):
 
 
 def new_client(api_key: str | None) -> GeminiClient:
-    """A Gemini client, or a local model's through Ollama when ollama.model is set (story/core/ollama.py; api_key is then unused).
+    """A Gemini client, or a local model's through Ollama when the config says ai = "ollama" (story/core/ollama.py; api_key is then unused).
     Gemini's resends automatically on a timeout or a busy server (about 1 and 2 seconds apart), so players don't wait on a stuck request."""
-    if model := settings.ollama_model():
+    if settings.use_ollama():
         from story.core.ollama import OllamaClient  # Imported here: ollama.py imports AIFailed from this module
 
-        return OllamaClient(model, settings.ollama_url(), settings.ollama_num_ctx())
+        return OllamaClient(settings.ollama_model() or "", settings.ollama_url(), settings.ollama_num_ctx())
     return genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(

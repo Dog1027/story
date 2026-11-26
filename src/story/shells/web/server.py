@@ -102,9 +102,9 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args()
 
-    key = settings.api_key() or ""  # Not needed with a local model through Ollama (ollama.model)
+    key = settings.api_key() or ""  # Not needed with a local model through Ollama (ai = "ollama")
     if not settings.ai_ready():
-        sys.exit(UI["server_no_key"])
+        sys.exit(UI["server_no_model" if settings.use_ollama() else "server_no_key"])
 
     # Unexpected errors go to the output (server.log under just start) with the full traceback, to find out what happened
     logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
