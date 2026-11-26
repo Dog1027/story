@@ -1,7 +1,7 @@
 """A small terminal chat for trying out local models in Ollama: the answer streams in, and the conversation is remembered until /clear.
 
-    uv run python tools/chat.py
-    uv run python tools/chat.py --model <name> --system "你是說書人" --ollama http://localhost:11434
+    uv run python tools/ollama_chat.py
+    uv run python tools/ollama_chat.py --model <name> --system "你是說書人" --ollama http://localhost:11434
 
 While chatting: /system <text> sets the system prompt (empty clears it), /model lists or switches models, /clear forgets the conversation,
 /once switches one-shot mode on or off (each message is sent on its own, nothing earlier is remembered; also --once), /quit (or Ctrl+D) leaves. Ctrl+C during an answer stops it.
