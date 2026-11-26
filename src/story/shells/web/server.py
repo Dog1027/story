@@ -5,7 +5,7 @@ each call from the shared layer becomes a JSON message sent over a WebSocket to 
 The flow is all in the shared layer (screen/client.py).
 
 The server has one lobby (rooms/lobby.py), set up in hosting.py with every game in GAMES: each tab's Client connects to it, enters a name, then opens a room or joins someone else's;
-each room plays its own game (playing alone is a room with just you). The AI is called with the host's Gemini API key (config or environment variable); players never enter one.
+each room plays its own game (playing alone is a room with just you). The AI is called with the host's Gemini API key (config or environment variable), or a local model through Ollama; players never enter one.
 """
 
 import argparse
@@ -102,8 +102,8 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args()
 
-    key = settings.api_key()
-    if not key:
+    key = settings.api_key() or ""  # Not needed with a local model through Ollama (ollama.model)
+    if not settings.ai_ready():
         sys.exit(UI["server_no_key"])
 
     # Unexpected errors go to the output (server.log under just start) with the full traceback, to find out what happened

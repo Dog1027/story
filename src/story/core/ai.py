@@ -16,6 +16,7 @@ import httpx
 from google import genai
 from google.genai import errors, types
 
+from story import settings
 from story.core.prompts import UI  # Error messages shown to players (story/core/ui/<lang>/core.md)
 
 MODEL = "gemini-3.5-flash-lite"
@@ -39,8 +40,13 @@ class GeminiClient(Protocol):
     def models(self) -> GeminiModels: ...
 
 
-def new_client(api_key: str | None) -> genai.Client:
-    """Resends automatically on a timeout or a busy server (about 1 and 2 seconds apart), so players don't wait on a stuck request."""
+def new_client(api_key: str | None) -> GeminiClient:
+    """A Gemini client, or a local model's through Ollama when ollama.model is set (story/core/ollama.py; api_key is then unused).
+    Gemini's resends automatically on a timeout or a busy server (about 1 and 2 seconds apart), so players don't wait on a stuck request."""
+    if model := settings.ollama_model():
+        from story.core.ollama import OllamaClient  # Imported here: ollama.py imports AIFailed from this module
+
+        return OllamaClient(model, settings.ollama_url(), settings.ollama_num_ctx())
     return genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(

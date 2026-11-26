@@ -31,6 +31,8 @@ You need [uv](https://docs.astral.sh/uv/) (installs Python 3.14 and the packages
 
 The first run asks for a language and an API key, saved to `config.toml` in the project folder (editable; see `config.example.toml`; git ignores it). Environment variables win: `STORY_LANG` (`zh-TW`, `en`), `GEMINI_API_KEY`.
 
+To use a local model through [Ollama](https://ollama.com) instead of Gemini (no API key needed), add an `[ollama]` section with `model = "<name from ollama list>"` (see `config.example.toml`). Local models answer without thinking, and the outline and rulings may be rougher than Gemini's.
+
 Open `http://<this computer's IP>:8080` (locally <http://localhost:8080>) on a phone or a computer. The AI uses the host's key; players only enter a name.
 
 - Your name is your character, and the browser remembers it. Open a room with the same group and names to continue your last save

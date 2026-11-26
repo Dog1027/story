@@ -35,7 +35,7 @@ def run() -> None:
     from story.shells.text import ui_text  # Read this language's text only once the language is decided
 
     ui = ui_text("shells")
-    if not settings.api_key():
+    if not settings.ai_ready():  # A local model through Ollama needs no key
         print(ui["setup_key"])
         if value := getpass(ui["setup_key_prompt"]).strip():
             settings.put("api_key", value)

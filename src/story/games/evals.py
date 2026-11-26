@@ -54,11 +54,11 @@ def main(argv: list[str] | None = None) -> None:
     if unknown:
         sys.exit(f"No such scenario: {', '.join(unknown)}. Available: {', '.join(found)}")
     key = settings.api_key()
-    if not key:
+    if not settings.ai_ready():
         sys.exit("No Gemini API key found: run uv run story once to enter one, or set the GEMINI_API_KEY environment variable.")
 
     names = args or list(found)
-    print(f"Evaluating {len(names)} scenario(s), {runs} run(s) each (model: {MODEL}, at most {rpm} calls a minute)")
+    print(f"Evaluating {len(names)} scenario(s), {runs} run(s) each (model: {settings.ollama_model() or MODEL}, at most {rpm} calls a minute)")
     evaluate(found, names, runs, rpm, lambda: new_client(key))
 
 

@@ -4,9 +4,15 @@ config.example.toml shows what can go in it.
     language = "en"          # Language: zh-TW (default) or en
     api_key = "…"            # Gemini API key
 
+    [ollama]                 # Optional: use a local model through Ollama instead of Gemini (no API key needed)
+    model = "…"              # The model's name in Ollama (ollama list)
+    url = "http://localhost:11434"
+    num_ctx = "16384"        # Context length in tokens
+
 In code, a setting is named "section.name", e.g. get("api_key"); settings with a section are written under [section].
 
 Environment variables win over this file: STORY_LANG overrides language, GEMINI_API_KEY (or GOOGLE_API_KEY) overrides api_key,
+STORY_OLLAMA_MODEL overrides ollama.model (set it to "" to use Gemini for once),
 so you can switch language or key temporarily without editing the file. The language and API key entered on first launch are written here (handwritten comments are lost).
 The core, games and shells all read it. It used to be in ~/.config/story/: migrate() moves an old one into the project folder.
 """
@@ -78,6 +84,29 @@ def api_key() -> str | None:
         if key := os.environ.get(var, "").strip():
             return key
     return get("api_key")
+
+
+def ollama_model() -> str | None:
+    """The local model to use through Ollama; None to use Gemini."""
+    if "STORY_OLLAMA_MODEL" in os.environ:
+        return os.environ["STORY_OLLAMA_MODEL"].strip() or None
+    return get("ollama.model")
+
+
+def ollama_url() -> str:
+    return get("ollama.url") or "http://localhost:11434"
+
+
+def ollama_num_ctx() -> int:
+    try:
+        return int(get("ollama.num_ctx") or 16384)
+    except ValueError:
+        return 16384
+
+
+def ai_ready() -> bool:
+    """Whether the AI can be called: a Gemini API key, or a local model through Ollama."""
+    return bool(api_key() or ollama_model())
 
 
 def migrate() -> None:

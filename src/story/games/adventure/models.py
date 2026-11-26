@@ -74,7 +74,7 @@ class StoryArc(BaseModel):
     goal: str = Field(description=SCHEMA["StoryArc.goal"])
     twist: str = Field(description=SCHEMA["StoryArc.twist"])
     clues: list[str] = Field(description=SCHEMA["StoryArc.clues"])
-    acts: list[Act] = Field(description=SCHEMA["StoryArc.acts"])
+    acts: list[Act] = Field(min_length=4, description=SCHEMA["StoryArc.acts"])  # A minimum the output is held to: local models otherwise often plan three
     endings: list[str] = Field(description=SCHEMA["StoryArc.endings"])
 
 

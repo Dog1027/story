@@ -15,3 +15,12 @@ language = "zh-TW"
 
 # Gemini API key, free at / 免費申請： https://aistudio.google.com/apikey
 api_key = "your-gemini-api-key"
+
+# Optional: use a local model through Ollama instead of Gemini (then api_key isn't needed).
+# STORY_OLLAMA_MODEL overrides model; set it to "" to use Gemini for once.
+# 選用：改用 Ollama 跑的本機模型，不用 Gemini（這時不需要 api_key）。
+# 環境變數 STORY_OLLAMA_MODEL 蓋過 model；設成 "" 就暫時改回 Gemini。
+# [ollama]
+# model = "hf.co/AtomicChat/Inkling-2-Mini-Uncensored-GGUF:IQ3_S"   # The name in `ollama list` / `ollama list` 裡的名字
+# url = "http://localhost:11434"
+# num_ctx = "16384"   # Context length in tokens / 上下文長度（token）
